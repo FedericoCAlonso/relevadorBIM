@@ -1390,15 +1390,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <div>
                         <label className="text-[10px] font-bold text-amber-950 block mb-1">MATERIAL DE LA CAÑERÍA</label>
                         <select
-                          value={selectedConduit.material}
+                          value={selectedConduit.material || 'hierro_semipesado_rs'}
                           onChange={(e) => updateConduit(selectedConduit.id, { material: e.target.value as ConduitMaterial })}
                           className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-semibold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
-                          <option value="corrugado_blanco">Corrugado Blanco (Liviano)</option>
-                          <option value="corrugado_ignifugo">Corrugado Ignífugo (Semipesado)</option>
-                          <option value="cano_rigido_pvc">Caño Rígido PVC</option>
-                          <option value="cano_acero">Caño de Acero Semipesado</option>
-                          <option value="bandeja">Bandeja Portacables</option>
+                          <option value="hierro_semipesado_rs">1. Caño Hierro Semipesado RS (Norma AEA)</option>
+                          <option value="hierro_liviano_rl">2. Hierro Liviano RL</option>
+                          <option value="pvc_rigido_metrico">3. Caño PVC Rígido (métrico)</option>
+                          <option value="corrugado_blanco_pvc">4. Corrugado Blanco PVC</option>
+                          <option value="bandeja_perforada_20">5. Bandeja Perforada de 20</option>
                         </select>
                       </div>
 

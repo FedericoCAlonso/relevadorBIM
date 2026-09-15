@@ -786,8 +786,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             d={pathD}
             fill="none"
             stroke={strokeColor}
-            strokeWidth={isSelected ? 3.5 : 2.2}
-            strokeDasharray={conduit.material.includes('corrugado') ? '6 3' : 'none'}
+            strokeWidth={isSelected ? 3.5 : conduit.material.includes('bandeja') ? 3.0 : 2.2}
+            strokeDasharray={conduit.material.includes('corrugado') ? '6 3' : conduit.material.includes('bandeja') ? '5 2' : 'none'}
             strokeLinecap="round"
           />
           {/* Diámetro y circuito de la cañería */}

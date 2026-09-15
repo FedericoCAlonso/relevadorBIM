@@ -14,7 +14,8 @@ import { AeaSymbolIcon } from './AeaSymbolIcon';
 import {
   X,
   Trash2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Plus
 } from 'lucide-react';
 
 interface ElectricalElementModalProps {
@@ -35,6 +36,25 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
   const symbol = getSymbolById(element.symbolId);
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
   const wall = element.wallId ? project.walls.find((w) => w.id === element.wallId) : null;
+
+  // Atributos clave-valor dinámicos (TRAZA)
+  const attributes = element.attributes || [];
+
+  const addAttribute = (key = '', value = '') => {
+    const updated = [...attributes, { key, value }];
+    updateElectricalElement(element.id, { attributes: updated });
+  };
+
+  const updateAttribute = (idx: number, patch: Partial<{ key: string; value: string }>) => {
+    const updated = [...attributes];
+    updated[idx] = { ...updated[idx], ...patch };
+    updateElectricalElement(element.id, { attributes: updated });
+  };
+
+  const removeAttribute = (idx: number) => {
+    const updated = attributes.filter((_, i) => i !== idx);
+    updateElectricalElement(element.id, { attributes: updated });
+  };
 
   // Presets de altura reglamentaria AEA
   const heightPresets = [
@@ -355,7 +375,79 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
             </div>
           </div>
 
-          {/* 6. Notas de Relevamiento */}
+          {/* 6. Atributos Personalizados Clave-Valor (Modelo TRAZA) */}
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="font-bold text-slate-700 block">
+                  Propiedades Arbitrarias / Metadatos (TRAZA):
+                </label>
+                <span className="text-[10px] text-slate-500">
+                  Array de clave-valor ({attributes.length} {attributes.length === 1 ? 'propiedad' : 'propiedades'})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => addAttribute()}
+                className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-[11px] font-bold shadow-xs transition-all"
+              >
+                <Plus size={13} />
+                <span>+ Agregar</span>
+              </button>
+            </div>
+
+            {/* Atajos Rápidos de Claves Sugeridas */}
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
+              <span className="text-[10px] text-slate-400 font-semibold mr-1 flex-shrink-0">Sugerencias:</span>
+              {['Marca', 'Modelo', 'IP', 'Tipo Lámpara', 'Consumo'].map((sugKey) => (
+                <button
+                  key={sugKey}
+                  type="button"
+                  onClick={() => addAttribute(sugKey, '')}
+                  className="px-2 py-0.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-[10px] font-medium whitespace-nowrap flex-shrink-0 transition-colors"
+                >
+                  +{sugKey}
+                </button>
+              ))}
+            </div>
+
+            {attributes.length === 0 ? (
+              <div className="p-3 bg-white border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-[11px]">
+                El array está vacío por defecto. Tocá <strong>+ Agregar</strong> para añadir propiedades técnicas libres.
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {attributes.map((attr, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Clave (ej: Marca)"
+                      value={attr.key}
+                      onChange={(e) => updateAttribute(idx, { key: e.target.value })}
+                      className="w-1/3 min-w-[85px] px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Valor (ej: Schneider)"
+                      value={attr.value}
+                      onChange={(e) => updateAttribute(idx, { value: e.target.value })}
+                      className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttribute(idx)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                      title="Eliminar propiedad"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 7. Notas de Relevamiento */}
           <div>
             <label className="block font-bold text-slate-700 mb-1">Notas / Observaciones:</label>
             <textarea

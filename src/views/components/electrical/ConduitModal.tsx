@@ -15,7 +15,7 @@ import type {
   ConductorRole
 } from '../../../models/electrical/ElectricalModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { calculateConduitOccupancyFactor, calculateConduitRealLength } from '../../../models/electrical/calculations';
+import { calculateConduitOccupancyFactor, getConduitLengthBreakdown } from '../../../models/electrical/calculations';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import {
   X,
@@ -32,11 +32,11 @@ interface ConduitModalProps {
 }
 
 const MATERIAL_OPTIONS: Array<{ id: ConduitMaterial; label: string; desc: string }> = [
-  { id: 'corrugado_ignifugo', label: 'Corrugado Gris Ignífugo', desc: 'Semipesado IRAM 62386 (Norma AEA)' },
-  { id: 'cano_rigido_pvc', label: 'Caño Rígido PVC', desc: 'Semipesado / Curvado en caliente' },
-  { id: 'cano_acero', label: 'Caño de Acero Semipesado RS', desc: 'Hierro esmaltado / galvanizado' },
-  { id: 'corrugado_blanco', label: 'Corrugado Blanco Liviano', desc: '⚠️ No reglamentario para losas' },
-  { id: 'bandeja', label: 'Bandeja Portacables', desc: 'Canalización a la vista / suspendida' }
+  { id: 'hierro_semipesado_rs', label: '1. Caño Hierro Semipesado RS', desc: 'Acero semipesado según IRAM-IAS U 500-2604 (Norma AEA losas y embutido)' },
+  { id: 'hierro_liviano_rl', label: '2. Hierro Liviano RL', desc: 'Acero liviano con costura para canalizaciones embutidas' },
+  { id: 'pvc_rigido_metrico', label: '3. Caño PVC Rígido (métrico)', desc: 'Termoplástico rígido aislante curvable en caliente' },
+  { id: 'corrugado_blanco_pvc', label: '4. Corrugado Blanco PVC', desc: '⚠️ Liviano económico. No apto para losas bajo AEA 90364' },
+  { id: 'bandeja_perforada_20', label: '5. Bandeja Perforada de 20', desc: 'Chapa de acero perforada ancho 200 mm' }
 ];
 
 const DIAMETER_OPTIONS = [
@@ -66,8 +66,11 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
   const symTo = elTo ? getSymbolById(elTo.symbolId) : null;
 
   const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
-  const autoLengthM =
-    elFrom && elTo ? calculateConduitRealLength({ fromElement: elFrom, toElement: elTo, levelsMap }) : 2.5;
+  const lengthBreakdown =
+    elFrom && elTo
+      ? getConduitLengthBreakdown({ fromElement: elFrom, toElement: elTo, levelsMap, isOrthogonalRouting: true })
+      : null;
+  const autoLengthM = lengthBreakdown ? lengthBreakdown.totalLengthM : 2.5;
   const effectiveLengthM = conduit.manualLengthM || autoLengthM;
 
   // Factor de ocupación AEA
@@ -249,7 +252,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             <label className="block font-bold text-slate-700 mb-1">Tipo de Conducto (Material):</label>
             <div className="space-y-1.5">
               {MATERIAL_OPTIONS.map((mat) => {
-                const isSelected = (conduit.material || 'corrugado_ignifugo') === mat.id;
+                const isSelected = (conduit.material || 'hierro_semipesado_rs') === mat.id;
                 return (
                   <button
                     key={mat.id}
@@ -347,6 +350,39 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               </div>
             </div>
           </div>
+
+          {/* Desglose Reglamentario de Medición (Trayectoria Ortogonal + Desnivel Z) */}
+          {lengthBreakdown && (
+            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-blue-950">
+                <span>Desglose Métrico Reglamentario (Norma AEA 90364-771):</span>
+                <span className="font-mono text-blue-800">{lengthBreakdown.totalLengthM.toFixed(2)} m</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px] font-mono">
+                <div className="bg-white p-2 rounded-xl border border-blue-100">
+                  <span className="text-[10px] text-slate-400 block font-sans">1. Planta Ortogonal (dx+dy):</span>
+                  <strong className="text-slate-900">{lengthBreakdown.distPlantaOrthogonal.toFixed(2)} m</strong>
+                  <span className="text-[9px] text-slate-400 block font-sans">
+                    dx:{lengthBreakdown.dx}m + dy:{lengthBreakdown.dy}m
+                  </span>
+                </div>
+                <div className="bg-white p-2 rounded-xl border border-blue-100">
+                  <span className="text-[10px] text-slate-400 block font-sans">2. Desnivel Z (|Δh|):</span>
+                  <strong className="text-slate-900">{lengthBreakdown.dzLocal.toFixed(2)} m</strong>
+                  <span className="text-[9px] text-slate-400 block font-sans">
+                    z1:{elFrom?.heightZ.toFixed(2)}m ➔ z2:{elTo?.heightZ.toFixed(2)}m
+                  </span>
+                </div>
+                <div className="bg-white p-2 rounded-xl border border-blue-100 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-slate-400 block font-sans">3. Curvas & Desperdicio:</span>
+                  <strong className="text-slate-900">
+                    {(lengthBreakdown.totalLengthM - (lengthBreakdown.distPlantaOrthogonal + lengthBreakdown.dzLocal + lengthBreakdown.dzNiveles)).toFixed(2)} m
+                  </strong>
+                  <span className="text-[9px] text-slate-400 block font-sans">+10% reglamentario AEA</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 6. Presets Rápidos de Conductores */}
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">

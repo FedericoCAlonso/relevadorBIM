@@ -190,7 +190,8 @@ export function App() {
           selectedSymbolId.includes('tablero') ||
           selectedSymbolId.includes('tp') ||
           selectedSymbolId.includes('ts'),
-        label
+        label,
+        attributes: []
       });
 
       setSelectedEntity({ type: 'electrical_element', id: newElementId });

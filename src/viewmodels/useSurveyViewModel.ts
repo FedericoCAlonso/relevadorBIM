@@ -168,7 +168,7 @@ export function useSurveyViewModel() {
             fromLevelId: project.activeLevelId,
             toLevelId: project.activeLevelId,
             diameterMM: 19,
-            material: 'corrugado_blanco',
+            material: 'hierro_semipesado_rs',
             isVerticalRiser: false,
             conductors: [
               { role: 'fase', sectionMM2: wireSec, color: '#8B4513' },

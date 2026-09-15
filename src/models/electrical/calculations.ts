@@ -17,23 +17,32 @@ export const CONDUCTIVIDAD_COBRE = 56.0;
  * Contempla la distancia ortogonal en planta más las bajadas/subidas de pared y techo,
  * y la altura entre pisos si atraviesa niveles (montante vertical).
  */
-export function calculateConduitRealLength(params: {
+export interface ConduitLengthBreakdown {
+  dx: number;
+  dy: number;
+  distPlantaOrthogonal: number; // dx + dy
+  dzLocal: number;              // |z1 - z2|
+  dzNiveles: number;           // si atraviesa losas entre niveles
+  totalLengthM: number;        // (dx + dy + dzLocal + dzNiveles) * 1.10
+}
+
+export function getConduitLengthBreakdown(params: {
   fromElement: ElectricalElement;
   toElement: ElectricalElement;
   levelsMap: Map<string, Level>;
-  isOrthogonalRouting?: boolean; // Trazado a 90° (default true para caños)
-}): number {
+  isOrthogonalRouting?: boolean;
+}): ConduitLengthBreakdown {
   const { fromElement, toElement, levelsMap, isOrthogonalRouting = true } = params;
 
-  // 1. Distancia en planta (X, Y)
+  // 1. Distancia en planta ortogonal según norma AEA (dx + dy)
   const dx = Math.abs(toElement.x - fromElement.x);
   const dy = Math.abs(toElement.y - fromElement.y);
-  const distPlanta = isOrthogonalRouting ? dx + dy : Math.hypot(dx, dy);
+  const distPlantaOrthogonal = isOrthogonalRouting ? dx + dy : Math.hypot(dx, dy);
 
-  // 2. Desnivel interno en Z (ej: de llave a 1.20m a centro de techo a 2.70m)
+  // 2. Desnivel en Z entre alturas de las bocas (|h1 - h2|)
   const dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
 
-  // 3. Desnivel entre niveles si es montante vertical
+  // 3. Desnivel entre plantas si es montante vertical
   let dzNiveles = 0;
   if (fromElement.levelId !== toElement.levelId) {
     const lvlFrom = levelsMap.get(fromElement.levelId);
@@ -43,9 +52,26 @@ export function calculateConduitRealLength(params: {
     }
   }
 
-  // Longitud total con 10% adicional por curvaturas reglamentarias y desperdicios
-  const longitudEfectiva = distPlanta + dzLocal + dzNiveles;
-  return Number((longitudEfectiva * 1.1).toFixed(2));
+  const rawSum = distPlantaOrthogonal + dzLocal + dzNiveles;
+  const totalLengthM = Number((rawSum * 1.10).toFixed(2));
+
+  return {
+    dx: Number(dx.toFixed(2)),
+    dy: Number(dy.toFixed(2)),
+    distPlantaOrthogonal: Number(distPlantaOrthogonal.toFixed(2)),
+    dzLocal: Number(dzLocal.toFixed(2)),
+    dzNiveles: Number(dzNiveles.toFixed(2)),
+    totalLengthM
+  };
+}
+
+export function calculateConduitRealLength(params: {
+  fromElement: ElectricalElement;
+  toElement: ElectricalElement;
+  levelsMap: Map<string, Level>;
+  isOrthogonalRouting?: boolean;
+}): number {
+  return getConduitLengthBreakdown(params).totalLengthM;
 }
 
 /**

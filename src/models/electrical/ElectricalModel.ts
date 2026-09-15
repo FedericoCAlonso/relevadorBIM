@@ -63,7 +63,17 @@ export interface ElectricalElement {
   };
 }
 
-export type ConduitMaterial = 'corrugado_blanco' | 'corrugado_ignifugo' | 'cano_rigido_pvc' | 'cano_acero' | 'bandeja';
+export type ConduitMaterial =
+  | 'hierro_semipesado_rs'
+  | 'hierro_liviano_rl'
+  | 'pvc_rigido_metrico'
+  | 'corrugado_blanco_pvc'
+  | 'bandeja_perforada_20'
+  | 'corrugado_blanco'
+  | 'corrugado_ignifugo'
+  | 'cano_rigido_pvc'
+  | 'cano_acero'
+  | 'bandeja';
 
 export interface Conduit {
   id: string;
