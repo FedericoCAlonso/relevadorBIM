@@ -18,11 +18,18 @@ export type ConductorRole =
   | 'fase_t'
   | 'comando';
 
+export type CableStandard =
+  | 'IRAM_NM_247_3'     // Unipolar estándar PVC antiflama 450/750V
+  | 'IRAM_62267_LSOH'   // Libre de halógenos y baja emisión de humos (lugares concurridos)
+  | 'IRAM_2178_SUB'     // Subterráneo / intemperie 0.6/1.1 kV
+  | 'IRAM_NM_247_5';    // Tipo Taller doble aislación
+
 export interface ConductorLine {
   role: ConductorRole;
   sectionMM2: number;      // Sección en mm² (ej: 1.5, 2.5, 4.0, 6.0)
   color?: string;          // Marrón, celeste, verde-amarillo, etc.
   reference?: string;      // Referencia o letra de retorno (ej: "a", "b", "c")
+  cableStandard?: CableStandard;
 }
 
 export interface ElectricalElement {
@@ -72,6 +79,8 @@ export interface Conduit {
   conductors: ConductorLine[];
   manualLengthM?: number;   // Longitud forzada manualmente si aplica
   label?: string;           // Referencia o rótulo en plano (ej: "C1", "X1")
+  defaultCableStandard?: CableStandard; // Norma de conductor principal
+  notes?: string;
 }
 
 export type CircuitType = 'IUG' | 'IUE' | 'TUG' | 'TUE' | 'FM' | 'ACU' | 'OTRO';

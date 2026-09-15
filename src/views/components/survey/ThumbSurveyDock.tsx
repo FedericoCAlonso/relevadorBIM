@@ -309,6 +309,16 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                {/* Modal Propiedades Completas */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-element-edit-modal'))}
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap"
+                  title="Propiedades completas de la boca"
+                >
+                  <SlidersHorizontal size={13} />
+                  <span>Propiedades</span>
+                </button>
                 {/* Ciclar Circuito */}
                 {project.circuits.length > 0 && (
                   <button
@@ -447,6 +457,16 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               </div>
 
               <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+                {/* Modal Configuración Completa */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-conduit-edit-modal'))}
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap"
+                  title="Configuración completa de caño y cables"
+                >
+                  <SlidersHorizontal size={13} />
+                  <span>Configurar Caño</span>
+                </button>
                 {/* Ciclar Diámetro */}
                 <button
                   type="button"

@@ -18,6 +18,8 @@ import { DesktopSidebar } from './views/components/desktop/DesktopSidebar';
 import { SurveyActionSheets } from './views/components/survey/SurveyActionSheets';
 import { SpaceEditModal } from './views/components/survey/SpaceEditModal';
 import { ComputoModal } from './views/components/survey/ComputoModal';
+import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
+import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
 
@@ -54,7 +56,17 @@ export function App() {
   const [showComputoModal, setShowComputoModal] = useState(false);
   const [showTeeModal, setShowTeeModal] = useState(false);
   const [showOpeningModal, setShowOpeningModal] = useState(false);
+  const [showElementModal, setShowElementModal] = useState(false);
+  const [showConduitModal, setShowConduitModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
+
+  // Entidades eléctricas seleccionadas para modales
+  const selectedElectricalElement =
+    selectedEntity?.type === 'electrical_element'
+      ? project.electricalElements.find((e) => e.id === selectedEntity.id)
+      : null;
+  const selectedConduit =
+    selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
 
   // Atajos de teclado CAD (Ctrl+Z para deshacer, Escape para deseleccionar, Supr para borrar)
   useEffect(() => {
@@ -96,13 +108,19 @@ export function App() {
   useEffect(() => {
     const handleOpenTee = () => setShowTeeModal(true);
     const handleOpenOpening = () => setShowOpeningModal(true);
+    const handleOpenElement = () => setShowElementModal(true);
+    const handleOpenConduit = () => setShowConduitModal(true);
 
     window.addEventListener('open-tee-modal', handleOpenTee);
     window.addEventListener('open-opening-modal', handleOpenOpening);
+    window.addEventListener('open-element-edit-modal', handleOpenElement);
+    window.addEventListener('open-conduit-edit-modal', handleOpenConduit);
 
     return () => {
       window.removeEventListener('open-tee-modal', handleOpenTee);
       window.removeEventListener('open-opening-modal', handleOpenOpening);
+      window.removeEventListener('open-element-edit-modal', handleOpenElement);
+      window.removeEventListener('open-conduit-edit-modal', handleOpenConduit);
     };
   }, []);
 
@@ -269,6 +287,20 @@ export function App() {
 
       {/* 6. Modal de Cómputo Métrico / Cotizador IEBA */}
       <ComputoModal isOpen={showComputoModal} onClose={() => setShowComputoModal(false)} />
+
+      {/* 7. Modal de Propiedades de Boca Eléctrica */}
+      <ElectricalElementModal
+        element={selectedElectricalElement || null}
+        isOpen={showElementModal && !!selectedElectricalElement}
+        onClose={() => setShowElementModal(false)}
+      />
+
+      {/* 8. Modal de Configuración Técnica de Cañería */}
+      <ConduitModal
+        conduit={selectedConduit || null}
+        isOpen={showConduitModal && !!selectedConduit}
+        onClose={() => setShowConduitModal(false)}
+      />
     </div>
   );
 }

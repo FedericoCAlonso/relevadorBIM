@@ -35,7 +35,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Cable,
-  Layers
+  Layers,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface DesktopSidebarProps {
@@ -1338,14 +1339,25 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                             </span>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => deleteConduit(selectedConduit.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Eliminar tramo de cañería"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-conduit-edit-modal'))}
+                            className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shadow-xs flex items-center gap-1"
+                            title="Abrir panel completo de configuración"
+                          >
+                            <SlidersHorizontal size={12} />
+                            <span>Configurar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteConduit(selectedConduit.id)}
+                            className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Eliminar tramo de cañería"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Diámetro de Cañería */}
@@ -1571,14 +1583,25 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           </span>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => deleteElectricalElement(selectedElectricalElement.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                        title="Eliminar boca"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => window.dispatchEvent(new CustomEvent('open-element-edit-modal'))}
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold shadow-xs flex items-center gap-1"
+                          title="Abrir propiedades completas"
+                        >
+                          <SlidersHorizontal size={12} />
+                          <span>Propiedades</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteElectricalElement(selectedElectricalElement.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Eliminar boca"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Circuito Asignado */}
