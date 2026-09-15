@@ -1,21 +1,21 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * VISTA: TopStatusBar.tsx
- * Barra Superior Pasiva (Zona Difícil / Lectura en Móvil).
- * Muestra nombre del proyecto, nivel activo y acceso al cómputo IEBA.
+ * Barra Superior Minimalista (Directiva AGENTS.md / Cero Ruido Contextual).
+ * Estructura: [ ☰ Menú ]  RelevadorBIM · Nivel          [ Cotas ]  [ ⛶ ]
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Zap, RotateCcw, Building2, Maximize, Minimize, Ruler } from 'lucide-react';
+import { Menu, Maximize, Minimize, Ruler } from 'lucide-react';
 
 interface TopStatusBarProps {
-  onViewComputoClick: () => void;
+  onOpenMenu: () => void;
 }
 
-export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }) => {
-  const { project, resetProject, showDimensions, toggleDimensions } = useProjectStore();
+export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu }) => {
+  const { project, showDimensions, toggleDimensions } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -56,35 +56,33 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }
     }
   };
 
-  const handleReset = () => {
-    if (window.confirm('¿Reiniciar plano actual?')) {
-      resetProject();
-    }
-  };
-
   return (
     <header className="absolute top-3 left-3 right-3 flex items-center justify-between p-2 bg-white/85 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200 z-10 text-xs">
-      <div className="flex items-center gap-2 pl-1">
-        <div className="p-1.5 bg-blue-600 text-white rounded-lg">
-          <Building2 size={16} />
-        </div>
-        <div>
-          <span className="font-bold text-slate-800">RelevadorBIM</span>
-          <span className="text-slate-400 mx-1.5">·</span>
-          <span className="text-slate-600 font-medium">{project.levels[0]?.name || 'Planta Baja'}</span>
+      {/* Extremo Izquierdo: Botón Menú Principal + Identificación */}
+      <div className="flex items-center gap-2 pl-0.5">
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold shadow-xs transition-all active:scale-95"
+          title="Menú principal (Archivo, Exportar, Configuración)"
+        >
+          <Menu size={16} />
+          <span className="hidden sm:inline">Menú</span>
+        </button>
+
+        <div className="flex items-center gap-1.5 ml-1">
+          <span className="font-bold text-slate-800 tracking-tight">RelevadorBIM</span>
+          <span className="text-slate-400">·</span>
+          <span className="text-slate-600 font-medium">
+            {project.levels.find((l) => l.id === project.activeLevelId)?.name || 'Planta Baja'}
+          </span>
         </div>
       </div>
 
+      {/* Extremo Derecho: Herramientas de visualización de dibujo (Cotas y Pantalla Completa) */}
       <div className="flex items-center gap-1.5">
         <button
-          onClick={onViewComputoClick}
-          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl font-semibold transition-colors"
-        >
-          <Zap size={14} className="text-amber-600" />
-          <span>Cotizador</span>
-        </button>
-
-        <button
+          type="button"
           onClick={toggleDimensions}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors ${
             showDimensions
@@ -98,14 +96,7 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }
         </button>
 
         <button
-          onClick={handleReset}
-          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
-          title="Reiniciar plano"
-        >
-          <RotateCcw size={15} />
-        </button>
-
-        <button
+          type="button"
           onClick={toggleFullscreen}
           className={`p-1.5 rounded-lg transition-colors ${
             isFullscreen ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'

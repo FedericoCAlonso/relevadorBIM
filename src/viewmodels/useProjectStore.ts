@@ -7,7 +7,7 @@
  */
 
 import { create } from 'zustand';
-import type { BuildingProject } from '../models/architecture/BuildingProject';
+import type { BuildingProject, ProjectMetadata } from '../models/architecture/BuildingProject';
 import { createEmptyProject } from '../models/architecture/BuildingProject';
 import type { Wall, WallVertex, Vector2D } from '../models/architecture/Wall';
 import { getWallVector, getWallLength, getWallLeftNormal } from '../models/architecture/Wall';
@@ -109,6 +109,7 @@ interface ProjectStoreState {
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
   resetProject: () => void;
+  updateProjectMeta: (patch: Partial<ProjectMetadata>) => void;
 
   // Visualización CAD
   showDimensions: boolean;
@@ -124,6 +125,18 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   setShowDimensions: (show) => set({ showDimensions: show }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
+
+  updateProjectMeta: (patch) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        meta: {
+          ...state.project.meta,
+          ...patch,
+          updatedAt: Date.now()
+        }
+      }
+    })),
 
   setSelectedEntity: (entity) => set({ selectedEntity: entity }),
   setActiveAnchorVertexId: (vertexId) => set({ activeAnchorVertexId: vertexId }),

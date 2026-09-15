@@ -133,6 +133,7 @@ export function resolveSpacePolygon(
   vertices: Map<string, WallVertex>
 ): Vector2D[] {
   const points: Vector2D[] = [];
+  if (!space || !Array.isArray(space.boundaryVertexIds)) return points;
   for (const vId of space.boundaryVertexIds) {
     const v = vertices.get(vId);
     if (v) points.push({ x: v.x, y: v.y });

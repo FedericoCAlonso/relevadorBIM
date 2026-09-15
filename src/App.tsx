@@ -18,6 +18,9 @@ import { DesktopSidebar } from './views/components/desktop/DesktopSidebar';
 import { SurveyActionSheets } from './views/components/survey/SurveyActionSheets';
 import { SpaceEditModal } from './views/components/survey/SpaceEditModal';
 import { ComputoModal } from './views/components/survey/ComputoModal';
+import { MainMenuModal } from './views/components/menu/MainMenuModal';
+import { ProjectSettingsModal } from './views/components/menu/ProjectSettingsModal';
+import { ExportModal } from './views/components/menu/ExportModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
@@ -55,6 +58,9 @@ export function App() {
   } = useSurveyViewModel();
 
   const [showComputoModal, setShowComputoModal] = useState(false);
+  const [showMainMenu, setShowMainMenu] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showTeeModal, setShowTeeModal] = useState(false);
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [showElementModal, setShowElementModal] = useState(false);
@@ -211,8 +217,8 @@ export function App() {
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
-      {/* 1. Barra Superior (Nombre, Planta, Acceso al Cotizador) */}
-      <TopStatusBar onViewComputoClick={() => setShowComputoModal(true)} />
+      {/* 1. Barra Superior (Menú Minimalista, Planta, Cotas y Pantalla Completa) */}
+      <TopStatusBar onOpenMenu={() => setShowMainMenu(true)} />
 
       {/* 2. Cuerpo Principal: Responsive Desktop vs Mobile */}
       <div className="flex-1 w-full h-full flex pt-14 overflow-hidden">
@@ -289,6 +295,28 @@ export function App() {
 
       {/* 6. Modal de Cómputo Métrico / Cotizador IEBA */}
       <ComputoModal isOpen={showComputoModal} onClose={() => setShowComputoModal(false)} />
+
+      {/* Menú Principal Desplegable */}
+      <MainMenuModal
+        isOpen={showMainMenu}
+        onClose={() => setShowMainMenu(false)}
+        onOpenSettings={() => setShowSettingsModal(true)}
+        onOpenExport={() => setShowExportModal(true)}
+        onOpenComputo={() => setShowComputoModal(true)}
+      />
+
+      {/* Modal de Configuración General de Obra y Parámetros AEA */}
+      <ProjectSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+      />
+
+      {/* Centro de Exportación Unificado (DXF, CSV, JSON, Cotizador) */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onOpenComputo={() => setShowComputoModal(true)}
+      />
 
       {/* 7. Modal de Propiedades de Boca Eléctrica */}
       <ElectricalElementModal

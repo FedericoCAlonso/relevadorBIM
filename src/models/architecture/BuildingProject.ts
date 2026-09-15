@@ -11,13 +11,24 @@ import type { Wall, WallVertex } from './Wall';
 import type { Opening } from './Opening';
 import type { Space } from './Space';
 import type { VerticalPortal } from './VerticalPortal';
-import type { ElectricalElement, Conduit, Circuit, Panel } from '../electrical/ElectricalModel';
+import type {
+  ElectricalElement,
+  Conduit,
+  Circuit,
+  Panel,
+  ConduitMaterial,
+  CableStandard
+} from '../electrical/ElectricalModel';
 
 export interface ProjectMetadata {
   id: string;
   name: string;
   clientName?: string;
   address?: string;
+  electricianName?: string; // Técnico / Instalador matriculado responsable
+  defaultConduitMaterial?: ConduitMaterial; // Material de cañería por defecto
+  defaultCableStandard?: CableStandard;     // Norma de conductor por defecto
+  defaultVoltageV?: number;                 // Tensión de red por defecto (220 o 380)
   createdAt: number;
   updatedAt: number;
   scale: number; // Escala 1:50, 1:100, etc.
@@ -100,6 +111,9 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
     meta: {
       id: `proj-${now}`,
       name,
+      defaultConduitMaterial: 'hierro_semipesado_rs',
+      defaultCableStandard: 'IRAM_NM_247_3',
+      defaultVoltageV: 220,
       createdAt: now,
       updatedAt: now,
       scale: 50
