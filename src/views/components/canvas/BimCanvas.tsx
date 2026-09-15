@@ -14,6 +14,7 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
+import { Plus, Minus, Maximize2 } from 'lucide-react';
 
 export interface WallPlacementSnap {
   wallId: string;
@@ -58,6 +59,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Refs para control de arrastre y toques (evitar que un paneo dispare un click accidental)
+  const mouseDragRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
+  const touchStateRef = useRef<{
+    type: 'single' | 'pinch';
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+    moved: boolean;
+    pinchDist?: number;
+    startZoom?: number;
+    midX?: number;
+    midY?: number;
+  } | null>(null);
+
   // Mapas de acceso rápido
   const verticesMap = useMemo(() => {
     return new Map<string, WallVertex>(project.vertices.map((v) => [v.id, v]));
@@ -77,70 +93,109 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isSnappedToCenter, setIsSnappedToCenter] = useState(false);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
 
-  // Manejo de Pan y Zoom
+  // Recentrar y encuadrar todo el plano
+  const handleRecenter = () => {
+    if (project.vertices.length === 0) {
+      setPan({ x: 150, y: 150 });
+      setZoom(60);
+      return;
+    }
+    const xs = project.vertices.map((v) => v.x);
+    const ys = project.vertices.map((v) => v.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const w = rect.width || 400;
+      const h = rect.height || 600;
+      const spanX = Math.max(maxX - minX, 1.5);
+      const spanY = Math.max(maxY - minY, 1.5);
+      const fitZoom = Math.min(Math.max(Math.min((w - 60) / spanX, (h - 220) / spanY), 20), 120);
+      setZoom(fitZoom);
+      setPan({
+        x: w / 2 - midX * fitZoom,
+        y: h / 2 - midY * fitZoom
+      });
+    }
+  };
+
+  // Cálculo de coordenadas de cursor y acople magnético (snap)
+  const updateHoverCoordinates = (clientX: number, clientY: number) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    let wx = (clientX - rect.left - pan.x) / zoom;
+    let wy = (clientY - rect.top - pan.y) / zoom;
+
+    let rot = 0;
+    let snapInfo: WallPlacementSnap | null = null;
+    let snappedCenter = false;
+
+    if (selectedSymbolId) {
+      const isCeilingSymbol = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
+
+      // 1. Si no es exclusivamente de techo, acoplar magnéticamente a la pared más cercana
+      if (!isCeilingSymbol) {
+        const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
+        const wallSnap = calculateWallSnap({ x: wx, y: wy }, wallsInLevel, verticesMap, 0.45);
+        if (wallSnap) {
+          wx = wallSnap.snappedPoint.x;
+          wy = wallSnap.snappedPoint.y;
+          rot = wallSnap.rotationDeg;
+          snapInfo = {
+            wallId: wallSnap.wall.id,
+            wallOffset: wallSnap.distanceAlongWall,
+            rotationDeg: wallSnap.rotationDeg,
+            side: wallSnap.side
+          };
+        }
+      }
+
+      // 2. Si no se acopló a pared, chequear snap al centroide de habitación
+      if (!snapInfo) {
+        for (const space of project.spaces.filter((s) => s.levelId === project.activeLevelId)) {
+          const poly = resolveSpacePolygon(space, verticesMap);
+          if (poly.length >= 3) {
+            const centroid = calculatePolygonCentroid(poly);
+            if (Math.hypot(centroid.x - wx, centroid.y - wy) < 0.60) {
+              wx = centroid.x;
+              wy = centroid.y;
+              snappedCenter = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    setHoverWorldPos({ x: wx, y: wy });
+    setHoverRotationDeg(rot);
+    setActiveSnapInfo(snapInfo);
+    setIsSnappedToCenter(snappedCenter);
+  };
+
+  // Manejo de Pan y Zoom con Mouse
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || e.button === 0) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      mouseDragRef.current = { startX: e.clientX, startY: e.clientY, moved: false };
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging) {
+      if (mouseDragRef.current) {
+        const dist = Math.hypot(e.clientX - mouseDragRef.current.startX, e.clientY - mouseDragRef.current.startY);
+        if (dist > 5) mouseDragRef.current.moved = true;
+      }
       setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
     }
 
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      let wx = (e.clientX - rect.left - pan.x) / zoom;
-      let wy = (e.clientY - rect.top - pan.y) / zoom;
-
-      let rot = 0;
-      let snapInfo: WallPlacementSnap | null = null;
-      let snappedCenter = false;
-
-      if (selectedSymbolId) {
-        const isCeilingSymbol = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
-
-        // 1. Si no es exclusivamente de techo, intentar acoplar magnéticamente a la pared más cercana
-        if (!isCeilingSymbol) {
-          const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
-          const wallSnap = calculateWallSnap({ x: wx, y: wy }, wallsInLevel, verticesMap, 0.45);
-          if (wallSnap) {
-            wx = wallSnap.snappedPoint.x;
-            wy = wallSnap.snappedPoint.y;
-            rot = wallSnap.rotationDeg;
-            snapInfo = {
-              wallId: wallSnap.wall.id,
-              wallOffset: wallSnap.distanceAlongWall,
-              rotationDeg: wallSnap.rotationDeg,
-              side: wallSnap.side
-            };
-          }
-        }
-
-        // 2. Si no se acopló a pared, chequear snap al centroide de habitación
-        if (!snapInfo) {
-          for (const space of project.spaces.filter((s) => s.levelId === project.activeLevelId)) {
-            const poly = resolveSpacePolygon(space, verticesMap);
-            if (poly.length >= 3) {
-              const centroid = calculatePolygonCentroid(poly);
-              if (Math.hypot(centroid.x - wx, centroid.y - wy) < 0.60) {
-                wx = centroid.x;
-                wy = centroid.y;
-                snappedCenter = true;
-                break;
-              }
-            }
-          }
-        }
-      }
-
-      setHoverWorldPos({ x: wx, y: wy });
-      setHoverRotationDeg(rot);
-      setActiveSnapInfo(snapInfo);
-      setIsSnappedToCenter(snappedCenter);
-    }
+    updateHoverCoordinates(e.clientX, e.clientY);
   };
 
   const handleMouseUp = () => {
@@ -163,6 +218,88 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       });
       setZoom(newZoom);
     }
+  };
+
+  // Manejo Táctil Móvil: Paneo con 1 dedo y Pellizco (Pinch-to-zoom) con 2 dedos
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      touchStateRef.current = {
+        type: 'single',
+        startX: t.clientX,
+        startY: t.clientY,
+        panX: pan.x,
+        panY: pan.y,
+        moved: false
+      };
+      updateHoverCoordinates(t.clientX, t.clientY);
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      touchStateRef.current = {
+        type: 'pinch',
+        startX: (t1.clientX + t2.clientX) / 2,
+        startY: (t1.clientY + t2.clientY) / 2,
+        panX: pan.x,
+        panY: pan.y,
+        moved: true,
+        pinchDist: dist,
+        startZoom: zoom,
+        midX: (t1.clientX + t2.clientX) / 2,
+        midY: (t1.clientY + t2.clientY) / 2
+      };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStateRef.current) return;
+
+    if (e.touches.length === 1 && touchStateRef.current.type === 'single') {
+      const t = e.touches[0];
+      const dx = t.clientX - touchStateRef.current.startX;
+      const dy = t.clientY - touchStateRef.current.startY;
+      if (Math.hypot(dx, dy) > 6) {
+        touchStateRef.current.moved = true;
+      }
+      if (touchStateRef.current.moved) {
+        setPan({
+          x: touchStateRef.current.panX + dx,
+          y: touchStateRef.current.panY + dy
+        });
+      }
+      updateHoverCoordinates(t.clientX, t.clientY);
+    } else if (
+      e.touches.length === 2 &&
+      touchStateRef.current.type === 'pinch' &&
+      touchStateRef.current.pinchDist &&
+      touchStateRef.current.startZoom
+    ) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const scale = newDist / touchStateRef.current.pinchDist;
+      const newZoom = Math.min(Math.max(touchStateRef.current.startZoom * scale, 15), 300);
+
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const mx = (touchStateRef.current.midX || 0) - rect.left;
+        const my = (touchStateRef.current.midY || 0) - rect.top;
+        setPan({
+          x: mx - (mx - touchStateRef.current.panX) * (newZoom / touchStateRef.current.startZoom),
+          y: my - (my - touchStateRef.current.panY) * (newZoom / touchStateRef.current.startZoom)
+        });
+        setZoom(newZoom);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStateRef.current && touchStateRef.current.type === 'single' && !touchStateRef.current.moved) {
+      // Tap limpio sin arrastre en móvil: emplazar o seleccionar
+      triggerPlacement(touchStateRef.current.startX, touchStateRef.current.startY);
+    }
+    touchStateRef.current = null;
   };
 
   const triggerPlacement = (clientX: number, clientY: number) => {
@@ -209,6 +346,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (mouseDragRef.current?.moved) {
+      mouseDragRef.current = null;
+      return;
+    }
     triggerPlacement(e.clientX, e.clientY);
   };
 
@@ -706,13 +847,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full overflow-hidden bg-slate-50 select-none ${
+      className={`relative w-full h-full overflow-hidden bg-slate-50 select-none touch-none ${
         selectedSymbolId ? 'cursor-cell' : 'cursor-crosshair'
       }`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <svg className="w-full h-full" onClick={handleSvgClick}>
         <defs>
@@ -762,8 +906,43 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       </svg>
 
-      {/* Indicador de ayuda */}
-      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl shadow-md border border-slate-200 text-xs font-mono text-slate-700 pointer-events-none flex items-center gap-2">
+      {/* Botonera flotante CAD (Zoom In / Out / Recentrar) */}
+      <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-10">
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.min(300, Number((z * 1.25).toFixed(1))))}
+          className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
+          title="Acercar (+)"
+        >
+          <Plus size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.max(15, Number((z / 1.25).toFixed(1))))}
+          className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
+          title="Alejar (-)"
+        >
+          <Minus size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={handleRecenter}
+          className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
+          title="Recentrar y encuadrar plano"
+        >
+          <Maximize2 size={16} />
+        </button>
+      </div>
+
+      {/* Aviso móvil superior al tener boca seleccionada */}
+      {selectedSymbolId && (
+        <div className="lg:hidden absolute top-4 left-4 right-16 bg-blue-600/95 backdrop-blur-md text-white text-xs font-semibold px-3 py-2 rounded-xl shadow-lg truncate pointer-events-none">
+          📍 Tocá plano o muro para emplazar la boca
+        </div>
+      )}
+
+      {/* Indicador de ayuda de escritorio */}
+      <div className="hidden lg:flex absolute bottom-4 left-4 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl shadow-md border border-slate-200 text-xs font-mono text-slate-700 pointer-events-none items-center gap-2">
         {selectedSymbolId ? (
           <span className="text-blue-700 font-bold">
             📍 Modo Eléctrico activo: Hacé clic dentro de cualquier habitación o muro para emplazar la boca {isSnappedToCenter ? '(Centro magnético)' : ''}

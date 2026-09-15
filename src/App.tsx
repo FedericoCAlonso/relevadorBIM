@@ -17,7 +17,6 @@ import { ThumbSurveyDock } from './views/components/survey/ThumbSurveyDock';
 import { DesktopSidebar } from './views/components/desktop/DesktopSidebar';
 import { SurveyActionSheets } from './views/components/survey/SurveyActionSheets';
 import { SpaceEditModal } from './views/components/survey/SpaceEditModal';
-import { SymbolPalette } from './views/components/electrical/SymbolPalette';
 import { ComputoModal } from './views/components/survey/ComputoModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
@@ -215,7 +214,7 @@ export function App() {
         )}
 
         {/* Lienzo Gráfico CAD 2D */}
-        <main className={`flex-1 w-full h-full relative ${isDesktop ? 'pb-0' : 'pb-48'}`}>
+        <main className={`flex-1 w-full h-full relative ${isDesktop ? 'pb-0' : 'pb-44'}`}>
           <BimCanvas
             currentDirectionDeg={effectiveAngleDeg}
             previewDistanceM={previewDist}
@@ -231,18 +230,6 @@ export function App() {
             onElectricalElementClick={handleElectricalElementClick}
             onCanvasClick={handleCanvasClick}
           />
-
-          {/* En Móvil: Paleta Flotante sobre la botonera */}
-          {!isDesktop && (
-            <div className="absolute bottom-44 right-4 z-10">
-              <SymbolPalette
-                selectedSymbolId={selectedSymbolId}
-                onSelectSymbol={setSelectedSymbolId}
-                isConnectingConduit={isConnectingConduit}
-                onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
-              />
-            </div>
-          )}
         </main>
       </div>
 
@@ -256,6 +243,10 @@ export function App() {
           currentDistance={currentDistanceInput}
           onChangeDistance={setCurrentDistanceInput}
           onCommitWall={() => commitWall()}
+          selectedSymbolId={selectedSymbolId}
+          onSelectSymbol={setSelectedSymbolId}
+          isConnectingConduit={isConnectingConduit}
+          onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
         />
       )}
 

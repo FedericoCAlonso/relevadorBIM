@@ -6,25 +6,19 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { getWallLength } from '../../../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
-import { calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
 import {
   X,
   DoorOpen,
-  Split,
-  Trash2,
-  SlidersHorizontal,
   ArrowLeftRight,
   ArrowUpDown,
-  Zap,
   RotateCw,
   RotateCcw,
   Ruler,
-  MapPin,
-  Cable
+  MapPin
 } from 'lucide-react';
 
 interface SurveyActionSheetsProps {
@@ -53,11 +47,7 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
     deleteWall,
     setActiveAnchorVertexId,
     updateOpening,
-    deleteOpening,
-    updateElectricalElement,
-    deleteElectricalElement,
-    updateConduit,
-    deleteConduit
+    deleteOpening
   } = useProjectStore();
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
@@ -66,12 +56,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
   const selectedWall = selectedEntity?.type === 'wall' ? project.walls.find((w) => w.id === selectedEntity.id) : null;
   const selectedOpening =
     selectedEntity?.type === 'opening' ? project.openings.find((o) => o.id === selectedEntity.id) : null;
-  const selectedElectricalElement =
-    selectedEntity?.type === 'electrical_element'
-      ? project.electricalElements.find((e) => e.id === selectedEntity.id)
-      : null;
-  const selectedConduit =
-    selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
 
   const [isEditingOpeningMobile, setIsEditingOpeningMobile] = useState(false);
   const [isEditingWallMobile, setIsEditingWallMobile] = useState(false);
@@ -87,14 +71,34 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
   const [openingWidth, setOpeningWidth] = useState('0.80');
   const [openingOffset, setOpeningOffset] = useState('0.60');
 
-  const handleOpenWithOpeningType = (type: OpeningType) => {
-    setOpeningType(type);
-    if (type === 'door') setOpeningWidth('0.80');
-    else if (type === 'window') setOpeningWidth('1.20');
-    else if (type === 'passage') setOpeningWidth('0.90');
-    const event = new CustomEvent('open-opening-modal');
-    window.dispatchEvent(event);
-  };
+  useEffect(() => {
+    const handleOpeningEvent = (e: any) => {
+      const type = e.detail?.type;
+      if (type) {
+        setOpeningType(type);
+        if (type === 'door') setOpeningWidth('0.80');
+        else if (type === 'window') setOpeningWidth('1.20');
+        else if (type === 'passage') setOpeningWidth('0.90');
+      }
+    };
+    const handleTeeEvent = (e: any) => {
+      if (e.detail?.refVertexId) setTeeRefVertex(e.detail.refVertexId);
+    };
+    const handleOpenWallEdit = () => setIsEditingWallMobile(true);
+    const handleOpenOpeningEdit = () => setIsEditingOpeningMobile(true);
+
+    window.addEventListener('open-opening-modal', handleOpeningEvent);
+    window.addEventListener('open-tee-modal', handleTeeEvent);
+    window.addEventListener('open-wall-edit-modal', handleOpenWallEdit);
+    window.addEventListener('open-opening-edit-modal', handleOpenOpeningEdit);
+
+    return () => {
+      window.removeEventListener('open-opening-modal', handleOpeningEvent);
+      window.removeEventListener('open-tee-modal', handleTeeEvent);
+      window.removeEventListener('open-wall-edit-modal', handleOpenWallEdit);
+      window.removeEventListener('open-opening-edit-modal', handleOpenOpeningEdit);
+    };
+  }, []);
 
   const handleConfirmTee = () => {
     if (!selectedWall) return;
@@ -125,69 +129,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
 
   return (
     <>
-      {/* ─── BARRA CONTEXTUAL FLOTANTE AL TOCAR UN MURO (POR ENCIMA DEL DOCK MÓVIL, SOLO MÓVIL) ─── */}
-      {selectedWall && !showTeeModal && !showOpeningModal && (
-        <aside
-          aria-label="Acciones de Muro"
-          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none"
-        >
-          <div className="px-2 text-[11px] font-mono text-slate-300 whitespace-nowrap">
-            Muro: <strong className="text-white">{getWallLength(selectedWall, verticesMap).toFixed(2)}m</strong>
-          </div>
-
-          <button
-            onClick={() => setIsEditingWallMobile(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-            title="Editar muro"
-          >
-            <SlidersHorizontal size={13} />
-            <span>Editar</span>
-          </button>
-
-          <button
-            onClick={() => handleOpenWithOpeningType('door')}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-          >
-            <DoorOpen size={13} />
-            <span>+ Puerta</span>
-          </button>
-
-          <button
-            onClick={() => handleOpenWithOpeningType('window')}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-          >
-            <span>+ Ventana</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setTeeRefVertex(selectedWall.startVertexId);
-              const event = new CustomEvent('open-tee-modal');
-              window.dispatchEvent(event);
-            }}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-          >
-            <Split size={13} />
-            <span>Empalme T</span>
-          </button>
-
-          <button
-            onClick={() => deleteWall(selectedWall.id)}
-            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
-            title="Eliminar muro"
-          >
-            <Trash2 size={14} />
-          </button>
-
-          <button
-            onClick={() => setSelectedEntity(null)}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg"
-          >
-            <X size={14} />
-          </button>
-        </aside>
-      )}
-
       {/* ─── MODAL DE EDICIÓN COMPLETA DE MURO (MÓVIL) ─── */}
       {isEditingWallMobile && selectedWall && (() => {
         const wallLen = getWallLength(selectedWall, verticesMap);
@@ -344,71 +285,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
           </div>
         );
       })()}
-
-      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA ABERTURA (SOLO MÓVIL) ─── */}
-      {selectedOpening && !isEditingOpeningMobile && (
-        <aside
-          aria-label="Acciones de Abertura"
-          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none"
-        >
-          <div className="px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
-            {selectedOpening.type === 'door'
-              ? 'Puerta'
-              : selectedOpening.type === 'window'
-              ? 'Ventana'
-              : 'Vano'}
-            : <strong className="text-white">{selectedOpening.width.toFixed(2)}m</strong>
-          </div>
-
-          {selectedOpening.type === 'door' && (
-            <button
-              onClick={() => {
-                const cur = selectedOpening.swing || 'left_in';
-                const nextSwing: OpeningSwing =
-                  cur === 'left_in'
-                    ? 'right_in'
-                    : cur === 'right_in'
-                    ? 'left_in'
-                    : cur === 'left_out'
-                    ? 'right_out'
-                    : 'left_out';
-                updateOpening(selectedOpening.id, { swing: nextSwing });
-              }}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-              title="Invertir mano bisagra"
-            >
-              <ArrowLeftRight size={13} />
-              <span>Girar Mano</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsEditingOpeningMobile(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
-          >
-            <SlidersHorizontal size={13} />
-            <span>Editar</span>
-          </button>
-
-          <button
-            onClick={() => {
-              deleteOpening(selectedOpening.id);
-              setSelectedEntity(null);
-            }}
-            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
-            title="Eliminar abertura"
-          >
-            <Trash2 size={14} />
-          </button>
-
-          <button
-            onClick={() => setSelectedEntity(null)}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg"
-          >
-            <X size={14} />
-          </button>
-        </aside>
-      )}
 
       {/* ─── MODAL DE EDICIÓN COMPLETA DE ABERTURA (MÓVIL) ─── */}
       {isEditingOpeningMobile && selectedOpening && (() => {
@@ -631,198 +507,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
               </div>
             </div>
           </div>
-        );
-      })()}
-
-      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA BOCA ELÉCTRICA (SOLO MÓVIL) ─── */}
-      {selectedElectricalElement && (() => {
-        const circ = selectedElectricalElement.circuitId
-          ? project.circuits.find((c) => c.id === selectedElectricalElement.circuitId)
-          : null;
-
-        return (
-          <aside
-            aria-label="Acciones de Boca Eléctrica"
-            className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none animate-in fade-in duration-150"
-          >
-            <div className="flex items-center gap-1.5 px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
-              <Zap size={14} className="text-amber-400" />
-              <strong className="text-white">{selectedElectricalElement.label || 'Boca'}</strong>
-              <span className="text-[10px] text-slate-400">({selectedElectricalElement.heightZ.toFixed(2)}m)</span>
-            </div>
-
-            {/* Ciclar Circuito Asignado */}
-            {project.circuits.length > 0 && (
-              <button
-                onClick={() => {
-                  const currentIdx = project.circuits.findIndex((c) => c.id === selectedElectricalElement.circuitId);
-                  const nextIdx = (currentIdx + 1) % (project.circuits.length + 1);
-                  const nextCircuitId = nextIdx === project.circuits.length ? null : project.circuits[nextIdx].id;
-                  updateElectricalElement(selectedElectricalElement.id, { circuitId: nextCircuitId });
-                }}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-700"
-                title="Cambiar Circuito"
-              >
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: circ?.color || '#64748b' }}
-                />
-                <span>{circ ? circ.name.split(' ')[0] : 'S/C'}</span>
-              </button>
-            )}
-
-            {/* Giro rápido 45° */}
-            <button
-              onClick={() => {
-                const cur = selectedElectricalElement.rotation || 0;
-                updateElectricalElement(selectedElectricalElement.id, { rotation: (cur + 45) % 360 });
-              }}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-700"
-              title="Girar 45°"
-            >
-              <RotateCw size={13} />
-              <span>{Math.round(selectedElectricalElement.rotation || 0)}°</span>
-            </button>
-
-            {/* Toggle de Estado de Relevamiento (TRAZA) */}
-            <button
-              onClick={() => {
-                const cur = selectedElectricalElement.status || 'proyectado';
-                const next =
-                  cur === 'proyectado' ? 'existente' : cur === 'existente' ? 'a_reemplazar' : 'proyectado';
-                updateElectricalElement(selectedElectricalElement.id, { status: next });
-              }}
-              className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold whitespace-nowrap border transition-all ${
-                (selectedElectricalElement.status || 'proyectado') === 'existente'
-                  ? 'bg-emerald-700 text-white border-emerald-600'
-                  : (selectedElectricalElement.status || 'proyectado') === 'a_reemplazar'
-                  ? 'bg-amber-700 text-white border-amber-600'
-                  : 'bg-blue-700 text-white border-blue-600'
-              }`}
-            >
-              {(selectedElectricalElement.status || 'proyectado').toUpperCase()}
-            </button>
-
-            {/* Si está adosada a pared: cambiar de cara física */}
-            {selectedElectricalElement.wallId && (
-              <button
-                onClick={() => {
-                  const wall = project.walls.find((w) => w.id === selectedElectricalElement.wallId);
-                  if (!wall) return;
-                  const vStart = verticesMap.get(wall.startVertexId);
-                  const vEnd = verticesMap.get(wall.endVertexId);
-                  if (!vStart || !vEnd) return;
-
-                  const dx = vEnd.x - vStart.x;
-                  const dy = vEnd.y - vStart.y;
-                  const len = Math.hypot(dx, dy);
-                  if (len < 0.001) return;
-
-                  const ux = dx / len;
-                  const uy = dy / len;
-                  const nx = -uy;
-                  const ny = ux;
-
-                  const curSide = selectedElectricalElement.side || 'left';
-                  const newSide: 'left' | 'right' = curSide === 'left' ? 'right' : 'left';
-                  const mult = curSide === 'left' ? -1 : 1;
-                  const newX = selectedElectricalElement.x + mult * wall.thickness * nx;
-                  const newY = selectedElectricalElement.y + mult * wall.thickness * ny;
-                  const curRot = selectedElectricalElement.rotation || 0;
-
-                  updateElectricalElement(selectedElectricalElement.id, {
-                    x: Number(newX.toFixed(3)),
-                    y: Number(newY.toFixed(3)),
-                    side: newSide,
-                    rotation: (curRot + 180) % 360
-                  });
-                }}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300"
-                title="Invertir cara física del muro"
-              >
-                <ArrowLeftRight size={14} />
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                deleteElectricalElement(selectedElectricalElement.id);
-                setSelectedEntity(null);
-              }}
-              className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
-              title="Eliminar boca"
-            >
-              <Trash2 size={14} />
-            </button>
-            <button
-              onClick={() => setSelectedEntity(null)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg"
-            >
-              <X size={14} />
-            </button>
-          </aside>
-        );
-      })()}
-
-      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA CAÑERÍA (SOLO MÓVIL) ─── */}
-      {selectedConduit && (() => {
-        const occupancy = calculateConduitOccupancyFactor({
-          conduitDiameterMM: selectedConduit.diameterMM,
-          conductors: selectedConduit.conductors
-        });
-
-        return (
-          <aside
-            aria-label="Acciones de Cañería"
-            className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none animate-in fade-in duration-150"
-          >
-            <div className="flex items-center gap-1.5 px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
-              <Cable size={14} className="text-amber-400" />
-              <strong className="text-white">Cañería</strong>
-            </div>
-
-            {/* Ciclar Diámetro */}
-            <button
-              onClick={() => {
-                const diams = [19, 22, 25, 32];
-                const curIdx = diams.indexOf(selectedConduit.diameterMM);
-                const nextDiam = diams[(curIdx + 1) % diams.length];
-                updateConduit(selectedConduit.id, { diameterMM: nextDiam });
-              }}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl text-xs font-mono font-bold text-amber-300 border border-slate-700 whitespace-nowrap"
-              title="Cambiar diámetro exterior"
-            >
-              Ø{selectedConduit.diameterMM}mm
-            </button>
-
-            {/* Badge de Ocupación AEA */}
-            <span
-              className={`px-2 py-1 rounded-xl text-[10px] font-mono font-bold whitespace-nowrap border ${
-                occupancy.isCompliant
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
-                  : 'bg-red-950/80 text-red-300 border-red-700 animate-pulse'
-              }`}
-            >
-              {occupancy.isCompliant ? `✓ ${occupancy.occupancyPercent}% AEA` : `⚠️ ${occupancy.occupancyPercent}% >35%`}
-            </span>
-
-            <button
-              onClick={() => {
-                deleteConduit(selectedConduit.id);
-                setSelectedEntity(null);
-              }}
-              className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
-              title="Eliminar cañería"
-            >
-              <Trash2 size={14} />
-            </button>
-            <button
-              onClick={() => setSelectedEntity(null)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg"
-            >
-              <X size={14} />
-            </button>
-          </aside>
         );
       })()}
 
