@@ -12,7 +12,15 @@ import { createEmptyProject } from '../models/architecture/BuildingProject';
 import type { Wall, WallVertex, Vector2D } from '../models/architecture/Wall';
 import { getWallVector, getWallLength, getWallLeftNormal } from '../models/architecture/Wall';
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
+import type { Space } from '../models/architecture/Space';
+import { findEnclosedCycles } from '../models/architecture/Space';
 import type { ElectricalElement, Conduit } from '../models/electrical/ElectricalModel';
+
+let idCounter = 0;
+export function generateUniqueId(prefix = 'id'): string {
+  idCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${idCounter.toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+}
 
 export interface SelectedEntity {
   type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit';
@@ -74,6 +82,10 @@ interface ProjectStoreState {
   deleteWall: (wallId: string) => void;
   deleteOpening: (openingId: string) => void;
 
+  // Acciones de Ambientes / Espacios
+  updateSpace: (spaceId: string, updates: Partial<Space>) => void;
+  autoDetectSpaces: () => void;
+
   // Acciones Electromecánicas
   addElectricalElement: (element: ElectricalElement) => void;
   deleteElectricalElement: (elementId: string) => void;
@@ -117,7 +129,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       vStart = project.vertices.find((v) => v.id === startVertexId);
     } else if (startCoord) {
       vStart = {
-        id: `v-${Date.now()}-start`,
+        id: generateUniqueId('v-start'),
         x: Number(startCoord.x.toFixed(3)),
         y: Number(startCoord.y.toFixed(3))
       };
@@ -130,8 +142,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     const targetEndX = vStart.x + Math.cos(rad) * lengthM;
     const targetEndY = vStart.y + Math.sin(rad) * lengthM;
 
-    // 3. Snapping magnético: ¿Cierra sobre un vértice existente cercano (tol: 12cm)?
-    const SNAP_TOLERANCE = 0.12;
+    // 3. Snapping magnético: ¿Cierra sobre un vértice existente cercano (tol: 20cm)?
+    const SNAP_TOLERANCE = 0.20;
     let vEnd = project.vertices.find(
       (v) => v.id !== vStart?.id && Math.hypot(v.x - targetEndX, v.y - targetEndY) <= SNAP_TOLERANCE
     );
@@ -141,7 +153,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
     if (!vEnd) {
       vEnd = {
-        id: `v-${Date.now()}-end`,
+        id: generateUniqueId('v-end'),
         x: Number(targetEndX.toFixed(3)),
         y: Number(targetEndY.toFixed(3))
       };
@@ -149,7 +161,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
     // 4. Crear la pared física
     const newWall: Wall = {
-      id: `w-${Date.now()}`,
+      id: generateUniqueId('w'),
       levelId: project.activeLevelId,
       startVertexId: vStart.id,
       endVertexId: vEnd.id,
@@ -172,6 +184,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       activeAnchorVertexId: vEnd.id,
       selectedEntity: { type: 'wall', id: newWall.id }
     });
+
+    get().autoDetectSpaces();
 
     return { wall: newWall, endVertexId: vEnd.id };
   },
@@ -214,19 +228,19 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     };
 
     const branchRootVertex: WallVertex = {
-      id: `v-tee-root-${Date.now()}`,
+      id: generateUniqueId('v-tee-root'),
       x: Number(rootPoint.x.toFixed(3)),
       y: Number(rootPoint.y.toFixed(3))
     };
 
     const branchEndVertex: WallVertex = {
-      id: `v-tee-end-${Date.now()}`,
+      id: generateUniqueId('v-tee-end'),
       x: Number(endPoint.x.toFixed(3)),
       y: Number(endPoint.y.toFixed(3))
     };
 
     const branchWall: Wall = {
-      id: `w-branch-${Date.now()}`,
+      id: generateUniqueId('w-branch'),
       levelId: project.activeLevelId,
       startVertexId: branchRootVertex.id,
       endVertexId: branchEndVertex.id,
@@ -271,7 +285,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       : Math.max(0, wallLen - offsetToJambM - widthM);
 
     const newOpening: Opening = {
-      id: `open-${Date.now()}`,
+      id: generateUniqueId('open'),
       wallId: hostWall.id,
       type,
       width: widthM,
@@ -312,20 +326,18 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     const newEndX = vStart.x + currentDx * ratio;
     const newEndY = vStart.y + currentDy * ratio;
 
-    const updatedVertices = project.vertices.map((v) =>
-      v.id === vEnd.id ? { ...v, x: Number(newEndX.toFixed(3)), y: Number(newEndY.toFixed(3)) } : v
-    );
-
     set({
       project: {
         ...project,
-        vertices: updatedVertices,
+        vertices: project.vertices.map((v) =>
+          v.id === vEnd.id ? { ...v, x: Number(newEndX.toFixed(3)), y: Number(newEndY.toFixed(3)) } : v
+        ),
         meta: { ...project.meta, updatedAt: Date.now() }
       }
     });
   },
 
-  deleteWall: (wallId) =>
+  deleteWall: (wallId) => {
     set((state) => ({
       project: {
         ...state.project,
@@ -334,7 +346,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         meta: { ...state.project.meta, updatedAt: Date.now() }
       },
       selectedEntity: state.selectedEntity?.id === wallId ? null : state.selectedEntity
-    })),
+    }));
+    get().autoDetectSpaces();
+  },
 
   deleteOpening: (openingId) =>
     set((state) => ({
@@ -345,6 +359,55 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       },
       selectedEntity: state.selectedEntity?.id === openingId ? null : state.selectedEntity
     })),
+
+  updateSpace: (spaceId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        spaces: state.project.spaces.map((s) => (s.id === spaceId ? { ...s, ...updates } : s)),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  autoDetectSpaces: () => {
+    const { project } = get();
+    const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
+    const cycles = findEnclosedCycles(wallsInLevel);
+
+    const newSpaces: Space[] = cycles.map((c, idx) => {
+      const existing = project.spaces.find(
+        (s) =>
+          s.boundaryVertexIds.length === c.vertexIds.length &&
+          c.vertexIds.every((id) => s.boundaryVertexIds.includes(id))
+      );
+
+      if (existing) {
+        return {
+          ...existing,
+          boundaryVertexIds: c.vertexIds,
+          wallIds: c.wallIds
+        };
+      }
+
+      return {
+        id: generateUniqueId('space'),
+        name: `Ambiente ${project.spaces.length + idx + 1}`,
+        category: 'living',
+        levelId: project.activeLevelId,
+        ceilingHeight: 2.70,
+        floorElevation: 0.0,
+        boundaryVertexIds: c.vertexIds,
+        wallIds: c.wallIds
+      };
+    });
+
+    set({
+      project: {
+        ...project,
+        spaces: newSpaces
+      }
+    });
+  },
 
   addElectricalElement: (element) =>
     set((state) => ({

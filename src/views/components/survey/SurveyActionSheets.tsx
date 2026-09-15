@@ -53,6 +53,15 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
   const [openingWidth, setOpeningWidth] = useState('0.80');
   const [openingOffset, setOpeningOffset] = useState('0.60');
 
+  const handleOpenWithOpeningType = (type: OpeningType) => {
+    setOpeningType(type);
+    if (type === 'door') setOpeningWidth('0.80');
+    else if (type === 'window') setOpeningWidth('1.20');
+    else if (type === 'passage') setOpeningWidth('0.90');
+    const event = new CustomEvent('open-opening-modal');
+    window.dispatchEvent(event);
+  };
+
   const handleConfirmTee = () => {
     if (!selectedWall) return;
     const refVId = teeRefVertex || selectedWall.startVertexId;
@@ -82,38 +91,41 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
 
   return (
     <>
-      {/* ─── BARRA CONTEXTUAL FLOTANTE AL TOCAR UN MURO ─── */}
+      {/* ─── BARRA CONTEXTUAL FLOTANTE AL TOCAR UN MURO (POR ENCIMA DEL DOCK MÓVIL, SOLO MÓVIL) ─── */}
       {selectedWall && !showTeeModal && !showOpeningModal && (
         <aside
           aria-label="Acciones de Muro"
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-slate-900/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-10"
+          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none"
         >
-          <div className="px-2 text-xs font-mono text-slate-300">
-            Muro: <strong className="text-white">{getWallLength(selectedWall, verticesMap).toFixed(2)} m</strong>
+          <div className="px-2 text-[11px] font-mono text-slate-300 whitespace-nowrap">
+            Muro: <strong className="text-white">{getWallLength(selectedWall, verticesMap).toFixed(2)}m</strong>
           </div>
 
           <button
-            onClick={() => {
-              setTeeRefVertex(selectedWall.startVertexId);
-              // Abrir modal de empalme
-              const event = new CustomEvent('open-tee-modal');
-              window.dispatchEvent(event);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-medium"
+            onClick={() => handleOpenWithOpeningType('door')}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
           >
-            <Split size={14} />
-            <span>Empalme en T</span>
+            <DoorOpen size={13} />
+            <span>+ Puerta</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenWithOpeningType('window')}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
+          >
+            <span>+ Ventana</span>
           </button>
 
           <button
             onClick={() => {
-              const event = new CustomEvent('open-opening-modal');
+              setTeeRefVertex(selectedWall.startVertexId);
+              const event = new CustomEvent('open-tee-modal');
               window.dispatchEvent(event);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-xl text-xs font-medium"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
           >
-            <DoorOpen size={14} />
-            <span>+ Abertura</span>
+            <Split size={13} />
+            <span>Empalme T</span>
           </button>
 
           <button
@@ -133,14 +145,14 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
         </aside>
       )}
 
-      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA ABERTURA ─── */}
+      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA ABERTURA (SOLO MÓVIL) ─── */}
       {selectedOpening && (
         <aside
           aria-label="Acciones de Abertura"
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-slate-900/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-10"
+          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30"
         >
-          <div className="px-2 text-xs font-mono text-slate-300">
-            {selectedOpening.type === 'door' ? 'Puerta' : 'Ventana'}:{' '}
+          <div className="px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
+            {selectedOpening.type === 'door' ? 'Puerta' : selectedOpening.type === 'window' ? 'Ventana' : 'Vano'}:{' '}
             <strong className="text-white">{selectedOpening.width.toFixed(2)} m</strong>
           </div>
           <button
@@ -237,17 +249,47 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
             <h3 className="text-base font-bold text-slate-800 mb-3">Insertar Abertura</h3>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Tipo</label>
-                <select
-                  value={openingType}
-                  onChange={(e) => setOpeningType(e.target.value as OpeningType)}
-                  className="w-full px-3 py-1.5 border rounded-lg bg-white"
-                >
-                  <option value="door">Puerta batiente (0.80 m)</option>
-                  <option value="window">Ventana (1.20 m)</option>
-                  <option value="passage">Vano libre (Paso)</option>
-                </select>
+                <label className="block font-semibold text-slate-700 mb-1">Tipo de Abertura</label>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpeningType('door');
+                      setOpeningWidth('0.80');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg border font-semibold ${
+                      openingType === 'door' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    Puerta
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpeningType('window');
+                      setOpeningWidth('1.20');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg border font-semibold ${
+                      openingType === 'window' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    Ventana
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpeningType('passage');
+                      setOpeningWidth('0.90');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg border font-semibold ${
+                      openingType === 'passage' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    Vano
+                  </button>
+                </div>
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Ancho (m)</label>
@@ -256,9 +298,24 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     step="0.05"
                     value={openingWidth}
                     onChange={(e) => setOpeningWidth(e.target.value)}
-                    className="w-full px-3 py-1.5 border rounded-lg font-mono"
+                    className="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold"
                   />
+                  <div className="flex gap-1 mt-1">
+                    {['0.70', '0.80', '0.90', '1.20'].map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setOpeningWidth(w)}
+                        className={`flex-1 py-0.5 rounded text-[10px] font-mono border ${
+                          openingWidth === w ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-50'
+                        }`}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Distancia a esquina (m)</label>
                   <input
@@ -266,8 +323,22 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     step="0.05"
                     value={openingOffset}
                     onChange={(e) => setOpeningOffset(e.target.value)}
-                    className="w-full px-3 py-1.5 border rounded-lg font-mono"
+                    className="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold"
                   />
+                  <div className="flex gap-1 mt-1">
+                    {['0.10', '0.20', '0.50', '1.00'].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setOpeningOffset(d)}
+                        className={`flex-1 py-0.5 rounded text-[10px] font-mono border ${
+                          openingOffset === d ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-50'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

@@ -143,7 +143,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               className="text-[10px] font-mono fill-slate-500 pointer-events-none select-none"
               fontSize={10}
             >
-              {area.toFixed(2)} m²
+              {area.toFixed(2)} m² · h: {space.ceilingHeight.toFixed(2)}m
             </text>
           </g>
         );

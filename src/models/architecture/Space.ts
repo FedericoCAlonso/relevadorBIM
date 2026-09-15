@@ -122,3 +122,60 @@ export function resolveSpacePolygon(
   }
   return points;
 }
+
+/**
+ * Detecta ciclos simples en el grafo de muros para identificar ambientes cerrados.
+ */
+export function findEnclosedCycles(walls: Array<{ id: string; startVertexId: string; endVertexId: string }>): {
+  vertexIds: string[];
+  wallIds: string[];
+}[] {
+  const adj = new Map<string, Array<{ to: string; wallId: string }>>();
+
+  for (const w of walls) {
+    if (!adj.has(w.startVertexId)) adj.set(w.startVertexId, []);
+    if (!adj.has(w.endVertexId)) adj.set(w.endVertexId, []);
+    adj.get(w.startVertexId)!.push({ to: w.endVertexId, wallId: w.id });
+    adj.get(w.endVertexId)!.push({ to: w.startVertexId, wallId: w.id });
+  }
+
+  const cycles: { vertexIds: string[]; wallIds: string[] }[] = [];
+  const visitedPaths = new Set<string>();
+
+  function dfs(
+    start: string,
+    current: string,
+    visited: string[],
+    usedWalls: string[]
+  ) {
+    if (visited.length > 12) return;
+
+    const neighbors = adj.get(current) || [];
+    for (const { to, wallId } of neighbors) {
+      if (usedWalls.length > 0 && wallId === usedWalls[usedWalls.length - 1]) continue;
+
+      if (to === start && visited.length >= 3) {
+        const sortedKey = [...visited].sort().join('-');
+        if (!visitedPaths.has(sortedKey)) {
+          visitedPaths.add(sortedKey);
+          cycles.push({
+            vertexIds: [...visited],
+            wallIds: [...usedWalls, wallId]
+          });
+        }
+        continue;
+      }
+
+      if (!visited.includes(to)) {
+        dfs(start, to, [...visited, to], [...usedWalls, wallId]);
+      }
+    }
+  }
+
+  for (const vId of adj.keys()) {
+    dfs(vId, vId, [vId], []);
+  }
+
+  return cycles;
+}
+

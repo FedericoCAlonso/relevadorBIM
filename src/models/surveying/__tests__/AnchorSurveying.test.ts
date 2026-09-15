@@ -54,6 +54,8 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     expect(useProjectStore.getState().project.walls.length).toBe(4);
     // El total de vértices debe ser 4 exactamente (cerró sobre el origen con snap)
     expect(useProjectStore.getState().project.vertices.length).toBe(4);
+    expect(useProjectStore.getState().project.spaces.length).toBe(1);
+    expect(useProjectStore.getState().project.spaces[0].ceilingHeight).toBe(2.70);
   });
 
   it('debe crear un empalme en T perpendicular a partir de una distancia sobre un muro existente', () => {
@@ -115,4 +117,66 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     expect(opening?.distanceAlongWall).toBeCloseTo(0.80, 2);
     expect(useProjectStore.getState().project.openings.length).toBe(1);
   });
+
+  it('debe permitir renombrar un ambiente y modificar la altura de techo h', () => {
+    const store = useProjectStore.getState();
+
+    // 1. Trazar habitación cuadrada de 4x4m
+    const w1 = store.addWallFromAnchor({ startCoord: { x: 0, y: 0 }, lengthM: 4.0, angleDeg: 0 })!;
+    const w2 = store.addWallFromAnchor({ startVertexId: w1.endVertexId, lengthM: 4.0, angleDeg: 90 })!;
+    const w3 = store.addWallFromAnchor({ startVertexId: w2.endVertexId, lengthM: 4.0, angleDeg: 180 })!;
+    store.addWallFromAnchor({ startVertexId: w3.endVertexId, lengthM: 4.0, angleDeg: 270 })!;
+
+    const state = useProjectStore.getState();
+    expect(state.project.spaces.length).toBe(1);
+
+    const detectedSpace = state.project.spaces[0];
+    expect(detectedSpace.ceilingHeight).toBe(2.70);
+
+    // 2. Renombrar a "Dormitorio Principal" y fijar h = 3.00m
+    store.updateSpace(detectedSpace.id, {
+      name: 'Dormitorio Principal',
+      ceilingHeight: 3.00
+    });
+
+    const updatedSpace = useProjectStore.getState().project.spaces[0];
+    expect(updatedSpace.name).toBe('Dormitorio Principal');
+    expect(updatedSpace.ceilingHeight).toBe(3.00);
+  });
+
+  it('debe clavar puerta y ventana en el muro y permitir eliminar abertura individualmente', () => {
+    const store = useProjectStore.getState();
+
+    const w1 = store.addWallFromAnchor({ startCoord: { x: 0, y: 0 }, lengthM: 5.0, angleDeg: 0 })!;
+    const wallId = w1.wall.id;
+    const refVertexId = w1.wall.startVertexId;
+
+    // Insertar Puerta
+    const door = store.addOpeningReferenced({
+      hostWallId: wallId,
+      referenceVertexId: refVertexId,
+      offsetToJambM: 0.50,
+      widthM: 0.80,
+      type: 'door'
+    })!;
+
+    // Insertar Ventana
+    const window = store.addOpeningReferenced({
+      hostWallId: wallId,
+      referenceVertexId: refVertexId,
+      offsetToJambM: 2.20,
+      widthM: 1.20,
+      type: 'window'
+    })!;
+
+    expect(useProjectStore.getState().project.openings.length).toBe(2);
+
+    // Eliminar la puerta
+    store.deleteOpening(door.id);
+    const openingsAfterDelete = useProjectStore.getState().project.openings;
+    expect(openingsAfterDelete.length).toBe(1);
+    expect(openingsAfterDelete[0].id).toBe(window.id);
+    expect(openingsAfterDelete[0].type).toBe('window');
+  });
 });
+
