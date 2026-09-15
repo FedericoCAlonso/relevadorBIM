@@ -1,8 +1,8 @@
 {
-  "name": "relevacad",
+  "name": "relevadorbim",
   "private": true,
   "version": "1.0.0",
-  "homepage": "https://FedericoCAlonso.github.io/relevacad/",
+  "homepage": "https://FedericoCAlonso.github.io/relevadorBIM/",
   "type": "module",
   "scripts": {
     "dev": "vite",

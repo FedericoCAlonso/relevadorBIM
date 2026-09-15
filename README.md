@@ -1,32 +1,19 @@
-# React + TypeScript + Vite
+# Relevador BIM — Arquitectura y Red Eléctrica AEA 90364-771
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+PWA profesional para relevamiento planimétrico por anclajes métricos de referencia, gestión continua de muros, aberturas normalizadas y modelado de red eléctrica según normativa AEA.
 
-Currently, two official plugins are available:
+## ✨ Características Principales
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Relevamiento por Anclajes Físicos**: Trazado secuencial tramo a tramo fijando rumbos ortogonales (Der 90°, Izq -90°, Recto 0° o ángulo libre de falsa escuadra).
+- **Gestión Integral de Muros**: Edición en tiempo real de longitud (steppers métricos), espesor (10, 15, 20, 30 cm), rotación e inversión de sentido.
+- **Snap Magnético a Muros con Orientación Automática**: Detección del paramento más próximo, cálculo flush sobre la cara del muro y giro angular automático de bocas.
+- **Simbología Normalizada AEA Pura**: Símbolos vectoriales limpios (sin recuadros ni cajas envolventes) con compensación de lectura en etiquetas.
+- **Modelo Enriquecido de Traza**: Integración de estados (`proyectado`, `existente`, `a_reemplazar`), potencia estimada ($W$), fases ($1F$ / $3F$) y cálculo de factor de ocupación de cañerías.
+- **UX Adaptativa Dual**:
+  - *Escritorio*: CAD Inspector completo con atajos de teclado (`Ctrl+Z`, `Supr`, `Esc`).
+  - *Móvil*: `ThumbSurveyDock` ergonómico optimizado para operar con el pulgar en campo e integración con distanciómetro láser Bluetooth.
 
-## React Compiler
+## 🚀 Despliegue en GitHub Pages
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Desplegado automáticamente en:
+👉 **[https://federicocalonso.github.io/relevadorBIM/](https://federicocalonso.github.io/relevadorBIM/)**
