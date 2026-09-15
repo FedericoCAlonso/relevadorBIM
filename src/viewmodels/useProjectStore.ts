@@ -78,8 +78,13 @@ interface ProjectStoreState {
     label?: string;
   }) => Opening | null;
 
+  updateWall: (wallId: string, updates: Partial<Wall>) => void;
   updateWallLength: (wallId: string, newLengthM: number) => void;
+  rotateWall: (wallId: string, deltaAngleDeg: number) => void;
+  invertWallDirection: (wallId: string) => void;
   deleteWall: (wallId: string) => void;
+  undoLastWall: () => void;
+  updateOpening: (openingId: string, updates: Partial<Opening>) => void;
   deleteOpening: (openingId: string) => void;
 
   // Acciones de Ambientes / Espacios
@@ -88,6 +93,7 @@ interface ProjectStoreState {
 
   // Acciones Electromecánicas
   addElectricalElement: (element: ElectricalElement) => void;
+  updateElectricalElement: (elementId: string, updates: Partial<ElectricalElement>) => void;
   deleteElectricalElement: (elementId: string) => void;
   addConduit: (conduit: Conduit) => void;
   deleteConduit: (conduitId: string) => void;
@@ -308,6 +314,16 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     return newOpening;
   },
 
+  updateWall: (wallId, updates) => {
+    set((state) => ({
+      project: {
+        ...state.project,
+        walls: state.project.walls.map((w) => (w.id === wallId ? { ...w, ...updates } : w)),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    }));
+  },
+
   updateWallLength: (wallId, newLengthM) => {
     const { project } = get();
     const wall = project.walls.find((w) => w.id === wallId);
@@ -335,20 +351,140 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         meta: { ...project.meta, updatedAt: Date.now() }
       }
     });
+    get().autoDetectSpaces();
   },
 
-  deleteWall: (wallId) => {
+  rotateWall: (wallId, deltaAngleDeg) => {
+    const { project } = get();
+    const wall = project.walls.find((w) => w.id === wallId);
+    if (!wall) return;
+
+    const vStart = project.vertices.find((v) => v.id === wall.startVertexId);
+    const vEnd = project.vertices.find((v) => v.id === wall.endVertexId);
+    if (!vStart || !vEnd) return;
+
+    const currentDx = vEnd.x - vStart.x;
+    const currentDy = vEnd.y - vStart.y;
+    const currentLen = Math.hypot(currentDx, currentDy);
+    const currentAngle = Math.atan2(currentDy, currentDx);
+    const deltaRad = (deltaAngleDeg * Math.PI) / 180;
+    const newAngle = currentAngle + deltaRad;
+
+    const newEndX = vStart.x + Math.cos(newAngle) * currentLen;
+    const newEndY = vStart.y + Math.sin(newAngle) * currentLen;
+
+    set({
+      project: {
+        ...project,
+        vertices: project.vertices.map((v) =>
+          v.id === vEnd.id ? { ...v, x: Number(newEndX.toFixed(3)), y: Number(newEndY.toFixed(3)) } : v
+        ),
+        meta: { ...project.meta, updatedAt: Date.now() }
+      }
+    });
+    get().autoDetectSpaces();
+  },
+
+  invertWallDirection: (wallId) => {
     set((state) => ({
       project: {
         ...state.project,
-        walls: state.project.walls.filter((w) => w.id !== wallId),
-        openings: state.project.openings.filter((o) => o.wallId !== wallId),
+        walls: state.project.walls.map((w) =>
+          w.id === wallId ? { ...w, startVertexId: w.endVertexId, endVertexId: w.startVertexId } : w
+        ),
         meta: { ...state.project.meta, updatedAt: Date.now() }
-      },
-      selectedEntity: state.selectedEntity?.id === wallId ? null : state.selectedEntity
+      }
     }));
+  },
+
+  deleteWall: (wallId) => {
+    const { project } = get();
+    const targetWall = project.walls.find((w) => w.id === wallId);
+    if (!targetWall) return;
+
+    const remainingWalls = project.walls.filter((w) => w.id !== wallId);
+
+    // Identificar si los vértices quedaron huérfanos sin paredes
+    const isStartUsed = remainingWalls.some(
+      (w) => w.startVertexId === targetWall.startVertexId || w.endVertexId === targetWall.startVertexId
+    );
+    const isEndUsed = remainingWalls.some(
+      (w) => w.startVertexId === targetWall.endVertexId || w.endVertexId === targetWall.endVertexId
+    );
+
+    let updatedVertices = project.vertices;
+    if (!isStartUsed) updatedVertices = updatedVertices.filter((v) => v.id !== targetWall.startVertexId);
+    if (!isEndUsed) updatedVertices = updatedVertices.filter((v) => v.id !== targetWall.endVertexId);
+
+    let newAnchor = get().activeAnchorVertexId;
+    if (newAnchor === targetWall.startVertexId || newAnchor === targetWall.endVertexId) {
+      newAnchor = updatedVertices[updatedVertices.length - 1]?.id || null;
+    }
+
+    set({
+      project: {
+        ...project,
+        vertices: updatedVertices,
+        walls: remainingWalls,
+        openings: project.openings.filter((o) => o.wallId !== wallId),
+        meta: { ...project.meta, updatedAt: Date.now() }
+      },
+      activeAnchorVertexId: newAnchor,
+      selectedEntity: get().selectedEntity?.id === wallId ? null : get().selectedEntity
+    });
+
     get().autoDetectSpaces();
   },
+
+  undoLastWall: () => {
+    const { project } = get();
+    if (project.walls.length === 0) return;
+
+    const lastWall = project.walls[project.walls.length - 1];
+    const remainingWalls = project.walls.slice(0, -1);
+
+    const isEndUsedElsewhere = remainingWalls.some(
+      (w) => w.startVertexId === lastWall.endVertexId || w.endVertexId === lastWall.endVertexId
+    );
+    const isStartUsedElsewhere = remainingWalls.some(
+      (w) => w.startVertexId === lastWall.startVertexId || w.endVertexId === lastWall.startVertexId
+    );
+
+    let updatedVertices = project.vertices;
+    if (!isEndUsedElsewhere) {
+      updatedVertices = updatedVertices.filter((v) => v.id !== lastWall.endVertexId);
+    }
+    if (!isStartUsedElsewhere && remainingWalls.length === 0) {
+      updatedVertices = updatedVertices.filter((v) => v.id !== lastWall.startVertexId);
+    }
+
+    const newAnchor = isStartUsedElsewhere
+      ? lastWall.startVertexId
+      : updatedVertices[updatedVertices.length - 1]?.id || null;
+
+    set({
+      project: {
+        ...project,
+        vertices: updatedVertices,
+        walls: remainingWalls,
+        openings: project.openings.filter((o) => o.wallId !== lastWall.id),
+        meta: { ...project.meta, updatedAt: Date.now() }
+      },
+      activeAnchorVertexId: newAnchor,
+      selectedEntity: null
+    });
+
+    get().autoDetectSpaces();
+  },
+
+  updateOpening: (openingId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        openings: state.project.openings.map((o) => (o.id === openingId ? { ...o, ...updates } : o)),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
 
   deleteOpening: (openingId) =>
     set((state) => ({
@@ -414,6 +550,17 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       project: {
         ...state.project,
         electricalElements: [...state.project.electricalElements, element],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  updateElectricalElement: (elementId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        electricalElements: state.project.electricalElements.map((el) =>
+          el.id === elementId ? { ...el, ...updates } : el
+        ),
         meta: { ...state.project.meta, updatedAt: Date.now() }
       }
     })),

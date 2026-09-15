@@ -26,7 +26,7 @@ export interface ConductorLine {
 
 export interface ElectricalElement {
   id: string;
-  symbolId: string;        // ID de la biblioteca (ej: 'boca_centro_iluminacion', 'boca_enchufe_bipolar')
+  symbolId: string;        // ID de la biblioteca (ej: 'sym-planta-boca-techo', 'sym-planta-toma')
   levelId: string;         // Planta donde se ubica
   spaceId: string;         // ID del ambiente al que pertenece
   placement: ElementPlacement; // 'ceiling' (techo), 'wall' (pared), 'floor' (piso)
@@ -36,8 +36,22 @@ export interface ElectricalElement {
   wallId?: string | null;  // Si está adosado a una pared específica
   wallOffset?: number;     // Distancia a lo largo de la pared en metros
   circuitId?: string | null;
-  label?: string;          // Ej: "B1", "T1", "L1a"
+  label?: string;          // Ej: "IUG 1", "TUG 2", "B1"
   notes?: string;
+
+  // ─── PROPIEDADES ENRIQUECIDAS DE TRAZA ───
+  rotation?: number;       // Ángulo de giro en grados (0-360) para orientación automática sobre paredes
+  side?: 'left' | 'right' | 'interior' | 'exterior'; // Lado de la pared donde se ubica
+  status?: 'existente' | 'proyectado' | 'a_reemplazar'; // Estado de relevamiento (TRAZA)
+  powerW?: number;         // Potencia nominal estimada en Watts (TRAZA)
+  phases?: 1 | 3;          // 1 = Monofásico, 3 = Trifásico (TRAZA)
+  isPanel?: boolean;       // Indica si representa un tablero eléctrico
+  attributes?: Array<{ key: string; value: string }>; // Metadatos técnicos libres clave-valor (TRAZA)
+  earthMeasurement?: {
+    ohms: number;
+    method: 'caida_tension' | 'dos_puntas';
+    date: string;
+  };
 }
 
 export type ConduitMaterial = 'corrugado_blanco' | 'corrugado_ignifugo' | 'cano_rigido_pvc' | 'cano_acero' | 'bandeja';

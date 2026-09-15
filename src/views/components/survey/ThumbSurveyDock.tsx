@@ -11,7 +11,7 @@ import React, { useState } from 'react';
 import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
-import { Bluetooth, RotateCw, RotateCcw, MoveUp, Plus, CornerDownLeft, SlidersHorizontal } from 'lucide-react';
+import { Bluetooth, RotateCw, RotateCcw, MoveUp, Plus, CornerDownLeft, SlidersHorizontal, Undo2 } from 'lucide-react';
 
 interface ThumbSurveyDockProps {
   relativeTurn: RelativeTurnType;
@@ -32,7 +32,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   onChangeDistance,
   onCommitWall
 }) => {
-  const { activeAnchorVertexId, project } = useProjectStore();
+  const { activeAnchorVertexId, project, undoLastWall } = useProjectStore();
   const [showCustomAngleInput, setShowCustomAngleInput] = useState(false);
 
   // Suscribir al láser Bluetooth
@@ -182,16 +182,27 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         </div>
       )}
 
-      {/* ─── FILA 3: BOTÓN GIGANTE DE ALCANCE INMEDIATO CON PULGAR ─── */}
-      <button
-        type="button"
-        onClick={onCommitWall}
-        className="w-full h-13 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-base rounded-2xl shadow-lg transition-all"
-      >
-        <Plus size={20} strokeWidth={2.5} />
-        <span>AGREGAR PARED</span>
-        <CornerDownLeft size={16} className="text-blue-200 ml-1" />
-      </button>
+      {/* ─── FILA 3: BOTÓN GIGANTE DE ALCANCE INMEDIATO CON PULGAR Y DESHACER ─── */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={undoLastWall}
+          disabled={project.walls.length === 0}
+          className="h-13 px-4 flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:scale-95 disabled:opacity-30 disabled:hover:bg-slate-100 text-slate-700 font-bold rounded-2xl border border-slate-300 transition-all"
+          title="Deshacer última pared"
+        >
+          <Undo2 size={20} />
+        </button>
+        <button
+          type="button"
+          onClick={onCommitWall}
+          className="flex-1 h-13 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-base rounded-2xl shadow-lg transition-all"
+        >
+          <Plus size={20} strokeWidth={2.5} />
+          <span>AGREGAR PARED</span>
+          <CornerDownLeft size={16} className="text-blue-200 ml-1" />
+        </button>
+      </div>
     </footer>
   );
 };

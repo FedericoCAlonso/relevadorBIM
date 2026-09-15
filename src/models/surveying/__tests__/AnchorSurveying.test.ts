@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
+import { calculateWallSnap } from '../../../models/architecture/Wall';
 
 describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () => {
   beforeEach(() => {
@@ -144,14 +145,14 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     expect(updatedSpace.ceilingHeight).toBe(3.00);
   });
 
-  it('debe clavar puerta y ventana en el muro y permitir eliminar abertura individualmente', () => {
+  it('debe emplazar puerta y ventana en el muro y permitir gestionar/actualizar aberturas', () => {
     const store = useProjectStore.getState();
 
     const w1 = store.addWallFromAnchor({ startCoord: { x: 0, y: 0 }, lengthM: 5.0, angleDeg: 0 })!;
     const wallId = w1.wall.id;
     const refVertexId = w1.wall.startVertexId;
 
-    // Insertar Puerta
+    // Emplazar Puerta
     const door = store.addOpeningReferenced({
       hostWallId: wallId,
       referenceVertexId: refVertexId,
@@ -160,23 +161,212 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
       type: 'door'
     })!;
 
-    // Insertar Ventana
-    const window = store.addOpeningReferenced({
+    expect(door).toBeDefined();
+    expect(door.type).toBe('door');
+    expect(door.distanceAlongWall).toBe(0.50);
+
+    // Actualizar abertura emplazada (ancho, distancia, sentido)
+    store.updateOpening(door.id, {
+      width: 0.90,
+      distanceAlongWall: 0.80,
+      swing: 'right_out'
+    });
+
+    const updatedDoor = useProjectStore.getState().project.openings.find((o) => o.id === door.id);
+    expect(updatedDoor?.width).toBe(0.90);
+    expect(updatedDoor?.distanceAlongWall).toBe(0.80);
+    expect(updatedDoor?.swing).toBe('right_out');
+
+    // Emplazar Ventana
+    const win = store.addOpeningReferenced({
       hostWallId: wallId,
       referenceVertexId: refVertexId,
-      offsetToJambM: 2.20,
+      offsetToJambM: 2.0,
       widthM: 1.20,
       type: 'window'
     })!;
 
     expect(useProjectStore.getState().project.openings.length).toBe(2);
 
-    // Eliminar la puerta
+    // Eliminar solo la puerta
     store.deleteOpening(door.id);
-    const openingsAfterDelete = useProjectStore.getState().project.openings;
-    expect(openingsAfterDelete.length).toBe(1);
-    expect(openingsAfterDelete[0].id).toBe(window.id);
-    expect(openingsAfterDelete[0].type).toBe('window');
+    const remainingOpenings = useProjectStore.getState().project.openings;
+    expect(remainingOpenings.length).toBe(1);
+    expect(remainingOpenings[0].id).toBe(win.id);
+  });
+
+  it('debe insertar y actualizar elementos eléctricos con etiqueta y altura Z', () => {
+    const store = useProjectStore.getState();
+
+    store.addElectricalElement({
+      id: 'el-test-1',
+      symbolId: 'boca_centro_iluminacion',
+      levelId: 'nivel-pb',
+      spaceId: 'space-test',
+      placement: 'ceiling',
+      x: 2.50,
+      y: 2.50,
+      heightZ: 2.70,
+      label: 'IUG 1'
+    });
+
+    expect(useProjectStore.getState().project.electricalElements.length).toBe(1);
+
+    store.updateElectricalElement('el-test-1', {
+      label: 'IUG Centro',
+      heightZ: 2.80
+    });
+
+    const el = useProjectStore.getState().project.electricalElements[0];
+    expect(el.label).toBe('IUG Centro');
+    expect(el.heightZ).toBe(2.80);
+
+    store.deleteElectricalElement('el-test-1');
+    expect(useProjectStore.getState().project.electricalElements.length).toBe(0);
+  });
+
+  it('debe permitir modificar largo, espesor, rotar e invertir dirección de un muro', () => {
+    const store = useProjectStore.getState();
+
+    // Muro horizontal inicial: de (0,0) a (4,0), largo 4.0m
+    const res = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 0 },
+      lengthM: 4.0,
+      angleDeg: 0,
+      thickness: 0.15
+    })!;
+
+    const wallId = res.wall.id;
+
+    // 1. Modificar largo a 6.0m
+    store.updateWallLength(wallId, 6.0);
+    let vEnd = useProjectStore.getState().project.vertices.find((v) => v.id === res.endVertexId);
+    expect(vEnd?.x).toBeCloseTo(6.0, 2);
+    expect(vEnd?.y).toBeCloseTo(0.0, 2);
+
+    // 2. Modificar espesor a 0.20m
+    store.updateWall(wallId, { thickness: 0.20 });
+    let wall = useProjectStore.getState().project.walls.find((w) => w.id === wallId);
+    expect(wall?.thickness).toBe(0.20);
+
+    // 3. Rotar muro +90° alrededor del punto de inicio (0,0)
+    store.rotateWall(wallId, 90);
+    vEnd = useProjectStore.getState().project.vertices.find((v) => v.id === res.endVertexId);
+    expect(vEnd?.x).toBeCloseTo(0.0, 2);
+    expect(vEnd?.y).toBeCloseTo(6.0, 2);
+
+    // 4. Invertir dirección de la pared
+    const originalStartId = wall!.startVertexId;
+    const originalEndId = wall!.endVertexId;
+    store.invertWallDirection(wallId);
+    wall = useProjectStore.getState().project.walls.find((w) => w.id === wallId);
+    expect(wall?.startVertexId).toBe(originalEndId);
+    expect(wall?.endVertexId).toBe(originalStartId);
+  });
+
+  it('debe deshacer la última pared (undoLastWall) y limpiar vértices huérfanos', () => {
+    const store = useProjectStore.getState();
+
+    // Trazar pared 1: (0,0) -> (4,0)
+    const w1 = store.addWallFromAnchor({ startCoord: { x: 0, y: 0 }, lengthM: 4.0, angleDeg: 0 })!;
+    expect(useProjectStore.getState().project.walls.length).toBe(1);
+    expect(useProjectStore.getState().project.vertices.length).toBe(2);
+    expect(useProjectStore.getState().activeAnchorVertexId).toBe(w1.endVertexId);
+
+    // Trazar pared 2: (4,0) -> (4,3)
+    const w2 = store.addWallFromAnchor({ startVertexId: w1.endVertexId, lengthM: 3.0, angleDeg: 90 })!;
+    expect(useProjectStore.getState().project.walls.length).toBe(2);
+    expect(useProjectStore.getState().project.vertices.length).toBe(3);
+    expect(useProjectStore.getState().activeAnchorVertexId).toBe(w2.endVertexId);
+
+    // Deshacer pared 2
+    store.undoLastWall();
+    expect(useProjectStore.getState().project.walls.length).toBe(1);
+    expect(useProjectStore.getState().project.vertices.length).toBe(2);
+    // El anclaje debe haber vuelto al extremo de la pared 1
+    expect(useProjectStore.getState().activeAnchorVertexId).toBe(w1.endVertexId);
+
+    // Deshacer pared 1 (la última restante)
+    store.undoLastWall();
+    expect(useProjectStore.getState().project.walls.length).toBe(0);
+    expect(useProjectStore.getState().project.vertices.length).toBe(0);
+    expect(useProjectStore.getState().activeAnchorVertexId).toBeNull();
+  });
+
+  it('debe realizar snap magnético sobre la cara del muro y calcular rotación automática', () => {
+    const store = useProjectStore.getState();
+
+    // Muro horizontal de (0,0) a (5,0), espesor 0.20m (halfT = 0.10m)
+    const res = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 0 },
+      lengthM: 5.0,
+      angleDeg: 0,
+      thickness: 0.20
+    })!;
+
+    const walls = useProjectStore.getState().project.walls;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    // Cursor en (2.5, 0.25) -> cerca de la cara izquierda (+Y) del muro
+    const snapLeft = calculateWallSnap({ x: 2.5, y: 0.25 }, walls, verticesMap, 0.50);
+    expect(snapLeft).not.toBeNull();
+    expect(snapLeft?.wall.id).toBe(res.wall.id);
+    expect(snapLeft?.side).toBe('left');
+    // Coordenada Y proyectada sobre la cara izquierda (0 + 0.10)
+    expect(snapLeft?.snappedPoint.x).toBeCloseTo(2.5, 2);
+    expect(snapLeft?.snappedPoint.y).toBeCloseTo(0.10, 2);
+    // Cara izquierda: rotación 0°
+    expect(snapLeft?.rotationDeg).toBe(0);
+
+    // Cursor en (3.0, -0.30) -> cerca de la cara derecha (-Y) del muro
+    const snapRight = calculateWallSnap({ x: 3.0, y: -0.30 }, walls, verticesMap, 0.50);
+    expect(snapRight).not.toBeNull();
+    expect(snapRight?.side).toBe('right');
+    // Coordenada Y proyectada sobre la cara derecha (0 - 0.10)
+    expect(snapRight?.snappedPoint.x).toBeCloseTo(3.0, 2);
+    expect(snapRight?.snappedPoint.y).toBeCloseTo(-0.10, 2);
+    // Cara derecha: rotación 180°
+    expect(snapRight?.rotationDeg).toBe(180);
+  });
+
+  it('debe soportar propiedades enriquecidas de TRAZA en elementos eléctricos (status, powerW, phases, rotation)', () => {
+    const store = useProjectStore.getState();
+
+    store.addElectricalElement({
+      id: 'el-traza-1',
+      symbolId: 'sym-planta-toma-doble',
+      levelId: 'nivel-pb',
+      spaceId: 'space-cocina',
+      placement: 'wall',
+      x: 3.0,
+      y: 0.10,
+      heightZ: 1.20,
+      rotation: 180,
+      side: 'right',
+      status: 'existente',
+      powerW: 2200,
+      phases: 1
+    });
+
+    const el = useProjectStore.getState().project.electricalElements[0];
+    expect(el.status).toBe('existente');
+    expect(el.powerW).toBe(2200);
+    expect(el.phases).toBe(1);
+    expect(el.rotation).toBe(180);
+    expect(el.side).toBe('right');
+
+    // Cambiar estado a 'a_reemplazar' y potencia a 3000W trifásico
+    store.updateElectricalElement(el.id, {
+      status: 'a_reemplazar',
+      powerW: 3000,
+      phases: 3,
+      rotation: 90
+    });
+
+    const updated = useProjectStore.getState().project.electricalElements[0];
+    expect(updated.status).toBe('a_reemplazar');
+    expect(updated.powerW).toBe(3000);
+    expect(updated.phases).toBe(3);
+    expect(updated.rotation).toBe(90);
   });
 });
-

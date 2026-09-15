@@ -109,6 +109,23 @@ export function calculatePolygonCentroid(polygon: Vector2D[]): Vector2D {
 }
 
 /**
+ * Determina si un punto 2D se encuentra contenido dentro de un polígono cerrado (Ray Casting).
+ */
+export function isPointInPolygon(point: Vector2D, polygon: Vector2D[]): boolean {
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect =
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
  * Resuelve el polígono de puntos a partir de los IDs de vértices y el mapa de vértices.
  */
 export function resolveSpacePolygon(

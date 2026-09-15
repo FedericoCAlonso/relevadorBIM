@@ -137,3 +137,80 @@ export function getWallPolygon(wall: Wall, vertices: Map<string, WallVertex>): V
     faces.rightFace.start
   ];
 }
+
+export interface WallSnapResult {
+  wall: Wall;
+  snappedPoint: Vector2D;
+  distanceAlongWall: number;
+  rotationDeg: number;
+  side: 'left' | 'right';
+}
+
+/**
+ * Realiza snap magnético de un punto 2D hacia la cara del muro más cercano,
+ * calculando automáticamente la posición exacta sobre el paramento y el ángulo
+ * de rotación para que el símbolo quede adosado y orientado hacia el ambiente.
+ */
+export function calculateWallSnap(
+  point: Vector2D,
+  walls: Wall[],
+  vertices: Map<string, WallVertex>,
+  snapToleranceM = 0.50
+): WallSnapResult | null {
+  let bestResult: WallSnapResult | null = null;
+  let minDistance = snapToleranceM;
+
+  for (const wall of walls) {
+    const vStart = vertices.get(wall.startVertexId);
+    const vEnd = vertices.get(wall.endVertexId);
+    if (!vStart || !vEnd) continue;
+
+    const dx = vEnd.x - vStart.x;
+    const dy = vEnd.y - vStart.y;
+    const len = Math.hypot(dx, dy);
+    if (len <= 0.01) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy; // Normal izquierda
+    const ny = ux;
+
+    const vx = point.x - vStart.x;
+    const vy = point.y - vStart.y;
+
+    // Proyección longitudinal a lo largo del muro
+    const t = vx * ux + vy * uy;
+    // Distancia perpendicular (con signo: >0 izquierda, <0 derecha)
+    const distNormal = vx * nx + vy * ny;
+    const absDist = Math.abs(distNormal);
+
+    // Permitir snap si el cursor cae a lo largo del muro y dentro de la tolerancia
+    if (t >= 0 && t <= len && absDist < minDistance) {
+      minDistance = absDist;
+      const side: 'left' | 'right' = distNormal >= 0 ? 'left' : 'right';
+      const halfT = wall.thickness / 2;
+
+      // Desplazar el punto snap a la superficie de la cara del muro
+      const faceOffset = side === 'left' ? halfT : -halfT;
+      const snappedX = vStart.x + ux * t + nx * faceOffset;
+      const snappedY = vStart.y + uy * t + ny * faceOffset;
+
+      // Ángulo del muro
+      const wallAngleDeg = (Math.atan2(uy, ux) * 180) / Math.PI;
+      // Para que el símbolo se oriente apoyado en la pared y proyectando hacia el ambiente:
+      let rotationDeg = side === 'left' ? wallAngleDeg : wallAngleDeg + 180;
+      rotationDeg = (rotationDeg % 360 + 360) % 360;
+
+      bestResult = {
+        wall,
+        snappedPoint: { x: Number(snappedX.toFixed(3)), y: Number(snappedY.toFixed(3)) },
+        distanceAlongWall: Number(t.toFixed(3)),
+        rotationDeg: Number(rotationDeg.toFixed(1)),
+        side
+      };
+    }
+  }
+
+  return bestResult;
+}
+

@@ -9,8 +9,21 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { getWallLength } from '../../../models/architecture/Wall';
-import type { OpeningType } from '../../../models/architecture/Opening';
-import { X, DoorOpen, Split, Trash2 } from 'lucide-react';
+import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
+import {
+  X,
+  DoorOpen,
+  Split,
+  Trash2,
+  SlidersHorizontal,
+  ArrowLeftRight,
+  ArrowUpDown,
+  Zap,
+  RotateCw,
+  RotateCcw,
+  Ruler,
+  MapPin
+} from 'lucide-react';
 
 interface SurveyActionSheetsProps {
   showTeeModal: boolean;
@@ -31,8 +44,16 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
     setSelectedEntity,
     addBranchWallFromOffset,
     addOpeningReferenced,
+    updateWall,
+    updateWallLength,
+    rotateWall,
+    invertWallDirection,
     deleteWall,
-    deleteOpening
+    setActiveAnchorVertexId,
+    updateOpening,
+    deleteOpening,
+    updateElectricalElement,
+    deleteElectricalElement
   } = useProjectStore();
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
@@ -41,6 +62,13 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
   const selectedWall = selectedEntity?.type === 'wall' ? project.walls.find((w) => w.id === selectedEntity.id) : null;
   const selectedOpening =
     selectedEntity?.type === 'opening' ? project.openings.find((o) => o.id === selectedEntity.id) : null;
+  const selectedElectricalElement =
+    selectedEntity?.type === 'electrical_element'
+      ? project.electricalElements.find((e) => e.id === selectedEntity.id)
+      : null;
+
+  const [isEditingOpeningMobile, setIsEditingOpeningMobile] = useState(false);
+  const [isEditingWallMobile, setIsEditingWallMobile] = useState(false);
 
   // Formulario de Empalme en T
   const [teeOffset, setTeeOffset] = useState('1.50');
@@ -102,6 +130,15 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
           </div>
 
           <button
+            onClick={() => setIsEditingWallMobile(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
+            title="Editar muro"
+          >
+            <SlidersHorizontal size={13} />
+            <span>Editar</span>
+          </button>
+
+          <button
             onClick={() => handleOpenWithOpeningType('door')}
             className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
           >
@@ -145,20 +182,521 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
         </aside>
       )}
 
+      {/* ─── MODAL DE EDICIÓN COMPLETA DE MURO (MÓVIL) ─── */}
+      {isEditingWallMobile && selectedWall && (() => {
+        const wallLen = getWallLength(selectedWall, verticesMap);
+        const handleDeltaLen = (delta: number) => {
+          const next = Math.max(0.20, Number((wallLen + delta).toFixed(2)));
+          updateWallLength(selectedWall.id, next);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+            <div className="bg-white rounded-t-3xl sm:rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-slate-200 space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-100 rounded-lg text-blue-700">
+                    <Ruler size={16} />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Modificar Pared</h3>
+                </div>
+                <button
+                  onClick={() => setIsEditingWallMobile(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Longitud */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-500">LONGITUD DEL MURO</label>
+                  <span className="font-mono text-xs font-bold text-blue-900">
+                    {wallLen.toFixed(2)} m
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleDeltaLen(-0.50)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
+                  >
+                    -50cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeltaLen(-0.10)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
+                  >
+                    -10cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeltaLen(0.10)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
+                  >
+                    +10cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeltaLen(0.50)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
+                  >
+                    +50cm
+                  </button>
+                </div>
+              </div>
+
+              {/* Espesor */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ESPESOR DEL MURO</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {[0.10, 0.15, 0.20, 0.30].map((th) => (
+                    <button
+                      key={th}
+                      type="button"
+                      onClick={() => updateWall(selectedWall.id, { thickness: th })}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        Math.abs(selectedWall.thickness - th) < 0.01
+                          ? 'bg-blue-600 text-white border-blue-700 font-bold'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {Math.round(th * 100)} cm
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Giro y Sentido */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ROTACIÓN Y DIRECCIÓN</label>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => rotateWall(selectedWall.id, -90)}
+                    className="flex items-center justify-center gap-1 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <RotateCcw size={13} />
+                    <span>-90°</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rotateWall(selectedWall.id, 90)}
+                    className="flex items-center justify-center gap-1 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <RotateCw size={13} />
+                    <span>+90°</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => invertWallDirection(selectedWall.id)}
+                    className="flex items-center justify-center gap-1 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <ArrowLeftRight size={13} />
+                    <span>Invertir</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Anclaje */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAnchorVertexId(selectedWall.endVertexId);
+                  setIsEditingWallMobile(false);
+                }}
+                className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+              >
+                <MapPin size={14} />
+                <span>Continuar trazando desde esta pared</span>
+              </button>
+
+              {/* Botones de acción */}
+              <div className="flex gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteWall(selectedWall.id);
+                    setIsEditingWallMobile(false);
+                    setSelectedEntity(null);
+                  }}
+                  className="px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Eliminar Muro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingWallMobile(false)}
+                  className="flex-1 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Listo
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ─── BARRA CONTEXTUAL AL TOCAR UNA ABERTURA (SOLO MÓVIL) ─── */}
-      {selectedOpening && (
+      {selectedOpening && !isEditingOpeningMobile && (
         <aside
           aria-label="Acciones de Abertura"
-          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30"
+          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none"
         >
           <div className="px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
-            {selectedOpening.type === 'door' ? 'Puerta' : selectedOpening.type === 'window' ? 'Ventana' : 'Vano'}:{' '}
-            <strong className="text-white">{selectedOpening.width.toFixed(2)} m</strong>
+            {selectedOpening.type === 'door'
+              ? 'Puerta'
+              : selectedOpening.type === 'window'
+              ? 'Ventana'
+              : 'Vano'}
+            : <strong className="text-white">{selectedOpening.width.toFixed(2)}m</strong>
           </div>
+
+          {selectedOpening.type === 'door' && (
+            <button
+              onClick={() => {
+                const cur = selectedOpening.swing || 'left_in';
+                const nextSwing: OpeningSwing =
+                  cur === 'left_in'
+                    ? 'right_in'
+                    : cur === 'right_in'
+                    ? 'left_in'
+                    : cur === 'left_out'
+                    ? 'right_out'
+                    : 'left_out';
+                updateOpening(selectedOpening.id, { swing: nextSwing });
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
+              title="Invertir mano bisagra"
+            >
+              <ArrowLeftRight size={13} />
+              <span>Girar Mano</span>
+            </button>
+          )}
+
           <button
-            onClick={() => deleteOpening(selectedOpening.id)}
+            onClick={() => setIsEditingOpeningMobile(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap"
+          >
+            <SlidersHorizontal size={13} />
+            <span>Editar</span>
+          </button>
+
+          <button
+            onClick={() => {
+              deleteOpening(selectedOpening.id);
+              setSelectedEntity(null);
+            }}
             className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
             title="Eliminar abertura"
+          >
+            <Trash2 size={14} />
+          </button>
+
+          <button
+            onClick={() => setSelectedEntity(null)}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg"
+          >
+            <X size={14} />
+          </button>
+        </aside>
+      )}
+
+      {/* ─── MODAL DE EDICIÓN COMPLETA DE ABERTURA (MÓVIL) ─── */}
+      {isEditingOpeningMobile && selectedOpening && (() => {
+        const hostWall = project.walls.find((w) => w.id === selectedOpening.wallId);
+        const hostWallLength = hostWall ? getWallLength(hostWall, verticesMap) : 10;
+        const maxDist = Math.max(0, hostWallLength - selectedOpening.width);
+
+        const handleAdjustDist = (delta: number) => {
+          const newDist = Math.max(
+            0,
+            Math.min(maxDist, Number((selectedOpening.distanceAlongWall + delta).toFixed(2)))
+          );
+          updateOpening(selectedOpening.id, { distanceAlongWall: newDist });
+        };
+
+        const handleAdjustWidth = (newW: number) => {
+          const clampedW = Math.max(
+            0.40,
+            Math.min(hostWallLength - selectedOpening.distanceAlongWall, newW)
+          );
+          updateOpening(selectedOpening.id, { width: Number(clampedW.toFixed(2)) });
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+            <div className="bg-white rounded-t-3xl sm:rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-slate-200 space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-100 rounded-lg text-amber-800">
+                    <DoorOpen size={16} />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Gestionar {selectedOpening.type === 'door' ? 'Puerta' : selectedOpening.type === 'window' ? 'Ventana' : 'Vano'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsEditingOpeningMobile(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Tipo */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE ABERTURA</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['door', 'window', 'passage'] as OpeningType[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        const updates: Partial<typeof selectedOpening> = { type: t };
+                        if (t === 'window' && (!selectedOpening.sill || selectedOpening.sill === 0)) {
+                          updates.sill = 0.90;
+                        }
+                        updateOpening(selectedOpening.id, updates);
+                      }}
+                      className={`py-1.5 rounded-lg font-semibold text-xs border transition-all ${
+                        selectedOpening.type === t
+                          ? 'bg-amber-600 border-amber-700 text-white shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {t === 'door' ? 'Puerta' : t === 'window' ? 'Ventana' : 'Vano'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ancho */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-500">ANCHO DEL VANO</label>
+                  <span className="font-mono text-xs font-bold text-slate-800">
+                    {selectedOpening.width.toFixed(2)} m
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustWidth(selectedOpening.width - 0.05)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-mono font-bold text-sm"
+                  >
+                    -
+                  </button>
+                  <div className="flex-1 grid grid-cols-4 gap-1">
+                    {[0.70, 0.80, 0.90, 1.20].map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => handleAdjustWidth(w)}
+                        className={`py-1 rounded text-xs font-mono border ${
+                          Math.abs(selectedOpening.width - w) < 0.01
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {w.toFixed(2)}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustWidth(selectedOpening.width + 0.05)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-mono font-bold text-sm"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Distancia a esquina */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-500">DISTANCIA A ESQUINA</label>
+                  <span className="font-mono text-xs font-bold text-slate-800">
+                    {selectedOpening.distanceAlongWall.toFixed(2)} m
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustDist(-0.10)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
+                  >
+                    -10cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustDist(-0.05)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
+                  >
+                    -5cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustDist(0.05)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
+                  >
+                    +5cm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustDist(0.10)}
+                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
+                  >
+                    +10cm
+                  </button>
+                </div>
+              </div>
+
+              {/* Sentido de giro (Puerta) */}
+              {selectedOpening.type === 'door' && (
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">SENTIDO DE APERTURA</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = selectedOpening.swing || 'left_in';
+                        const nextSwing: OpeningSwing =
+                          cur === 'left_in'
+                            ? 'right_in'
+                            : cur === 'right_in'
+                            ? 'left_in'
+                            : cur === 'left_out'
+                            ? 'right_out'
+                            : 'left_out';
+                        updateOpening(selectedOpening.id, { swing: nextSwing });
+                      }}
+                      className="flex items-center justify-center gap-1 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                    >
+                      <ArrowLeftRight size={13} />
+                      <span>Invertir Mano</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = selectedOpening.swing || 'left_in';
+                        const nextSwing: OpeningSwing =
+                          cur === 'left_in'
+                            ? 'left_out'
+                            : cur === 'left_out'
+                            ? 'left_in'
+                            : cur === 'right_in'
+                            ? 'right_out'
+                            : 'right_in';
+                        updateOpening(selectedOpening.id, { swing: nextSwing });
+                      }}
+                      className="flex items-center justify-center gap-1 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                    >
+                      <ArrowUpDown size={13} />
+                      <span>Invertir Sentido</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Botones de acción */}
+              <div className="flex gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteOpening(selectedOpening.id);
+                    setIsEditingOpeningMobile(false);
+                    setSelectedEntity(null);
+                  }}
+                  className="px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Eliminar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingOpeningMobile(false)}
+                  className="flex-1 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Listo
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── BARRA CONTEXTUAL AL TOCAR UNA BOCA ELÉCTRICA (SOLO MÓVIL) ─── */}
+      {selectedElectricalElement && (
+        <aside
+          aria-label="Acciones de Boca Eléctrica"
+          className="lg:hidden absolute bottom-[185px] left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700 z-30 max-w-[95vw] overflow-x-auto scrollbar-none"
+        >
+          <div className="flex items-center gap-1.5 px-2 text-xs font-mono text-slate-300 whitespace-nowrap">
+            <Zap size={14} className="text-amber-400" />
+            <strong className="text-white">{selectedElectricalElement.label || 'Boca'}</strong>
+            <span className="text-[10px] text-slate-400">({selectedElectricalElement.heightZ.toFixed(2)}m)</span>
+          </div>
+
+          {/* Giro rápido 45° */}
+          <button
+            onClick={() => {
+              const cur = selectedElectricalElement.rotation || 0;
+              updateElectricalElement(selectedElectricalElement.id, { rotation: (cur + 45) % 360 });
+            }}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-700"
+            title="Girar 45°"
+          >
+            <RotateCw size={13} />
+            <span>{Math.round(selectedElectricalElement.rotation || 0)}°</span>
+          </button>
+
+          {/* Toggle de Estado de Relevamiento (TRAZA) */}
+          <button
+            onClick={() => {
+              const cur = selectedElectricalElement.status || 'proyectado';
+              const next =
+                cur === 'proyectado' ? 'existente' : cur === 'existente' ? 'a_reemplazar' : 'proyectado';
+              updateElectricalElement(selectedElectricalElement.id, { status: next });
+            }}
+            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold whitespace-nowrap border transition-all ${
+              (selectedElectricalElement.status || 'proyectado') === 'existente'
+                ? 'bg-emerald-700 text-white border-emerald-600'
+                : (selectedElectricalElement.status || 'proyectado') === 'a_reemplazar'
+                ? 'bg-amber-700 text-white border-amber-600'
+                : 'bg-blue-700 text-white border-blue-600'
+            }`}
+          >
+            {(selectedElectricalElement.status || 'proyectado').toUpperCase()}
+          </button>
+
+          {/* Si está adosada a pared: cambiar de cara */}
+          {selectedElectricalElement.wallId && (
+            <button
+              onClick={() => {
+                const nextSide = selectedElectricalElement.side === 'left' ? 'right' : 'left';
+                const cur = selectedElectricalElement.rotation || 0;
+                updateElectricalElement(selectedElectricalElement.id, {
+                  side: nextSide,
+                  rotation: (cur + 180) % 360
+                });
+              }}
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300"
+              title="Invertir cara del muro"
+            >
+              <ArrowLeftRight size={14} />
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              deleteElectricalElement(selectedElectricalElement.id);
+              setSelectedEntity(null);
+            }}
+            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded-lg"
+            title="Eliminar boca"
           >
             <Trash2 size={14} />
           </button>

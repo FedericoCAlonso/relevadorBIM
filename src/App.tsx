@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useProjectStore } from './viewmodels/useProjectStore';
 import { useSurveyViewModel } from './viewmodels/useSurveyViewModel';
 import { useMediaQuery } from './viewmodels/useMediaQuery';
-import { BimCanvas } from './views/components/canvas/BimCanvas';
+import { BimCanvas, type WallPlacementSnap } from './views/components/canvas/BimCanvas';
 import { TopStatusBar } from './views/components/survey/TopStatusBar';
 import { ThumbSurveyDock } from './views/components/survey/ThumbSurveyDock';
 import { DesktopSidebar } from './views/components/desktop/DesktopSidebar';
@@ -20,14 +20,20 @@ import { SpaceEditModal } from './views/components/survey/SpaceEditModal';
 import { SymbolPalette } from './views/components/electrical/SymbolPalette';
 import { ComputoModal } from './views/components/survey/ComputoModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
+import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
 
 export function App() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const {
     project,
+    selectedEntity,
     setSelectedEntity,
-    addElectricalElement
+    addElectricalElement,
+    undoLastWall,
+    deleteWall,
+    deleteOpening,
+    deleteElectricalElement
   } = useProjectStore();
 
   const {
@@ -51,6 +57,42 @@ export function App() {
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
+  // Atajos de teclado CAD (Ctrl+Z para deshacer, Escape para deseleccionar, Supr para borrar)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar si el usuario está escribiendo en un input o textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        undoLastWall();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setSelectedEntity(null);
+        setSelectedSymbolId(null);
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedEntity) {
+          e.preventDefault();
+          if (selectedEntity.type === 'wall') deleteWall(selectedEntity.id);
+          else if (selectedEntity.type === 'opening') deleteOpening(selectedEntity.id);
+          else if (selectedEntity.type === 'electrical_element') deleteElectricalElement(selectedEntity.id);
+          setSelectedEntity(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedEntity, undoLastWall, deleteWall, deleteOpening, deleteElectricalElement, setSelectedEntity, setSelectedSymbolId]);
+
   // Escuchar eventos de apertura de modales de acción contextual
   useEffect(() => {
     const handleOpenTee = () => setShowTeeModal(true);
@@ -65,26 +107,63 @@ export function App() {
     };
   }, []);
 
-  // Manejo de clic en el lienzo (colocación de punto inicial o bocas eléctricas)
-  const handleCanvasClick = (worldX: number, worldY: number) => {
+  // Manejo de clic en el lienzo (colocación de punto inicial o bocas eléctricas con snap a pared)
+  const handleCanvasClick = (worldX: number, worldY: number, snapInfo?: WallPlacementSnap) => {
     if (selectedSymbolId) {
       const symDef = getSymbolById(selectedSymbolId);
       const isCeiling = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
       const isWall =
+        Boolean(snapInfo?.wallId) ||
         selectedSymbolId.includes('enchufe') ||
+        selectedSymbolId.includes('toma') ||
         selectedSymbolId.includes('interruptor') ||
-        selectedSymbolId.includes('tablero');
+        selectedSymbolId.includes('llave') ||
+        selectedSymbolId.includes('tablero') ||
+        selectedSymbolId.includes('aplique');
+
+      // Buscar si el punto cae dentro de algún ambiente cerrado
+      const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+      const containingSpace = project.spaces.find((space) => {
+        const poly = resolveSpacePolygon(space, verticesMap);
+        return poly.length >= 3 && isPointInPolygon({ x: worldX, y: worldY }, poly);
+      });
+
+      const ceilingH = containingSpace ? containingSpace.ceilingHeight : 2.70;
+      const count = project.electricalElements.filter((e) => e.symbolId === selectedSymbolId).length + 1;
+      const baseLabel = symDef?.label?.split(' ')[0] || 'Boca';
+      const label = `${baseLabel} ${count}`;
+
+      // Estimación de potencia según norma AEA
+      const powerW =
+        selectedSymbolId.includes('toma') || selectedSymbolId.includes('enchufe')
+          ? 2200
+          : selectedSymbolId.includes('techo')
+          ? 150
+          : selectedSymbolId.includes('aplique')
+          ? 100
+          : 0;
 
       addElectricalElement({
         id: `el-${Date.now()}`,
         symbolId: selectedSymbolId,
         levelId: project.activeLevelId,
-        spaceId: project.spaces[0]?.id || 'espacio-principal',
+        spaceId: containingSpace?.id || project.spaces[0]?.id || 'espacio-principal',
         placement: isCeiling ? 'ceiling' : isWall ? 'wall' : 'floor',
-        x: worldX,
-        y: worldY,
-        heightZ: isCeiling ? 2.70 : selectedSymbolId.includes('enchufe') ? 0.30 : 1.20,
-        label: symDef?.label?.substring(0, 4) || 'Boca'
+        x: Number(worldX.toFixed(3)),
+        y: Number(worldY.toFixed(3)),
+        heightZ: isCeiling ? ceilingH : selectedSymbolId.includes('enchufe') || selectedSymbolId.includes('toma') ? 0.30 : 1.20,
+        wallId: snapInfo?.wallId || null,
+        wallOffset: snapInfo?.wallOffset,
+        rotation: snapInfo?.rotationDeg ?? 0,
+        side: snapInfo?.side,
+        status: 'proyectado',
+        powerW,
+        phases: 1,
+        isPanel:
+          selectedSymbolId.includes('tablero') ||
+          selectedSymbolId.includes('tp') ||
+          selectedSymbolId.includes('ts'),
+        label
       });
 
       setSelectedSymbolId(null);
@@ -129,6 +208,7 @@ export function App() {
           <BimCanvas
             currentDirectionDeg={effectiveAngleDeg}
             previewDistanceM={previewDist}
+            selectedSymbolId={selectedSymbolId}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {

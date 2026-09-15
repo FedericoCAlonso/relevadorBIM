@@ -8,6 +8,7 @@
 
 import React, { useState } from 'react';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory } from '../../../models/electrical/symbolsLib';
+import { AeaSymbolIcon } from './AeaSymbolIcon';
 import { Zap } from 'lucide-react';
 
 interface SymbolPaletteProps {
@@ -75,9 +76,11 @@ export const SymbolPalette: React.FC<SymbolPaletteProps> = ({
                 }`}
                 title={sym.label}
               >
-                <div
-                  className="w-7 h-7 flex items-center justify-center text-slate-700"
-                  dangerouslySetInnerHTML={{ __html: sym.svgContent }}
+                <AeaSymbolIcon
+                  symbolId={sym.id}
+                  size={28}
+                  color={isSelected ? '#2563eb' : '#334155'}
+                  isSelected={isSelected}
                 />
                 <span className="text-[9px] font-medium text-slate-600 mt-1 truncate w-full">
                   {sym.label}
