@@ -22,6 +22,7 @@ import { ElectricalElementModal } from './views/components/electrical/Electrical
 import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
+import { AEA_CALCULATION_CONSTANTS } from './models/electrical/electricalStandards';
 
 export function App() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -153,11 +154,11 @@ export function App() {
       // Estimación de potencia según norma AEA
       const powerW =
         selectedSymbolId.includes('toma') || selectedSymbolId.includes('enchufe')
-          ? 2200
+          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_TOMA_W
           : selectedSymbolId.includes('techo')
-          ? 150
+          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_CENTRO_LUZ_W
           : selectedSymbolId.includes('aplique')
-          ? 100
+          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_APLIQUE_W
           : 0;
 
       // Inferir circuito sugerido según el tipo de boca (Norma AEA)

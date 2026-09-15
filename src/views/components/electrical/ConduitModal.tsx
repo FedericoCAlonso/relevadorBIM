@@ -1,21 +1,14 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * VISTA: ConduitModal.tsx
- * Modal de Configuración Técnica Integral de Tramo de Cañería.
- * Conductos, Conductores, Materiales, Circuitos y Verificación AEA <=35%.
+ * VISTA: ConduitModal.tsx (Patrón Estricto MVVM)
+ * Vista declarativa para inspección y configuración de tramos de cañerías.
+ * Delega toda la lógica técnica, catálogos y cálculos al useElectricalViewModel.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import React from 'react';
-import type {
-  Conduit,
-  ConduitMaterial,
-  CableStandard,
-  ConductorLine,
-  ConductorRole
-} from '../../../models/electrical/ElectricalModel';
-import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { calculateConduitOccupancyFactor, getConduitLengthBreakdown } from '../../../models/electrical/calculations';
+import type { Conduit, CableStandard, ConductorRole } from '../../../models/electrical/ElectricalModel';
+import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import {
   X,
@@ -31,129 +24,29 @@ interface ConduitModalProps {
   onClose: () => void;
 }
 
-const MATERIAL_OPTIONS: Array<{ id: ConduitMaterial; label: string; desc: string }> = [
-  { id: 'hierro_semipesado_rs', label: '1. Caño Hierro Semipesado RS', desc: 'Acero semipesado según IRAM-IAS U 500-2604 (Norma AEA losas y embutido)' },
-  { id: 'hierro_liviano_rl', label: '2. Hierro Liviano RL', desc: 'Acero liviano con costura para canalizaciones embutidas' },
-  { id: 'pvc_rigido_metrico', label: '3. Caño PVC Rígido (métrico)', desc: 'Termoplástico rígido aislante curvable en caliente' },
-  { id: 'corrugado_blanco_pvc', label: '4. Corrugado Blanco PVC', desc: '⚠️ Liviano económico. No apto para losas bajo AEA 90364' },
-  { id: 'bandeja_perforada_20', label: '5. Bandeja Perforada de 20', desc: 'Chapa de acero perforada ancho 200 mm' }
-];
-
-const DIAMETER_OPTIONS = [
-  { mm: 16, inch: '5/8"' },
-  { mm: 19, inch: '3/4"' },
-  { mm: 22, inch: '7/8"' },
-  { mm: 25, inch: '1"' },
-  { mm: 32, inch: '1 1/4"' },
-  { mm: 38, inch: '1 1/2"' }
-];
-
-const CABLE_STANDARDS: Array<{ id: CableStandard; label: string; desc: string }> = [
-  { id: 'IRAM_NM_247_3', label: 'IRAM NM 247-3 (Unipolar PVC)', desc: 'Antiflama 450/750V estándar' },
-  { id: 'IRAM_62267_LSOH', label: 'IRAM 62267 (Libre Halógenos)', desc: 'Baja emisión humos tóxicos LSOH' },
-  { id: 'IRAM_2178_SUB', label: 'IRAM 2178 (Subterráneo / Sintenax)', desc: 'Aislación XLPE / Intemperie 1kV' },
-  { id: 'IRAM_NM_247_5', label: 'IRAM NM 247-5 (Tipo Taller)', desc: 'Vaina redonda flexible' }
-];
-
 export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onClose }) => {
-  const { project, updateConduit, deleteConduit, setSelectedEntity } = useProjectStore();
+  const {
+    conduitFromElement,
+    conduitToElement,
+    conduitBreakdown,
+    conduitOccupancy,
+    circuits,
+    catalogs,
+    setConduitProperties,
+    applyConduitPreset,
+    addConductorToConduit,
+    updateConduitConductor,
+    removeConductorFromConduit,
+    removeConduit
+  } = useElectricalViewModel();
 
   if (!isOpen || !conduit) return null;
 
-  const elFrom = project.electricalElements.find((e) => e.id === conduit.fromElementId);
-  const elTo = project.electricalElements.find((e) => e.id === conduit.toElementId);
-  const symFrom = elFrom ? getSymbolById(elFrom.symbolId) : null;
-  const symTo = elTo ? getSymbolById(elTo.symbolId) : null;
+  const symFrom = conduitFromElement ? getSymbolById(conduitFromElement.symbolId) : null;
+  const symTo = conduitToElement ? getSymbolById(conduitToElement.symbolId) : null;
 
-  const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
-  const lengthBreakdown =
-    elFrom && elTo
-      ? getConduitLengthBreakdown({ fromElement: elFrom, toElement: elTo, levelsMap, isOrthogonalRouting: true })
-      : null;
-  const autoLengthM = lengthBreakdown ? lengthBreakdown.totalLengthM : 2.5;
+  const autoLengthM = conduitBreakdown ? conduitBreakdown.totalLengthM : 2.5;
   const effectiveLengthM = conduit.manualLengthM || autoLengthM;
-
-  // Factor de ocupación AEA
-  const occupancy = calculateConduitOccupancyFactor({
-    conduitDiameterMM: conduit.diameterMM,
-    conductors: conduit.conductors
-  });
-
-  // Presets de conductores reglamentarios
-  const applyPreset = (preset: '2x1.5_PE' | '2x2.5_PE' | '2x4.0_PE' | '3x2.5_PE' | '3x4.0_N_PE') => {
-    let conds: ConductorLine[] = [];
-    switch (preset) {
-      case '2x1.5_PE':
-        conds = [
-          { role: 'fase', sectionMM2: 1.5, color: '#92400e' },
-          { role: 'neutro', sectionMM2: 1.5, color: '#0284c7' },
-          { role: 'pe', sectionMM2: 1.5, color: '#16a34a' }
-        ];
-        break;
-      case '2x2.5_PE':
-        conds = [
-          { role: 'fase', sectionMM2: 2.5, color: '#92400e' },
-          { role: 'neutro', sectionMM2: 2.5, color: '#0284c7' },
-          { role: 'pe', sectionMM2: 2.5, color: '#16a34a' }
-        ];
-        break;
-      case '2x4.0_PE':
-        conds = [
-          { role: 'fase', sectionMM2: 4.0, color: '#92400e' },
-          { role: 'neutro', sectionMM2: 4.0, color: '#0284c7' },
-          { role: 'pe', sectionMM2: 2.5, color: '#16a34a' }
-        ];
-        break;
-      case '3x2.5_PE':
-        conds = [
-          { role: 'fase', sectionMM2: 2.5, color: '#92400e' },
-          { role: 'neutro', sectionMM2: 2.5, color: '#0284c7' },
-          { role: 'retorno', sectionMM2: 1.5, color: '#64748b', reference: 'a' },
-          { role: 'pe', sectionMM2: 2.5, color: '#16a34a' }
-        ];
-        break;
-      case '3x4.0_N_PE':
-        conds = [
-          { role: 'fase_r', sectionMM2: 4.0, color: '#92400e' },
-          { role: 'fase_s', sectionMM2: 4.0, color: '#0f172a' },
-          { role: 'fase_t', sectionMM2: 4.0, color: '#dc2626' },
-          { role: 'neutro', sectionMM2: 4.0, color: '#0284c7' },
-          { role: 'pe', sectionMM2: 2.5, color: '#16a34a' }
-        ];
-        break;
-    }
-    updateConduit(conduit.id, { conductors: conds });
-  };
-
-  // Agregar conductor individual
-  const addConductor = (role: ConductorRole, defaultSection: number) => {
-    let color = '#92400e';
-    if (role === 'neutro') color = '#0284c7';
-    if (role === 'pe') color = '#16a34a';
-    if (role === 'retorno') color = '#64748b';
-
-    const newConds = [
-      ...conduit.conductors,
-      {
-        role,
-        sectionMM2: defaultSection,
-        color,
-        reference: role === 'retorno' ? 'a' : undefined
-      }
-    ];
-    updateConduit(conduit.id, { conductors: newConds });
-  };
-
-  const removeConductor = (idx: number) => {
-    const newConds = conduit.conductors.filter((_, i) => i !== idx);
-    updateConduit(conduit.id, { conductors: newConds });
-  };
-
-  const updateConductorItem = (idx: number, patch: Partial<ConductorLine>) => {
-    const newConds = [...conduit.conductors];
-    newConds[idx] = { ...newConds[idx], ...patch };
-    updateConduit(conduit.id, { conductors: newConds });
-  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-in fade-in duration-150">
@@ -169,7 +62,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                 Configurar Tramo de Cañería
               </h3>
               <p className="text-[11px] text-slate-500">
-                {elFrom?.label || symFrom?.label || 'Boca A'} ➔ {elTo?.label || symTo?.label || 'Boca B'}
+                {conduitFromElement?.label || symFrom?.label || 'Boca A'} ➔ {conduitToElement?.label || symTo?.label || 'Boca B'}
               </p>
             </div>
           </div>
@@ -184,53 +77,53 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
         {/* Cuerpo Scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
-          {/* 1. Verificación AEA en tiempo real (Banner superior de seguridad) */}
-          <div
-            className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
-              occupancy.isCompliant
-                ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-                : 'bg-red-50/90 border-red-300 text-red-950'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {occupancy.isCompliant ? (
-                <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
-              ) : (
-                <AlertTriangle size={20} className="text-red-600 flex-shrink-0 animate-bounce" />
-              )}
-              <div>
-                <div className="font-bold text-xs">
-                  {occupancy.isCompliant
-                    ? `Factor de Llenado Reglamentario AEA: ${occupancy.occupancyPercent}% (Máx 35%)`
-                    : `⚠️ CAÑERÍA SATURADA: ${occupancy.occupancyPercent}% supera el 35% AEA`}
-                </div>
-                <div className="text-[11px] opacity-80">
-                  {occupancy.isCompliant
-                    ? `Sección interna útil adecuada para ${conduit.conductors.length} conductores.`
-                    : `Reglamento AEA 90364-771: Se requiere aumentar diámetro a Ø${
-                        conduit.diameterMM < 22 ? '22' : conduit.diameterMM < 25 ? '25' : '32'
-                      } mm.`}
+          {/* 1. Verificación AEA en tiempo real */}
+          {conduitOccupancy && (
+            <div
+              className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                conduitOccupancy.isCompliant
+                  ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                  : 'bg-red-50/90 border-red-300 text-red-950'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                {conduitOccupancy.isCompliant ? (
+                  <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
+                ) : (
+                  <AlertTriangle size={20} className="text-red-600 flex-shrink-0 animate-bounce" />
+                )}
+                <div>
+                  <div className="font-bold text-xs">
+                    {conduitOccupancy.isCompliant
+                      ? `Factor de Llenado AEA: ${conduitOccupancy.occupancyPercent}% (Máx ${conduitOccupancy.maxAllowedPercent}%)`
+                      : `⚠️ CAÑERÍA SATURADA: ${conduitOccupancy.occupancyPercent}% supera el ${conduitOccupancy.maxAllowedPercent}% AEA`}
+                  </div>
+                  <div className="text-[11px] opacity-80">
+                    {conduitOccupancy.isCompliant
+                      ? `Sección interna útil adecuada para ${conduit.conductors.length} conductores.`
+                      : `Reglamento AEA 90364-771: Aumentar diámetro comercial.`}
+                  </div>
                 </div>
               </div>
+              <div className="text-right font-mono font-bold text-sm">
+                <span className={conduitOccupancy.isCompliant ? 'text-emerald-700' : 'text-red-700'}>
+                  {conduitOccupancy.occupancyPercent}%
+                </span>
+              </div>
             </div>
-            <div className="text-right font-mono font-bold text-sm">
-              <span className={occupancy.isCompliant ? 'text-emerald-700' : 'text-red-700'}>
-                {occupancy.occupancyPercent}%
-              </span>
-            </div>
-          </div>
+          )}
 
-          {/* 2. Diámetro Exterior Nominal */}
+          {/* 2. Diámetro Exterior Comercial (Desde Catálogo del Modelo) */}
           <div>
             <label className="block font-bold text-slate-700 mb-1">Diámetro Exterior Comercial:</label>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-              {DIAMETER_OPTIONS.map((d) => {
+              {catalogs.diameters.map((d) => {
                 const isSelected = conduit.diameterMM === d.mm;
                 return (
                   <button
                     key={d.mm}
                     type="button"
-                    onClick={() => updateConduit(conduit.id, { diameterMM: d.mm })}
+                    onClick={() => setConduitProperties(conduit.id, { diameterMM: d.mm })}
                     className={`py-2 px-1 rounded-xl border text-center transition-all ${
                       isSelected
                         ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-sm'
@@ -239,7 +132,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                   >
                     <div className="font-mono text-xs font-bold leading-tight">Ø{d.mm}</div>
                     <div className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
-                      {d.inch}
+                      {d.inches}
                     </div>
                   </button>
                 );
@@ -247,17 +140,17 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           </div>
 
-          {/* 3. Tipo de Conducto / Material */}
+          {/* 3. Tipo de Conducto / Material (Desde Catálogo del Modelo) */}
           <div>
             <label className="block font-bold text-slate-700 mb-1">Tipo de Conducto (Material):</label>
             <div className="space-y-1.5">
-              {MATERIAL_OPTIONS.map((mat) => {
-                const isSelected = (conduit.material || 'hierro_semipesado_rs') === mat.id;
+              {catalogs.materials.map((mat) => {
+                const isSelected = (conduit.material || catalogs.materials[0].id) === mat.id;
                 return (
                   <button
                     key={mat.id}
                     type="button"
-                    onClick={() => updateConduit(conduit.id, { material: mat.id })}
+                    onClick={() => setConduitProperties(conduit.id, { material: mat.id })}
                     className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
                       isSelected
                         ? 'bg-blue-50/80 border-blue-400 shadow-xs'
@@ -268,7 +161,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                       <div className={`font-bold text-xs ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
                         {mat.label}
                       </div>
-                      <div className="text-[10px] text-slate-500">{mat.desc}</div>
+                      <div className="text-[10px] text-slate-500">{mat.description}</div>
                     </div>
                     {isSelected && <span className="text-blue-600 font-bold text-xs">✓ Activo</span>}
                   </button>
@@ -277,21 +170,21 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           </div>
 
-          {/* 4. Norma / Tipo de Cable */}
+          {/* 4. Norma / Tipo de Cable (Desde Catálogo del Modelo) */}
           <div>
             <label className="block font-bold text-slate-700 mb-1">Tipo / Norma de Conductor:</label>
             <select
-              value={conduit.defaultCableStandard || 'IRAM_NM_247_3'}
+              value={conduit.defaultCableStandard || catalogs.cableStandards[0].id}
               onChange={(e) =>
-                updateConduit(conduit.id, {
+                setConduitProperties(conduit.id, {
                   defaultCableStandard: e.target.value as CableStandard
                 })
               }
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
             >
-              {CABLE_STANDARDS.map((cs) => (
+              {catalogs.cableStandards.map((cs) => (
                 <option key={cs.id} value={cs.id}>
-                  {cs.label} — {cs.desc}
+                  {cs.label} — {cs.description}
                 </option>
               ))}
             </select>
@@ -304,14 +197,14 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               <select
                 value={conduit.circuitId || ''}
                 onChange={(e) =>
-                  updateConduit(conduit.id, {
+                  setConduitProperties(conduit.id, {
                     circuitId: e.target.value ? e.target.value : null
                   })
                 }
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
               >
                 <option value="">(Sin circuito asignado)</option>
-                {project.circuits.map((c) => (
+                {circuits.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.type})
                   </option>
@@ -332,7 +225,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                   value={effectiveLengthM.toFixed(2)}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
-                    updateConduit(conduit.id, { manualLengthM: isNaN(val) ? undefined : val });
+                    setConduitProperties(conduit.id, { manualLengthM: isNaN(val) ? undefined : val });
                   }}
                   className="w-20 bg-transparent font-mono font-bold text-blue-900 outline-none text-right"
                 />
@@ -340,7 +233,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                 {conduit.manualLengthM && (
                   <button
                     type="button"
-                    onClick={() => updateConduit(conduit.id, { manualLengthM: undefined })}
+                    onClick={() => setConduitProperties(conduit.id, { manualLengthM: undefined })}
                     className="text-[10px] text-blue-600 underline ml-auto"
                     title="Restaurar cálculo 3D automático"
                   >
@@ -351,32 +244,32 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           </div>
 
-          {/* Desglose Reglamentario de Medición (Trayectoria Ortogonal + Desnivel Z) */}
-          {lengthBreakdown && (
+          {/* Desglose Métrico Reglamentario (Planta Ortogonal + Desnivel Z) */}
+          {conduitBreakdown && (
             <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-blue-950">
                 <span>Desglose Métrico Reglamentario (Norma AEA 90364-771):</span>
-                <span className="font-mono text-blue-800">{lengthBreakdown.totalLengthM.toFixed(2)} m</span>
+                <span className="font-mono text-blue-800">{conduitBreakdown.totalLengthM.toFixed(2)} m</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px] font-mono">
                 <div className="bg-white p-2 rounded-xl border border-blue-100">
                   <span className="text-[10px] text-slate-400 block font-sans">1. Planta Ortogonal (dx+dy):</span>
-                  <strong className="text-slate-900">{lengthBreakdown.distPlantaOrthogonal.toFixed(2)} m</strong>
+                  <strong className="text-slate-900">{conduitBreakdown.distPlantaOrthogonal.toFixed(2)} m</strong>
                   <span className="text-[9px] text-slate-400 block font-sans">
-                    dx:{lengthBreakdown.dx}m + dy:{lengthBreakdown.dy}m
+                    dx:{conduitBreakdown.dx}m + dy:{conduitBreakdown.dy}m
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-xl border border-blue-100">
                   <span className="text-[10px] text-slate-400 block font-sans">2. Desnivel Z (|Δh|):</span>
-                  <strong className="text-slate-900">{lengthBreakdown.dzLocal.toFixed(2)} m</strong>
+                  <strong className="text-slate-900">{conduitBreakdown.dzLocal.toFixed(2)} m</strong>
                   <span className="text-[9px] text-slate-400 block font-sans">
-                    z1:{elFrom?.heightZ.toFixed(2)}m ➔ z2:{elTo?.heightZ.toFixed(2)}m
+                    z1:{conduitFromElement?.heightZ.toFixed(2)}m ➔ z2:{conduitToElement?.heightZ.toFixed(2)}m
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-xl border border-blue-100 col-span-2 sm:col-span-1">
                   <span className="text-[10px] text-slate-400 block font-sans">3. Curvas & Desperdicio:</span>
                   <strong className="text-slate-900">
-                    {(lengthBreakdown.totalLengthM - (lengthBreakdown.distPlantaOrthogonal + lengthBreakdown.dzLocal + lengthBreakdown.dzNiveles)).toFixed(2)} m
+                    {(conduitBreakdown.totalLengthM - (conduitBreakdown.distPlantaOrthogonal + conduitBreakdown.dzLocal + conduitBreakdown.dzNiveles)).toFixed(2)} m
                   </strong>
                   <span className="text-[9px] text-slate-400 block font-sans">+10% reglamentario AEA</span>
                 </div>
@@ -384,52 +277,23 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           )}
 
-          {/* 6. Presets Rápidos de Conductores */}
+          {/* 6. Presets Rápidos de Conductores (Desde Catálogo del Modelo) */}
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
             <div className="flex items-center justify-between mb-2">
               <label className="font-bold text-slate-700">Llenado Rápido Reglamentario (Presets AEA):</label>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => applyPreset('2x1.5_PE')}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
-              >
-                <div className="font-bold text-slate-800">2x1.5 + PE</div>
-                <div className="text-[10px] text-slate-400">Iluminación (IUG)</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset('2x2.5_PE')}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
-              >
-                <div className="font-bold text-slate-800">2x2.5 + PE</div>
-                <div className="text-[10px] text-slate-400">Tomacorrientes (TUG)</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset('2x4.0_PE')}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
-              >
-                <div className="font-bold text-slate-800">2x4.0 + PE</div>
-                <div className="text-[10px] text-slate-400">Tomas Esp. (TUE/AA)</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset('3x2.5_PE')}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
-              >
-                <div className="font-bold text-slate-800">3x2.5 + PE</div>
-                <div className="text-[10px] text-slate-400">Retorno + Línea</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyPreset('3x4.0_N_PE')}
-                className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors col-span-2 sm:col-span-1"
-              >
-                <div className="font-bold text-slate-800">3x4.0 + N + PE</div>
-                <div className="text-[10px] text-slate-400">Línea Trifásica</div>
-              </button>
+              {catalogs.conductorPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyConduitPreset(conduit.id, preset.id)}
+                  className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
+                >
+                  <div className="font-bold text-slate-800">{preset.label}</div>
+                  <div className="text-[10px] text-slate-400">{preset.subtitle}</div>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -442,28 +306,28 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => addConductor('fase', 2.5)}
+                  onClick={() => addConductorToConduit(conduit.id, 'fase', 2.5)}
                   className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-bold"
                 >
                   + Fase
                 </button>
                 <button
                   type="button"
-                  onClick={() => addConductor('neutro', 2.5)}
+                  onClick={() => addConductorToConduit(conduit.id, 'neutro', 2.5)}
                   className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-300 rounded-lg text-[10px] font-bold"
                 >
                   + Neutro
                 </button>
                 <button
                   type="button"
-                  onClick={() => addConductor('pe', 2.5)}
+                  onClick={() => addConductorToConduit(conduit.id, 'pe', 2.5)}
                   className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[10px] font-bold"
                 >
                   + Tierra
                 </button>
                 <button
                   type="button"
-                  onClick={() => addConductor('retorno', 1.5)}
+                  onClick={() => addConductorToConduit(conduit.id, 'retorno', 1.5)}
                   className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-[10px] font-bold"
                 >
                   + Retorno
@@ -492,11 +356,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                         value={c.role}
                         onChange={(e) => {
                           const role = e.target.value as ConductorRole;
-                          let color = '#92400e';
-                          if (role === 'neutro') color = '#0284c7';
-                          if (role === 'pe') color = '#16a34a';
-                          if (role === 'retorno') color = '#64748b';
-                          updateConductorItem(idx, { role, color });
+                          updateConduitConductor(conduit.id, idx, { role });
                         }}
                         className="bg-transparent font-bold text-xs text-slate-800 focus:outline-none"
                       >
@@ -519,7 +379,9 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                           type="text"
                           maxLength={2}
                           value={c.reference || 'a'}
-                          onChange={(e) => updateConductorItem(idx, { reference: e.target.value })}
+                          onChange={(e) =>
+                            updateConduitConductor(conduit.id, idx, { reference: e.target.value })
+                          }
                           className="w-8 px-1 py-0.5 bg-white border border-slate-300 rounded text-center font-mono font-bold uppercase text-xs"
                         />
                       </div>
@@ -530,7 +392,9 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                       <select
                         value={c.sectionMM2}
                         onChange={(e) =>
-                          updateConductorItem(idx, { sectionMM2: parseFloat(e.target.value) })
+                          updateConduitConductor(conduit.id, idx, {
+                            sectionMM2: parseFloat(e.target.value)
+                          })
                         }
                         className="px-2 py-1 bg-white border border-slate-300 rounded-lg font-mono font-bold text-xs text-blue-900"
                       >
@@ -545,7 +409,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                     {/* Eliminar */}
                     <button
                       type="button"
-                      onClick={() => removeConductor(idx)}
+                      onClick={() => removeConductorFromConduit(conduit.id, idx)}
                       className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
                       title="Quitar conductor"
                     >
@@ -563,7 +427,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             <input
               type="text"
               value={conduit.notes || ''}
-              onChange={(e) => updateConduit(conduit.id, { notes: e.target.value })}
+              onChange={(e) => setConduitProperties(conduit.id, { notes: e.target.value })}
               placeholder="Ej: Embutido en losa de hormigón armado, caja de paso intermedia..."
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-normal focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
             />
@@ -575,8 +439,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
           <button
             type="button"
             onClick={() => {
-              deleteConduit(conduit.id);
-              setSelectedEntity(null);
+              removeConduit(conduit.id);
               onClose();
             }}
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-2xl font-bold transition-colors"

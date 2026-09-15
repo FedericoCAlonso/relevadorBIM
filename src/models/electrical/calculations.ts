@@ -8,9 +8,10 @@
 
 import type { ElectricalElement, ConductorLine } from './ElectricalModel';
 import type { Level } from '../architecture/Level';
+import { AEA_CALCULATION_CONSTANTS } from './electricalStandards';
 
 /** Conductividad del cobre comercial en m / (Ohm * mm²) a 20°C */
-export const CONDUCTIVIDAD_COBRE = 56.0;
+export const CONDUCTIVIDAD_COBRE = AEA_CALCULATION_CONSTANTS.COPPER_CONDUCTIVITY_M_OHM_MM2;
 
 /**
  * Calcula la longitud 3D real de una cañería entre dos bocas eléctricas.
@@ -23,7 +24,7 @@ export interface ConduitLengthBreakdown {
   distPlantaOrthogonal: number; // dx + dy
   dzLocal: number;              // |z1 - z2|
   dzNiveles: number;           // si atraviesa losas entre niveles
-  totalLengthM: number;        // (dx + dy + dzLocal + dzNiveles) * 1.10
+  totalLengthM: number;        // (dx + dy + dzLocal + dzNiveles) * factor curvas
 }
 
 export function getConduitLengthBreakdown(params: {
@@ -53,7 +54,7 @@ export function getConduitLengthBreakdown(params: {
   }
 
   const rawSum = distPlantaOrthogonal + dzLocal + dzNiveles;
-  const totalLengthM = Number((rawSum * 1.10).toFixed(2));
+  const totalLengthM = Number((rawSum * AEA_CALCULATION_CONSTANTS.CONDUIT_CURVE_MARGIN_FACTOR).toFixed(2));
 
   return {
     dx: Number(dx.toFixed(2)),
@@ -91,9 +92,9 @@ export function calculateVoltageDropPercent(params: {
     currentA,
     lengthM,
     sectionMM2,
-    voltageV = 220,
+    voltageV = AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
     isThreePhase = false,
-    cosPhi = 0.9
+    cosPhi = AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_FACTOR_COS_PHI
   } = params;
 
   if (sectionMM2 <= 0 || voltageV <= 0) {
@@ -106,7 +107,7 @@ export function calculateVoltageDropPercent(params: {
   const deltaVPercent = (deltaVVolts / voltageV) * 100;
 
   // Límite reglamentario AEA: 3% para circuitos terminales de iluminación, 5% tomas
-  const isCompliant = deltaVPercent <= 3.0;
+  const isCompliant = deltaVPercent <= AEA_CALCULATION_CONSTANTS.MAX_VOLTAGE_DROP_LIGHTING_PERCENT;
 
   return {
     deltaVVolts: Number(deltaVVolts.toFixed(2)),
@@ -148,7 +149,7 @@ export function calculateConduitOccupancyFactor(params: {
   }
 
   const occupancyPercent = conduitArea > 0 ? (totalCablesArea / conduitArea) * 100 : 0;
-  const maxAllowedPercent = 35.0;
+  const maxAllowedPercent = AEA_CALCULATION_CONSTANTS.MAX_CONDUIT_OCCUPANCY_PERCENT;
 
   return {
     occupancyPercent: Number(occupancyPercent.toFixed(1)),

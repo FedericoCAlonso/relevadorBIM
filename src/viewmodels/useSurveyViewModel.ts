@@ -11,6 +11,11 @@ import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
 import { getWallAngleDeg } from '../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
+import {
+  DEFAULT_CONDUIT_MATERIAL,
+  DEFAULT_CONDUIT_DIAMETER_MM,
+  AEA_CONDUCTOR_COLORS
+} from '../models/electrical/electricalStandards';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
 
@@ -167,13 +172,13 @@ export function useSurveyViewModel() {
             toElementId: elementId,
             fromLevelId: project.activeLevelId,
             toLevelId: project.activeLevelId,
-            diameterMM: 19,
-            material: 'hierro_semipesado_rs',
+            diameterMM: DEFAULT_CONDUIT_DIAMETER_MM,
+            material: DEFAULT_CONDUIT_MATERIAL,
             isVerticalRiser: false,
             conductors: [
-              { role: 'fase', sectionMM2: wireSec, color: '#8B4513' },
-              { role: 'neutro', sectionMM2: wireSec, color: '#1E90FF' },
-              { role: 'pe', sectionMM2: wireSec, color: '#32CD32' }
+              { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
+              { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },
+              { role: 'pe', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.pe }
             ]
           });
           setPendingConduitStartId(null);
