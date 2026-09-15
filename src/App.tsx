@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * VISTA PRINCIPAL: App.tsx
  * Ensamblador de Vistas del Relevador BIM 2D y Red Eléctrica AEA 90364.
- * Arquitectura MVVM desacoplada con lienzo CAD y controles de obra.
+ * Flujo de Relevamiento Directo por Puntos de Referencia y Rumbo Ortogonal.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -19,69 +19,57 @@ import { getSymbolById } from './models/electrical/symbolsLib';
 export function App() {
   const {
     project,
-    activeSpaceId,
     setSelectedEntity,
-    createInitialRoom,
-    addOpening,
     addElectricalElement
   } = useProjectStore();
 
   const {
-    activeTool,
-    setActiveTool,
+    currentDirection,
+    setCurrentDirection,
+    currentDistanceInput,
+    setCurrentDistanceInput,
     selectedSymbolId,
     setSelectedSymbolId,
+    isConnectingConduit,
+    setIsConnectingConduit,
+    commitWallFromAnchor,
     handleElectricalElementClick
   } = useSurveyViewModel();
 
-  const [showInitialRoomModal, setShowInitialRoomModal] = useState(false);
   const [showComputoModal, setShowComputoModal] = useState(false);
+  const [showTeeModal, setShowTeeModal] = useState(false);
+  const [showOpeningModal, setShowOpeningModal] = useState(false);
 
-  // Inicializar con un ambiente demostrativo si el proyecto está en blanco
+  // Escuchar eventos de apertura de modales de acción contextual
   useEffect(() => {
-    if (project.walls.length === 0) {
-      createInitialRoom({
-        name: 'Living Comedor',
-        width: 4.50,
-        length: 5.00,
-        wallThickness: 0.15
-      });
-    }
+    const handleOpenTee = () => setShowTeeModal(true);
+    const handleOpenOpening = () => setShowOpeningModal(true);
+
+    window.addEventListener('open-tee-modal', handleOpenTee);
+    window.addEventListener('open-opening-modal', handleOpenOpening);
+
+    return () => {
+      window.removeEventListener('open-tee-modal', handleOpenTee);
+      window.removeEventListener('open-opening-modal', handleOpenOpening);
+    };
   }, []);
 
-  // Agregar una puerta por defecto sobre el muro este una vez creado el ambiente
-  useEffect(() => {
-    if (project.walls.length === 4 && project.openings.length === 0) {
-      const eastWall = project.walls[1]; // Muro lateral derecho
-      if (eastWall) {
-        addOpening({
-          id: `open-${Date.now()}`,
-          wallId: eastWall.id,
-          type: 'door',
-          width: 0.80,
-          height: 2.05,
-          sill: 0.0,
-          distanceAlongWall: 1.20,
-          swing: 'left_in',
-          label: 'P1'
-        });
-      }
-    }
-  }, [project.walls.length]);
-
-  // Manejo de clic sobre el lienzo
+  // Manejo de clic sobre el lienzo (colocación de punto inicial o bocas eléctricas)
   const handleCanvasClick = (worldX: number, worldY: number) => {
-    // Si hay un símbolo seleccionado en la paleta, colocarlo en esa coordenada
+    // Si hay un símbolo eléctrico seleccionado en la paleta, colocarlo
     if (selectedSymbolId) {
       const symDef = getSymbolById(selectedSymbolId);
       const isCeiling = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
-      const isWall = selectedSymbolId.includes('enchufe') || selectedSymbolId.includes('interruptor') || selectedSymbolId.includes('tablero');
+      const isWall =
+        selectedSymbolId.includes('enchufe') ||
+        selectedSymbolId.includes('interruptor') ||
+        selectedSymbolId.includes('tablero');
 
       addElectricalElement({
         id: `el-${Date.now()}`,
         symbolId: selectedSymbolId,
         levelId: project.activeLevelId,
-        spaceId: activeSpaceId || project.spaces[0]?.id || 'default-space',
+        spaceId: project.spaces[0]?.id || 'espacio-principal',
         placement: isCeiling ? 'ceiling' : isWall ? 'wall' : 'floor',
         x: worldX,
         y: worldY,
@@ -89,24 +77,38 @@ export function App() {
         label: symDef?.label?.substring(0, 4) || 'Boca'
       });
 
-      // Resetear símbolo para permitir selección normal
       setSelectedSymbolId(null);
+      return;
+    }
+
+    // Si el proyecto no tiene paredes, el primer clic establece el punto cero inicial
+    if (project.vertices.length === 0) {
+      // Inicia un muro desde la coordenada clickeada
+      commitWallFromAnchor();
     } else {
       setSelectedEntity(null);
     }
   };
 
+  const previewDist = parseFloat(currentDistanceInput) || 3.50;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-100 flex flex-col font-sans">
-      {/* 1. Barra de Herramientas y Distanciómetro Láser */}
+      {/* 1. Barra de Rumbo Ortogonal y Medición Láser */}
       <QuickMeasureBar
-        onAddRoomClick={() => setShowInitialRoomModal(true)}
+        currentDirection={currentDirection}
+        onSelectDirection={setCurrentDirection}
+        currentDistance={currentDistanceInput}
+        onChangeDistance={setCurrentDistanceInput}
+        onCommitWall={() => commitWallFromAnchor()}
         onViewComputoClick={() => setShowComputoModal(true)}
       />
 
-      {/* 2. Lienzo Gráfico CAD BIM 2D */}
+      {/* 2. Lienzo Gráfico CAD BIM 2D con Snaps y Rayo Láser */}
       <main className="flex-1 w-full h-full">
         <BimCanvas
+          currentDirectionDeg={currentDirection}
+          previewDistanceM={previewDist}
           onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
           onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
           onSpaceClick={(spaceId) => setSelectedEntity({ type: 'space', id: spaceId })}
@@ -115,27 +117,24 @@ export function App() {
         />
       </main>
 
-      {/* 3. Diálogos Contextuales de Relevamiento (Acople por Jamba, Empalme en T) */}
+      {/* 3. Acciones Contextuales de Paredes (Empalme en T, Abertura) */}
       <SurveyActionSheets
-        showInitialRoomModal={showInitialRoomModal}
-        onCloseInitialRoomModal={() => setShowInitialRoomModal(false)}
+        showTeeModal={showTeeModal}
+        onCloseTeeModal={() => setShowTeeModal(false)}
+        showOpeningModal={showOpeningModal}
+        onCloseOpeningModal={() => setShowOpeningModal(false)}
       />
 
       {/* 4. Paleta de Símbolos AEA 90364 */}
       <SymbolPalette
         selectedSymbolId={selectedSymbolId}
         onSelectSymbol={setSelectedSymbolId}
-        isConnectingConduit={activeTool === 'connect_conduit'}
-        onToggleConnectConduit={() =>
-          setActiveTool(activeTool === 'connect_conduit' ? 'select' : 'connect_conduit')
-        }
+        isConnectingConduit={isConnectingConduit}
+        onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
       />
 
-      {/* 5. Modal de Cómputo Métrico / Cotizador IEBA */}
-      <ComputoModal
-        isOpen={showComputoModal}
-        onClose={() => setShowComputoModal(false)}
-      />
+      {/* 5. Cómputo Métrico / Cotizador IEBA */}
+      <ComputoModal isOpen={showComputoModal} onClose={() => setShowComputoModal(false)} />
     </div>
   );
 }

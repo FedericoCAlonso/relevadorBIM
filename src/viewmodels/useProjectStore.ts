@@ -2,75 +2,85 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * VIEWMODEL: useProjectStore.ts
  * Estado Global del Proyecto BIM y Operaciones CRUD de Arquitectura e Instalación.
- * Patrón MVVM: Expone estado observable y comandos a la vista.
+ * Basado en Relevamiento por Puntos de Referencia Físicos (Vértices, Caras, Jambas).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { create } from 'zustand';
 import type { BuildingProject } from '../models/architecture/BuildingProject';
 import { createEmptyProject } from '../models/architecture/BuildingProject';
-import type { Opening } from '../models/architecture/Opening';
+import type { Wall, WallVertex, Vector2D } from '../models/architecture/Wall';
+import { getWallVector, getWallLength, getWallLeftNormal } from '../models/architecture/Wall';
+import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { ElectricalElement, Conduit } from '../models/electrical/ElectricalModel';
-import { solveRectangularSpace, solveSpaceFromDoorJamb, solveTeeWallBranch } from '../models/surveying/RelativeSolver';
 
 export interface SelectedEntity {
-  type: 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit';
+  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit';
   id: string;
 }
 
 interface ProjectStoreState {
   project: BuildingProject;
   selectedEntity: SelectedEntity | null;
-  activeSpaceId: string | null;
+  activeAnchorVertexId: string | null;
 
-  // Acciones de Selección y Navegación
+  // Selección y Navegación
   setSelectedEntity: (entity: SelectedEntity | null) => void;
+  setActiveAnchorVertexId: (vertexId: string | null) => void;
   setActiveLevel: (levelId: string) => void;
-  setActiveSpace: (spaceId: string | null) => void;
 
-  // Acciones de Relevamiento Arquitectónico BIM
-  createInitialRoom: (params: {
-    name: string;
-    width: number;
-    length: number;
-    wallThickness?: number;
-    ceilingHeight?: number;
-  }) => void;
+  // ─── ACCIONES DE RELEVAMIENTO POR REFERENCIA (MURO A MURO) ───────────────
+  
+  /**
+   * Traza una nueva pared a partir de un punto de anclaje (vértice existente o coordenada libre).
+   * Si el extremo final queda a menos de 10 cm de otro vértice existente, se une automáticamente (snap de cierre).
+   */
+  addWallFromAnchor: (params: {
+    startVertexId?: string;
+    startCoord?: Vector2D;
+    lengthM: number;
+    angleDeg: number;       // 0 = Este, 90 = Norte, 180 = Oeste, 270 = Sur (o libre)
+    thickness?: number;     // default 0.15m
+  }) => { wall: Wall; endVertexId: string } | null;
 
-  linkNewRoomFromDoor: (params: {
+  /**
+   * Genera una pared perpendicular (empalme en T) naciendo a cierta distancia
+   * a lo largo de la cara de un muro existente.
+   */
+  addBranchWallFromOffset: (params: {
     hostWallId: string;
-    openingId: string;
-    distanceCornerToJamb: number;
-    whichJamb: 1 | 2;
-    side: 'left' | 'right';
-    newRoomWidth: number;
-    newRoomDepth: number;
-    name: string;
-    category?: any;
-  }) => boolean;
-
-  createTeeWallBranch: (params: {
-    hostWallId: string;
-    offsetFromStart: number;
-    branchLength: number;
-    side: 'left' | 'right';
+    referenceVertexId: string; // Vértice desde el cual se mide el offset
+    offsetM: number;           // Distancia medida desde ese vértice
+    branchLengthM: number;     // Largo de la nueva pared
+    side: 'left' | 'right';    // Lado hacia donde nace la T
     thickness?: number;
-  }) => boolean;
+  }) => Wall | null;
+
+  /**
+   * Inserta una puerta, ventana o vano sobre un muro referenciada a una distancia
+   * medida desde una esquina específica hacia la jamba.
+   */
+  addOpeningReferenced: (params: {
+    hostWallId: string;
+    referenceVertexId: string; // Esquina de referencia
+    offsetToJambM: number;     // Distancia desde la esquina hasta el marco
+    widthM: number;            // Ancho del vano
+    type: OpeningType;
+    swing?: OpeningSwing;
+    label?: string;
+  }) => Opening | null;
 
   updateWallLength: (wallId: string, newLengthM: number) => void;
-  addOpening: (opening: Opening) => void;
-  updateOpening: (openingId: string, updates: Partial<Opening>) => void;
+  deleteWall: (wallId: string) => void;
   deleteOpening: (openingId: string) => void;
 
   // Acciones Electromecánicas
   addElectricalElement: (element: ElectricalElement) => void;
-  updateElectricalElement: (elementId: string, updates: Partial<ElectricalElement>) => void;
   deleteElectricalElement: (elementId: string) => void;
-
   addConduit: (conduit: Conduit) => void;
   deleteConduit: (conduitId: string) => void;
 
-  // Inicialización / Carga
+  // Reset y Carga
   loadProject: (project: BuildingProject) => void;
   resetProject: () => void;
 }
@@ -78,123 +88,210 @@ interface ProjectStoreState {
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   project: createEmptyProject(),
   selectedEntity: null,
-  activeSpaceId: null,
+  activeAnchorVertexId: null,
 
   setSelectedEntity: (entity) => set({ selectedEntity: entity }),
+  setActiveAnchorVertexId: (vertexId) => set({ activeAnchorVertexId: vertexId }),
 
   setActiveLevel: (levelId) =>
     set((state) => ({
       project: { ...state.project, activeLevelId: levelId },
-      selectedEntity: null
+      selectedEntity: null,
+      activeAnchorVertexId: null
     })),
 
-  setActiveSpace: (spaceId) => set({ activeSpaceId: spaceId }),
-
-  createInitialRoom: ({ name, width, length, wallThickness = 0.15, ceilingHeight = 2.70 }) => {
+  addWallFromAnchor: ({
+    startVertexId,
+    startCoord,
+    lengthM,
+    angleDeg,
+    thickness = 0.15
+  }) => {
     const { project } = get();
-    const result = solveRectangularSpace({
-      origin: { x: 2.0, y: 2.0 }, // Margen inicial en el canvas
-      width,
-      length,
-      wallThickness,
-      ceilingHeight,
+    if (lengthM <= 0) return null;
+
+    let vStart: WallVertex | undefined;
+
+    // 1. Determinar vértice de inicio
+    if (startVertexId) {
+      vStart = project.vertices.find((v) => v.id === startVertexId);
+    } else if (startCoord) {
+      vStart = {
+        id: `v-${Date.now()}-start`,
+        x: Number(startCoord.x.toFixed(3)),
+        y: Number(startCoord.y.toFixed(3))
+      };
+    }
+
+    if (!vStart) return null;
+
+    // 2. Calcular coordenada del extremo final usando trigonometría pura
+    const rad = (angleDeg * Math.PI) / 180;
+    const targetEndX = vStart.x + Math.cos(rad) * lengthM;
+    const targetEndY = vStart.y + Math.sin(rad) * lengthM;
+
+    // 3. Snapping magnético: ¿Cierra sobre un vértice existente cercano (tol: 12cm)?
+    const SNAP_TOLERANCE = 0.12;
+    let vEnd = project.vertices.find(
+      (v) => v.id !== vStart?.id && Math.hypot(v.x - targetEndX, v.y - targetEndY) <= SNAP_TOLERANCE
+    );
+
+    const isNewStartVertex = !project.vertices.some((v) => v.id === vStart?.id);
+    const isNewEndVertex = !vEnd;
+
+    if (!vEnd) {
+      vEnd = {
+        id: `v-${Date.now()}-end`,
+        x: Number(targetEndX.toFixed(3)),
+        y: Number(targetEndY.toFixed(3))
+      };
+    }
+
+    // 4. Crear la pared física
+    const newWall: Wall = {
+      id: `w-${Date.now()}`,
       levelId: project.activeLevelId,
-      name,
-      category: 'living',
-      prefixId: `amb-${Date.now()}`
-    });
+      startVertexId: vStart.id,
+      endVertexId: vEnd.id,
+      thickness,
+      height: 2.80
+    };
+
+    const updatedVertices = [...project.vertices];
+    if (isNewStartVertex) updatedVertices.push(vStart);
+    if (isNewEndVertex) updatedVertices.push(vEnd);
 
     set({
       project: {
         ...project,
-        vertices: [...project.vertices, ...result.vertices],
-        walls: [...project.walls, ...result.walls],
-        spaces: [...project.spaces, result.space],
+        vertices: updatedVertices,
+        walls: [...project.walls, newWall],
         meta: { ...project.meta, updatedAt: Date.now() }
       },
-      activeSpaceId: result.space.id
+      // Dejar activo el extremo final como punto de anclaje para encadenar la siguiente pared
+      activeAnchorVertexId: vEnd.id,
+      selectedEntity: { type: 'wall', id: newWall.id }
     });
+
+    return { wall: newWall, endVertexId: vEnd.id };
   },
 
-  linkNewRoomFromDoor: ({
+  addBranchWallFromOffset: ({
     hostWallId,
-    openingId,
-    distanceCornerToJamb,
-    whichJamb,
+    referenceVertexId,
+    offsetM,
+    branchLengthM,
     side,
-    newRoomWidth,
-    newRoomDepth,
-    name,
-    category = 'dormitorio'
+    thickness = 0.15
   }) => {
     const { project } = get();
     const hostWall = project.walls.find((w) => w.id === hostWallId);
-    const opening = project.openings.find((o) => o.id === openingId);
-    if (!hostWall || !opening) return false;
+    if (!hostWall || branchLengthM <= 0) return null;
 
     const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+    const vStart = verticesMap.get(hostWall.startVertexId);
+    const vEnd = verticesMap.get(hostWall.endVertexId);
+    if (!vStart || !vEnd) return null;
 
-    const result = solveSpaceFromDoorJamb({
-      hostWall,
-      opening,
-      verticesMap,
-      distanceCornerToJamb,
-      whichJamb,
-      side,
-      newRoomWidth,
-      newRoomDepth,
-      wallThickness: hostWall.thickness,
-      ceilingHeight: hostWall.height,
+    const wallVec = getWallVector(hostWall, verticesMap);
+    const wallLen = getWallLength(hostWall, verticesMap);
+    if (wallLen === 0) return null;
+
+    // Dirección normalizada del muro
+    const uWall = { x: wallVec.x / wallLen, y: wallVec.y / wallLen };
+    const leftNormal = getWallLeftNormal(hostWall, verticesMap);
+    const uBranch = side === 'left' ? leftNormal : { x: -leftNormal.x, y: -leftNormal.y };
+
+    // Si la referencia es el vértice final, el offset se cuenta desde vEnd hacia vStart
+    const isFromStart = referenceVertexId === hostWall.startVertexId;
+    const rootPoint: Vector2D = isFromStart
+      ? { x: vStart.x + uWall.x * offsetM, y: vStart.y + uWall.y * offsetM }
+      : { x: vEnd.x - uWall.x * offsetM, y: vEnd.y - uWall.y * offsetM };
+
+    const endPoint: Vector2D = {
+      x: rootPoint.x + uBranch.x * branchLengthM,
+      y: rootPoint.y + uBranch.y * branchLengthM
+    };
+
+    const branchRootVertex: WallVertex = {
+      id: `v-tee-root-${Date.now()}`,
+      x: Number(rootPoint.x.toFixed(3)),
+      y: Number(rootPoint.y.toFixed(3))
+    };
+
+    const branchEndVertex: WallVertex = {
+      id: `v-tee-end-${Date.now()}`,
+      x: Number(endPoint.x.toFixed(3)),
+      y: Number(endPoint.y.toFixed(3))
+    };
+
+    const branchWall: Wall = {
+      id: `w-branch-${Date.now()}`,
       levelId: project.activeLevelId,
-      name,
-      category,
-      prefixId: `amb-${Date.now()}`
-    });
-
-    if (!result) return false;
+      startVertexId: branchRootVertex.id,
+      endVertexId: branchEndVertex.id,
+      thickness,
+      height: hostWall.height
+    };
 
     set({
       project: {
         ...project,
-        vertices: [...project.vertices, ...result.vertices],
-        walls: [...project.walls, ...result.walls],
-        spaces: [...project.spaces, result.space],
+        vertices: [...project.vertices, branchRootVertex, branchEndVertex],
+        walls: [...project.walls, branchWall],
         meta: { ...project.meta, updatedAt: Date.now() }
       },
-      activeSpaceId: result.space.id
+      activeAnchorVertexId: branchEndVertex.id,
+      selectedEntity: { type: 'wall', id: branchWall.id }
     });
 
-    return true;
+    return branchWall;
   },
 
-  createTeeWallBranch: ({ hostWallId, offsetFromStart, branchLength, side, thickness }) => {
+  addOpeningReferenced: ({
+    hostWallId,
+    referenceVertexId,
+    offsetToJambM,
+    widthM,
+    type,
+    swing = 'left_in',
+    label
+  }) => {
     const { project } = get();
     const hostWall = project.walls.find((w) => w.id === hostWallId);
-    if (!hostWall) return false;
+    if (!hostWall || widthM <= 0) return null;
 
     const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
-    const result = solveTeeWallBranch({
-      hostWall,
-      verticesMap,
-      offsetFromStart,
-      branchLength,
-      side,
-      thickness,
-      levelId: project.activeLevelId
-    });
+    const wallLen = getWallLength(hostWall, verticesMap);
 
-    if (!result) return false;
+    // Calcular la distancia desde startVertex según cuál vértice se tomó como referencia
+    const isFromStart = referenceVertexId === hostWall.startVertexId;
+    const distanceAlongWall = isFromStart
+      ? offsetToJambM
+      : Math.max(0, wallLen - offsetToJambM - widthM);
+
+    const newOpening: Opening = {
+      id: `open-${Date.now()}`,
+      wallId: hostWall.id,
+      type,
+      width: widthM,
+      height: type === 'door' ? 2.05 : 1.10,
+      sill: type === 'door' ? 0.0 : 0.90,
+      distanceAlongWall: Number(distanceAlongWall.toFixed(3)),
+      swing,
+      label: label || (type === 'door' ? 'P' : 'V')
+    };
 
     set({
       project: {
         ...project,
-        vertices: [...project.vertices, result.branchVertex, result.endVertex],
-        walls: [...project.walls, result.branchWall],
+        openings: [...project.openings, newOpening],
         meta: { ...project.meta, updatedAt: Date.now() }
-      }
+      },
+      selectedEntity: { type: 'opening', id: newOpening.id }
     });
 
-    return true;
+    return newOpening;
   },
 
   updateWallLength: (wallId, newLengthM) => {
@@ -211,7 +308,6 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     const currentLen = Math.hypot(currentDx, currentDy);
     if (currentLen === 0) return;
 
-    // Desplaza el vértice final manteniendo el ángulo de dirección
     const ratio = newLengthM / currentLen;
     const newEndX = vStart.x + currentDx * ratio;
     const newEndY = vStart.y + currentDy * ratio;
@@ -229,22 +325,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     });
   },
 
-  addOpening: (opening) =>
+  deleteWall: (wallId) =>
     set((state) => ({
       project: {
         ...state.project,
-        openings: [...state.project.openings, opening],
+        walls: state.project.walls.filter((w) => w.id !== wallId),
+        openings: state.project.openings.filter((o) => o.wallId !== wallId),
         meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
-    })),
-
-  updateOpening: (openingId, updates) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        openings: state.project.openings.map((o) => (o.id === openingId ? { ...o, ...updates } : o)),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
+      },
+      selectedEntity: state.selectedEntity?.id === wallId ? null : state.selectedEntity
     })),
 
   deleteOpening: (openingId) =>
@@ -262,17 +351,6 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       project: {
         ...state.project,
         electricalElements: [...state.project.electricalElements, element],
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
-    })),
-
-  updateElectricalElement: (elementId, updates) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        electricalElements: state.project.electricalElements.map((el) =>
-          el.id === elementId ? { ...el, ...updates } : el
-        ),
         meta: { ...state.project.meta, updatedAt: Date.now() }
       }
     })),
@@ -308,7 +386,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       }
     })),
 
-  loadProject: (project) => set({ project, selectedEntity: null, activeSpaceId: null }),
+  loadProject: (project) => set({ project, selectedEntity: null, activeAnchorVertexId: null }),
 
-  resetProject: () => set({ project: createEmptyProject(), selectedEntity: null, activeSpaceId: null })
+  resetProject: () => set({ project: createEmptyProject(), selectedEntity: null, activeAnchorVertexId: null })
 }));

@@ -2,8 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * VISTA: BimCanvas.tsx
  * Lienzo Gráfico 2D Interactivo para Arquitectura BIM y Red Eléctrica AEA.
- * Renderiza muros continuos con espesor, aberturas con giros, cotas métricas
- * y símbolos electromecánicos con soporte para zoom, pan y touch.
+ * Muestra puntos de anclaje (vértices/esquinas), proyección de rayo láser
+ * en tiempo real, muros continuos con espesor y cotas métricas.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -16,6 +16,8 @@ import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } f
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 
 interface BimCanvasProps {
+  currentDirectionDeg: number;
+  previewDistanceM: number;
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -24,6 +26,8 @@ interface BimCanvasProps {
 }
 
 export const BimCanvas: React.FC<BimCanvasProps> = ({
+  currentDirectionDeg,
+  previewDistanceM,
   onWallClick,
   onOpeningClick,
   onSpaceClick,
@@ -31,15 +35,15 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onCanvasClick
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { project, selectedEntity } = useProjectStore();
+  const { project, selectedEntity, activeAnchorVertexId, setActiveAnchorVertexId } = useProjectStore();
 
   // Escala y transformación de vista (Pan y Zoom)
   const [zoom, setZoom] = useState(60); // 60 píxeles = 1 metro
-  const [pan, setPan] = useState({ x: 100, y: 100 });
+  const [pan, setPan] = useState({ x: 150, y: 150 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // Mapas rápidos de acceso por ID
+  // Mapas de acceso rápido
   const verticesMap = useMemo(() => {
     return new Map<string, WallVertex>(project.vertices.map((v) => [v.id, v]));
   }, [project.vertices]);
@@ -48,7 +52,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     return new Map<string, Wall>(project.walls.map((w) => [w.id, w]));
   }, [project.walls]);
 
-  // Manejo de eventos de Mouse / Touch para Pan y Zoom
+  // Vértice activo de anclaje
+  const activeAnchorVertex = activeAnchorVertexId ? verticesMap.get(activeAnchorVertexId) : null;
+
+  // Manejo de Pan y Zoom
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || e.button === 0) {
       setIsDragging(true);
@@ -71,7 +78,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const newZoom = Math.min(Math.max(zoom * zoomFactor, 15), 300);
 
-    // Zoom centrado en la posición del cursor
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -85,7 +91,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
   };
 
-  // Conversión de coordenadas de Pantalla a Mundo en Metros
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (isDragging) return;
     if (containerRef.current && onCanvasClick) {
@@ -98,9 +103,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
   };
 
-  // ─── RENDERIZADORES AUXILIARES ──────────────────────────────────────────
+  // ─── RENDERIZADORES DE CAPAS ─────────────────────────────────────────────
 
-  // 1. Ambientes (Espacios interiores con sombreado y etiquetas)
+  // 1. Ambientes detectados
   const renderedSpaces = useMemo(() => {
     return project.spaces
       .filter((s) => s.levelId === project.activeLevelId)
@@ -111,7 +116,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
         const area = calculatePolygonArea(poly);
         const centroid = calculatePolygonCentroid(poly);
-        const isSelected = selectedEntity?.type === 'space' && selectedEntity.id === space.id;
 
         return (
           <g
@@ -122,26 +126,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
-            <polygon
-              points={pointsStr}
-              fill={isSelected ? 'rgba(59, 130, 246, 0.20)' : 'rgba(243, 244, 246, 0.65)'}
-              stroke="none"
-            />
-            {/* Etiqueta de nombre y área centrada */}
+            <polygon points={pointsStr} fill="rgba(241, 245, 249, 0.75)" stroke="none" />
             <text
               x={centroid.x * zoom}
-              y={centroid.y * zoom - 8}
+              y={centroid.y * zoom - 6}
               textAnchor="middle"
-              className="text-xs font-semibold fill-gray-700 pointer-events-none select-none"
+              className="text-xs font-bold fill-slate-700 pointer-events-none select-none"
               fontSize={12}
             >
               {space.name}
             </text>
             <text
               x={centroid.x * zoom}
-              y={centroid.y * zoom + 10}
+              y={centroid.y * zoom + 12}
               textAnchor="middle"
-              className="text-[10px] font-medium fill-gray-500 pointer-events-none select-none"
+              className="text-[10px] font-mono fill-slate-500 pointer-events-none select-none"
               fontSize={10}
             >
               {area.toFixed(2)} m²
@@ -149,9 +148,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </g>
         );
       });
-  }, [project.spaces, project.activeLevelId, verticesMap, zoom, selectedEntity, onSpaceClick]);
+  }, [project.spaces, project.activeLevelId, verticesMap, zoom, onSpaceClick]);
 
-  // 2. Muros con Espesor Real
+  // 2. Muros físicos con espesor
   const renderedWalls = useMemo(() => {
     return project.walls
       .filter((w) => w.levelId === project.activeLevelId)
@@ -179,11 +178,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           >
             <polygon
               points={pointsStr}
-              fill={isSelected ? '#3b82f6' : '#374151'}
-              stroke={isSelected ? '#1d4ed8' : '#1f2937'}
+              fill={isSelected ? '#2563eb' : '#334155'}
+              stroke={isSelected ? '#1d4ed8' : '#1e293b'}
               strokeWidth={1}
             />
-            {/* Cota de longitud del muro */}
+            {/* Cota métrica al centro del muro */}
             <g transform={`translate(${midX}, ${midY})`}>
               <rect
                 x={-24}
@@ -192,8 +191,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 height={16}
                 rx={4}
                 fill="#ffffff"
-                fillOpacity={0.9}
-                stroke="#d1d5db"
+                fillOpacity={0.95}
+                stroke="#cbd5e1"
                 strokeWidth={0.5}
               />
               <text
@@ -201,7 +200,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 y={2}
                 textAnchor="middle"
                 fontSize={9}
-                className="font-bold fill-gray-800 select-none pointer-events-none"
+                className="font-mono font-bold fill-slate-800 select-none pointer-events-none"
               >
                 {lenM.toFixed(2)} m
               </text>
@@ -211,7 +210,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       });
   }, [project.walls, project.activeLevelId, verticesMap, zoom, selectedEntity, onWallClick]);
 
-  // 3. Aberturas (Puertas, Ventanas y Vanos)
+  // 3. Aberturas
   const renderedOpenings = useMemo(() => {
     return project.openings.map((opening) => {
       const wall = wallsMap.get(opening.wallId);
@@ -239,92 +238,116 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           }}
           className="cursor-pointer"
         >
-          {/* Vano blanco que perfora el muro */}
+          {/* Calado del muro */}
           <rect
             x={0}
             y={(-wall.thickness * zoom) / 2}
             width={wPx}
             height={wall.thickness * zoom}
             fill="#ffffff"
-            stroke={isSelected ? '#3b82f6' : '#9ca3af'}
+            stroke={isSelected ? '#3b82f6' : '#94a3b8'}
             strokeWidth={1.5}
           />
-
           {opening.type === 'door' && (
             <>
-              {/* Hoja de la puerta abierta a 90° */}
-              <line
-                x1={0}
-                y1={0}
-                x2={0}
-                y2={-wPx}
-                stroke={isSelected ? '#2563eb' : '#4b5563'}
-                strokeWidth={2}
-              />
-              {/* Arco de batiente CAD */}
+              <line x1={0} y1={0} x2={0} y2={-wPx} stroke="#475569" strokeWidth={2} />
               <path
                 d={`M 0 ${-wPx} A ${wPx} ${wPx} 0 0 1 ${wPx} 0`}
                 fill="none"
-                stroke={isSelected ? '#3b82f6' : '#9ca3af'}
+                stroke="#94a3b8"
                 strokeWidth={1}
                 strokeDasharray="3 3"
               />
             </>
           )}
-
           {opening.type === 'window' && (
-            <>
-              {/* Tres líneas de carpintería de ventana */}
-              <line x1={0} y1={-2} x2={wPx} y2={-2} stroke="#4b5563" strokeWidth={1} />
-              <line x1={0} y1={2} x2={wPx} y2={2} stroke="#4b5563" strokeWidth={1} />
-              <line x1={0} y1={0} x2={wPx} y2={0} stroke="#3b82f6" strokeWidth={1.5} />
-            </>
+            <line x1={0} y1={0} x2={wPx} y2={0} stroke="#3b82f6" strokeWidth={2} />
           )}
         </g>
       );
     });
   }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, onOpeningClick]);
 
-  // 4. Cañerías Electromecánicas (Conduits)
-  const renderedConduits = useMemo(() => {
-    const elMap = new Map(project.electricalElements.map((e) => [e.id, e]));
-
-    return project.conduits.map((conduit) => {
-      const fromEl = elMap.get(conduit.fromElementId);
-      const toEl = elMap.get(conduit.toElementId);
-      if (!fromEl || !toEl) return null;
-
-      const p1 = { x: fromEl.x * zoom, y: fromEl.y * zoom };
-      const p2 = { x: toEl.x * zoom, y: toEl.y * zoom };
-
-      // Curva suave tipo CAD entre bocas
-      const mx = (p1.x + p2.x) / 2;
-      const my = (p1.y + p2.y) / 2;
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const len = Math.hypot(dx, dy);
-      const curveOffset = Math.min(len * 0.15, 20);
-      const nx = -dy / (len || 1);
-      const ny = dx / (len || 1);
-
-      const cx = mx + nx * curveOffset;
-      const cy = my + ny * curveOffset;
+  // 4. Vértices y Puntos de Anclaje (Snaps)
+  const renderedVertices = useMemo(() => {
+    return project.vertices.map((v) => {
+      const isAnchor = activeAnchorVertexId === v.id;
+      const pxX = v.x * zoom;
+      const pxY = v.y * zoom;
 
       return (
-        <g key={conduit.id}>
-          <path
-            d={`M ${p1.x} ${p1.y} Q ${cx} ${cy} ${p2.x} ${p2.y}`}
-            fill="none"
-            stroke="#b45309"
-            strokeWidth={2}
-            strokeDasharray={conduit.isVerticalRiser ? '4 4' : undefined}
+        <g
+          key={v.id}
+          transform={`translate(${pxX}, ${pxY})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveAnchorVertexId(v.id);
+          }}
+          className="cursor-pointer"
+        >
+          {/* Halo de anclaje activo */}
+          {isAnchor && (
+            <circle
+              r={12}
+              fill="rgba(59, 130, 246, 0.25)"
+              stroke="#3b82f6"
+              strokeWidth={1.5}
+              strokeDasharray="2 2"
+            />
+          )}
+          {/* Punto de esquina */}
+          <circle
+            r={isAnchor ? 6 : 4.5}
+            fill={isAnchor ? '#2563eb' : '#64748b'}
+            stroke="#ffffff"
+            strokeWidth={1.5}
+            className="hover:scale-125 transition-transform"
           />
         </g>
       );
     });
-  }, [project.conduits, project.electricalElements, zoom]);
+  }, [project.vertices, activeAnchorVertexId, zoom, setActiveAnchorVertexId]);
 
-  // 5. Símbolos Eléctricos AEA
+  // 5. Previsualización del rayo láser proyectado desde el anclaje activo
+  const renderedPreviewRay = useMemo(() => {
+    if (!activeAnchorVertex || previewDistanceM <= 0) return null;
+
+    const startX = activeAnchorVertex.x * zoom;
+    const startY = activeAnchorVertex.y * zoom;
+    const rad = (currentDirectionDeg * Math.PI) / 180;
+    const endX = startX + Math.cos(rad) * previewDistanceM * zoom;
+    const endY = startY + Math.sin(rad) * previewDistanceM * zoom;
+
+    return (
+      <g pointerEvents="none">
+        {/* Rayo láser proyectado */}
+        <line
+          x1={startX}
+          y1={startY}
+          x2={endX}
+          y2={endY}
+          stroke="#ef4444"
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          strokeOpacity={0.8}
+        />
+        {/* Marcador de destino */}
+        <circle cx={endX} cy={endY} r={5} fill="#ef4444" fillOpacity={0.7} />
+        {/* Cota flotante del rayo */}
+        <text
+          x={(startX + endX) / 2}
+          y={(startY + endY) / 2 - 8}
+          textAnchor="middle"
+          fontSize={10}
+          className="font-mono font-bold fill-red-600 bg-white"
+        >
+          {previewDistanceM.toFixed(2)} m
+        </text>
+      </g>
+    );
+  }, [activeAnchorVertex, previewDistanceM, currentDirectionDeg, zoom]);
+
+  // 6. Símbolos Eléctricos AEA
   const renderedElements = useMemo(() => {
     return project.electricalElements
       .filter((el) => el.levelId === project.activeLevelId)
@@ -344,9 +367,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
-            {/* Halo de selección */}
             {isSelected && <circle r={16} fill="rgba(59, 130, 246, 0.3)" />}
-
             {symbolDef?.svgContent ? (
               <g
                 transform="scale(0.8) translate(-10, -10)"
@@ -356,14 +377,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             ) : (
               <circle r={8} fill={isSelected ? '#2563eb' : '#dc2626'} stroke="#ffffff" strokeWidth={1.5} />
             )}
-
             {element.label && (
-              <text
-                x={12}
-                y={4}
-                fontSize={9}
-                className="font-bold fill-red-800 select-none pointer-events-none"
-              >
+              <text x={12} y={4} fontSize={9} className="font-bold fill-red-800 select-none pointer-events-none">
                 {element.label}
               </text>
             )}
@@ -381,12 +396,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       onMouseUp={handleMouseUp}
       onWheel={handleWheel}
     >
-      <svg
-        className="w-full h-full"
-        onClick={handleSvgClick}
-      >
+      <svg className="w-full h-full" onClick={handleSvgClick}>
         <defs>
-          {/* Cuadrícula métrica 1m x 1m */}
           <pattern
             id="grid-pattern"
             width={zoom}
@@ -394,31 +405,29 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             patternUnits="userSpaceOnUse"
             patternTransform={`translate(${pan.x % zoom}, ${pan.y % zoom})`}
           >
-            <path
-              d={`M ${zoom} 0 L 0 0 0 ${zoom}`}
-              fill="none"
-              stroke="#e2e8f0"
-              strokeWidth="0.75"
-            />
+            <path d={`M ${zoom} 0 L 0 0 0 ${zoom}`} fill="none" stroke="#e2e8f0" strokeWidth="0.75" />
           </pattern>
         </defs>
 
-        {/* Fondo con retícula */}
         <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
-        {/* Capa principal con zoom y pan */}
         <g transform={`translate(${pan.x}, ${pan.y})`}>
           {renderedSpaces}
           {renderedWalls}
           {renderedOpenings}
-          {renderedConduits}
+          {renderedPreviewRay}
+          {renderedVertices}
           {renderedElements}
         </g>
       </svg>
 
-      {/* Indicador de Escala en Pantalla */}
+      {/* Indicador de ayuda */}
       <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs font-mono text-slate-700 pointer-events-none">
-        Zoom: {Math.round(zoom)} px/m · 1:50 CAD
+        {project.vertices.length === 0
+          ? 'Tocá cualquier parte del lienzo para plantar el punto de inicio'
+          : activeAnchorVertex
+          ? `Anclaje seleccionado: (${activeAnchorVertex.x}, ${activeAnchorVertex.y}) m`
+          : 'Tocá un vértice o esquina para anclar la siguiente pared'}
       </div>
     </div>
   );
