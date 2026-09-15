@@ -44,6 +44,57 @@ export interface BuildingProject {
 export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject {
   const defaultLevel = createDefaultLevel();
   const now = Date.now();
+  const defaultPanelId = `pan-${now}`;
+
+  const defaultPanels: Panel[] = [
+    {
+      id: defaultPanelId,
+      name: 'Tablero Seccional General (TSG)',
+      type: 'principal',
+      levelId: defaultLevel.id,
+      spaceId: 'espacio-principal',
+      elementId: '',
+      isThreePhase: false,
+      mainBreakerAmperageA: 32,
+      mainDifferentialAmperageA: 40
+    }
+  ];
+
+  const defaultCircuits: Circuit[] = [
+    {
+      id: `circ-${now}-1`,
+      panelId: defaultPanelId,
+      name: 'C1 - IUG (Iluminación)',
+      type: 'IUG',
+      voltageV: 220,
+      wireSectionBaseMM2: 1.5,
+      breakerAmperageA: 10,
+      color: '#2563eb', // Azul reglamentario
+      description: 'Circuito de Iluminación Uso General (máx 15 bocas)'
+    },
+    {
+      id: `circ-${now}-2`,
+      panelId: defaultPanelId,
+      name: 'C2 - TUG (Tomacorrientes)',
+      type: 'TUG',
+      voltageV: 220,
+      wireSectionBaseMM2: 2.5,
+      breakerAmperageA: 16,
+      color: '#ea580c', // Naranja reglamentario
+      description: 'Circuito de Tomas de Uso General (máx 15 bocas)'
+    },
+    {
+      id: `circ-${now}-3`,
+      panelId: defaultPanelId,
+      name: 'C3 - TUE (Tomas Especiales)',
+      type: 'TUE',
+      voltageV: 220,
+      wireSectionBaseMM2: 2.5,
+      breakerAmperageA: 20,
+      color: '#16a34a', // Verde reglamentario
+      description: 'Circuito de Tomas de Uso Especial (Climatización / Cocina)'
+    }
+  ];
 
   return {
     meta: {
@@ -62,7 +113,7 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
     verticalPortals: [],
     electricalElements: [],
     conduits: [],
-    circuits: [],
-    panels: []
+    circuits: defaultCircuits,
+    panels: defaultPanels
   };
 }

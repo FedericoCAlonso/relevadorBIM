@@ -315,8 +315,8 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     // Coordenada Y proyectada sobre la cara izquierda (0 + 0.10)
     expect(snapLeft?.snappedPoint.x).toBeCloseTo(2.5, 2);
     expect(snapLeft?.snappedPoint.y).toBeCloseTo(0.10, 2);
-    // Cara izquierda: rotación 0°
-    expect(snapLeft?.rotationDeg).toBe(0);
+    // Cara izquierda: rotación 180° (para proyectar hacia el ambiente +Y fuera del muro)
+    expect(snapLeft?.rotationDeg).toBe(180);
 
     // Cursor en (3.0, -0.30) -> cerca de la cara derecha (-Y) del muro
     const snapRight = calculateWallSnap({ x: 3.0, y: -0.30 }, walls, verticesMap, 0.50);
@@ -325,8 +325,8 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     // Coordenada Y proyectada sobre la cara derecha (0 - 0.10)
     expect(snapRight?.snappedPoint.x).toBeCloseTo(3.0, 2);
     expect(snapRight?.snappedPoint.y).toBeCloseTo(-0.10, 2);
-    // Cara derecha: rotación 180°
-    expect(snapRight?.rotationDeg).toBe(180);
+    // Cara derecha: rotación 0° (para proyectar hacia el ambiente -Y fuera del muro)
+    expect(snapRight?.rotationDeg).toBe(0);
   });
 
   it('debe soportar propiedades enriquecidas de TRAZA en elementos eléctricos (status, powerW, phases, rotation)', () => {
@@ -368,5 +368,77 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     expect(updated.powerW).toBe(3000);
     expect(updated.phases).toBe(3);
     expect(updated.rotation).toBe(90);
+  });
+
+  it('debe gestionar circuitos normalizados, asociar bocas con retornos y verificar ocupación AEA 90364', () => {
+    const store = useProjectStore.getState();
+
+    // Inicializar circuitos estándar si no están
+    store.ensureDefaultCircuits();
+    expect(store.project.circuits.length).toBeGreaterThanOrEqual(3);
+
+    // Añadir nuevo circuito especial
+    const nuevoCircuitoId = 'circ-aire-1';
+    store.addCircuit({
+      id: nuevoCircuitoId,
+      panelId: 'pan-tsg',
+      name: 'C4 - ACU Climatización',
+      type: 'ACU',
+      voltageV: 220,
+      wireSectionBaseMM2: 4.0,
+      breakerAmperageA: 20,
+      color: '#8b5cf6'
+    });
+
+    const circ = useProjectStore.getState().project.circuits.find((c) => c.id === nuevoCircuitoId);
+    expect(circ).toBeDefined();
+    expect(circ?.wireSectionBaseMM2).toBe(4.0);
+
+    // Añadir boca de toma asignada a este circuito
+    store.addElectricalElement({
+      id: 'el-aire-1',
+      symbolId: 'sym-planta-toma',
+      levelId: 'nivel-pb',
+      spaceId: 'space-living',
+      placement: 'wall',
+      x: 2.0,
+      y: 0.10,
+      heightZ: 2.20,
+      circuitId: nuevoCircuitoId,
+      returnRef: 'a',
+      label: 'Toma AC 1'
+    });
+
+    const boca = useProjectStore.getState().project.electricalElements.find((e) => e.id === 'el-aire-1');
+    expect(boca?.circuitId).toBe(nuevoCircuitoId);
+    expect(boca?.returnRef).toBe('a');
+
+    // Crear cañería con conductores
+    store.addConduit({
+      id: 'cond-1',
+      fromElementId: 'el-traza-1',
+      toElementId: 'el-aire-1',
+      fromLevelId: 'nivel-pb',
+      toLevelId: 'nivel-pb',
+      diameterMM: 19,
+      material: 'corrugado_blanco',
+      isVerticalRiser: false,
+      circuitIds: [nuevoCircuitoId],
+      conductors: [
+        { role: 'fase', sectionMM2: 4.0, color: '#8B4513' },
+        { role: 'neutro', sectionMM2: 4.0, color: '#1E90FF' },
+        { role: 'pe', sectionMM2: 2.5, color: '#32CD32' },
+        { role: 'retorno', sectionMM2: 1.5, color: '#ca8a04', reference: 'a' }
+      ]
+    });
+
+    const conduit = useProjectStore.getState().project.conduits[0];
+    expect(conduit).toBeDefined();
+    expect(conduit.conductors.length).toBe(4);
+
+    // Actualizar diámetro y verificar actualización
+    store.updateConduit(conduit.id, { diameterMM: 22 });
+    const updatedConduit = useProjectStore.getState().project.conduits[0];
+    expect(updatedConduit.diameterMM).toBe(22);
   });
 });

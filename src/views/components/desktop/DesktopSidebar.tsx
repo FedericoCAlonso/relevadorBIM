@@ -15,6 +15,8 @@ import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/archi
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
+import { calculateConduitRealLength, calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
+import type { CircuitType, ConduitMaterial, ConductorRole } from '../../../models/electrical/ElectricalModel';
 import {
   Compass,
   Plus,
@@ -29,7 +31,11 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
   Undo2,
-  MapPin
+  MapPin,
+  CheckCircle2,
+  AlertTriangle,
+  Cable,
+  Layers
 } from 'lucide-react';
 
 interface DesktopSidebarProps {
@@ -77,11 +83,25 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     updateSpace,
     autoDetectSpaces,
     updateElectricalElement,
-    deleteElectricalElement
+    deleteElectricalElement,
+    updateConduit,
+    deleteConduit,
+    addCircuit,
+    deleteCircuit,
+    ensureDefaultCircuits
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<'survey' | 'spaces' | 'electrical'>('survey');
   const [activeCategory, setActiveCategory] = useState<string>('iluminacion');
+
+  // Sub-pestaña para gestión eléctrica: "Red y Bocas" o "Circuitos y Tableros"
+  const [electricalSubTab, setElectricalSubTab] = useState<'network' | 'circuits'>('network');
+  const [isCreatingCircuit, setIsCreatingCircuit] = useState(false);
+  const [newCircuitName, setNewCircuitName] = useState('');
+  const [newCircuitType, setNewCircuitType] = useState<CircuitType>('IUG');
+  const [newCircuitWire, setNewCircuitWire] = useState(1.5);
+  const [newCircuitBreaker, setNewCircuitBreaker] = useState(10);
+  const [newCircuitColor, setNewCircuitColor] = useState('#2563eb');
 
   // Cambiar pestaña automáticamente cuando el usuario toca un elemento en el lienzo
   useEffect(() => {
@@ -91,11 +111,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       setActiveTab('survey');
     } else if (selectedEntity?.type === 'electrical_element' || selectedEntity?.type === 'conduit') {
       setActiveTab('electrical');
+      setElectricalSubTab('network');
     }
   }, [selectedEntity]);
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
   const wallsMap = new Map(project.walls.map((w) => [w.id, w]));
+  const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
+
   const selectedWall = selectedEntity?.type === 'wall' ? project.walls.find((w) => w.id === selectedEntity.id) : null;
   const selectedOpening =
     selectedEntity?.type === 'opening' ? project.openings.find((o) => o.id === selectedEntity.id) : null;
@@ -103,6 +126,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     selectedEntity?.type === 'electrical_element'
       ? project.electricalElements.find((e) => e.id === selectedEntity.id)
       : null;
+  const selectedConduit =
+    selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
 
   // Estado rápido para inserción de abertura en escritorio
   const [openingOffset, setOpeningOffset] = useState('0.60');
@@ -1042,310 +1067,805 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           </div>
         )}
 
-        {/* ════════════ PESTAÑA 3: RED ELÉCTRICA AEA ════════════ */}
+        {/* ════════════ PESTAÑA 3: RED ELÉCTRICA AEA (INSPIRADO EN TRAZA) ════════════ */}
         {activeTab === 'electrical' && (
-          <div className="space-y-3">
-            {/* Inspector de Boca Eléctrica Seleccionada */}
-            {selectedElectricalElement && (
-              <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-3.5 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between border-b border-blue-200 pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1 bg-white border border-blue-200 rounded-xl shadow-xs">
-                      <AeaSymbolIcon symbolId={selectedElectricalElement.symbolId} size={30} />
-                    </div>
-                    <div>
-                      <span className="font-bold text-blue-950 block text-xs">
-                        {getSymbolById(selectedElectricalElement.symbolId)?.label || 'Boca Eléctrica'}
-                      </span>
-                      <span className="text-[10px] font-mono text-blue-700">
-                        ({selectedElectricalElement.x.toFixed(2)}, {selectedElectricalElement.y.toFixed(2)}) m
-                      </span>
-                    </div>
-                  </div>
+          <div className="space-y-3.5">
+            {/* Selector de sub-pestaña: Red y Bocas vs Gestor de Circuitos */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setElectricalSubTab('network')}
+                className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  electricalSubTab === 'network'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Zap size={14} className="text-amber-500" />
+                <span>Bocas y Red</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setElectricalSubTab('circuits')}
+                className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  electricalSubTab === 'circuits'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers size={14} className="text-blue-600" />
+                <span>Circuitos ({project.circuits.length})</span>
+              </button>
+            </div>
+
+            {/* ─── SUB-PESTAÑA 1: GESTOR DE CIRCUITOS Y TABLEROS ─── */}
+            {electricalSubTab === 'circuits' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                    Circuitos AEA 90364-771
+                  </span>
                   <button
                     type="button"
-                    onClick={() => deleteElectricalElement(selectedElectricalElement.id)}
-                    className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                    title="Eliminar boca"
+                    onClick={() => {
+                      setIsCreatingCircuit(true);
+                      setNewCircuitName(`C${project.circuits.length + 1} - `);
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs"
                   >
-                    <Trash2 size={15} />
+                    <Plus size={12} />
+                    <span>Nuevo Circuito</span>
                   </button>
                 </div>
 
-                {/* Etiqueta / Designación */}
-                <div>
-                  <label className="text-[10px] font-bold text-blue-900 block mb-1">DESIGNACIÓN / ETIQUETA</label>
-                  <input
-                    type="text"
-                    value={selectedElectricalElement.label || ''}
-                    onChange={(e) =>
-                      updateElectricalElement(selectedElectricalElement.id, { label: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-xl font-bold text-xs text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Ej: IUG 1, TUG 3, Aplique"
-                  />
-                </div>
+                {/* Si no hay circuitos, botón de inicialización rápida */}
+                {project.circuits.length === 0 && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-center space-y-2">
+                    <p className="text-xs font-medium text-blue-900">
+                      No hay circuitos definidos en este proyecto.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={ensureDefaultCircuits}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
+                    >
+                      Crear Circuitos Estándar (IUG, TUG, TUE)
+                    </button>
+                  </div>
+                )}
 
-                {/* Montaje */}
-                <div>
-                  <label className="text-[10px] font-bold text-blue-900 block mb-1">PLANO DE MONTAJE</label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {(['ceiling', 'wall', 'floor'] as const).map((pl) => (
+                {/* Formulario para nuevo circuito */}
+                {isCreatingCircuit && (
+                  <div className="p-3 bg-white border-2 border-blue-500 rounded-2xl space-y-2.5 shadow-md animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b pb-1.5">
+                      <span className="text-xs font-bold text-blue-950">Nuevo Circuito Eléctrico</span>
                       <button
-                        key={pl}
+                        type="button"
+                        onClick={() => setIsCreatingCircuit(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">NOMBRE / DESIGNACIÓN</label>
+                      <input
+                        type="text"
+                        value={newCircuitName}
+                        onChange={(e) => setNewCircuitName(e.target.value)}
+                        placeholder="Ej: C4 - ACU Climatización"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO</label>
+                        <select
+                          value={newCircuitType}
+                          onChange={(e) => setNewCircuitType(e.target.value as CircuitType)}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                        >
+                          <option value="IUG">IUG (Iluminación Uso Gral)</option>
+                          <option value="IUE">IUE (Iluminación Especial)</option>
+                          <option value="TUG">TUG (Tomas Uso Gral)</option>
+                          <option value="TUE">TUE (Tomas Especiales)</option>
+                          <option value="ACU">ACU (Alimentador / Aire)</option>
+                          <option value="FM">FM (Fuerza Motriz)</option>
+                          <option value="OTRO">OTRO</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">SECCIÓN CABLE</label>
+                        <select
+                          value={newCircuitWire}
+                          onChange={(e) => setNewCircuitWire(parseFloat(e.target.value))}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
+                        >
+                          <option value={1.5}>1.5 mm²</option>
+                          <option value={2.5}>2.5 mm²</option>
+                          <option value={4.0}>4.0 mm²</option>
+                          <option value={6.0}>6.0 mm²</option>
+                          <option value={10.0}>10.0 mm²</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TERMOMAGNÉTICA</label>
+                        <select
+                          value={newCircuitBreaker}
+                          onChange={(e) => setNewCircuitBreaker(parseInt(e.target.value, 10))}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
+                        >
+                          <option value={10}>10 A</option>
+                          <option value={16}>16 A</option>
+                          <option value={20}>20 A</option>
+                          <option value={25}>25 A</option>
+                          <option value={32}>32 A</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">COLOR EN PLANO</label>
+                        <div className="flex gap-1 items-center h-8">
+                          {['#2563eb', '#ea580c', '#16a34a', '#8b5cf6', '#dc2626', '#0891b2'].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => setNewCircuitColor(c)}
+                              className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                                newCircuitColor === c ? 'scale-110 border-slate-900 ring-2 ring-blue-300' : 'border-white hover:scale-105'
+                              }`}
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingCircuit(false)}
+                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                      >
+                        Cancelar
+                      </button>
+                      <button
                         type="button"
                         onClick={() => {
-                          const defZ = pl === 'ceiling' ? 2.70 : pl === 'wall' ? 1.20 : 0.05;
-                          updateElectricalElement(selectedElectricalElement.id, {
-                            placement: pl,
-                            heightZ:
-                              selectedElectricalElement.heightZ === 2.70 ||
-                              selectedElectricalElement.heightZ === 1.20 ||
-                              selectedElectricalElement.heightZ === 0.05
-                                ? defZ
-                                : selectedElectricalElement.heightZ
+                          if (!newCircuitName.trim()) return;
+                          addCircuit({
+                            id: `circ-${Date.now()}`,
+                            panelId: project.panels[0]?.id || 'pan-principal',
+                            name: newCircuitName.trim(),
+                            type: newCircuitType,
+                            voltageV: 220,
+                            wireSectionBaseMM2: newCircuitWire,
+                            breakerAmperageA: newCircuitBreaker,
+                            color: newCircuitColor
                           });
+                          setIsCreatingCircuit(false);
+                          setNewCircuitName('');
                         }}
-                        className={`py-1.5 rounded-lg font-semibold text-[10px] border transition-all ${
-                          selectedElectricalElement.placement === pl
-                            ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                            : 'bg-white border-blue-200 text-blue-800 hover:bg-blue-100/50'
-                        }`}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs"
                       >
-                        {pl === 'ceiling' ? 'Cielorraso' : pl === 'wall' ? 'Pared' : 'Piso'}
+                        Guardar Circuito
                       </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Altura Z */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[10px] font-bold text-blue-900">ALTURA SOBRE EL PISO (Z)</label>
-                    <span className="font-mono text-xs font-bold text-blue-950">
-                      {selectedElectricalElement.heightZ.toFixed(2)} m
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step="0.05"
-                      value={selectedElectricalElement.heightZ}
-                      onChange={(e) =>
-                        updateElectricalElement(selectedElectricalElement.id, {
-                          heightZ: parseFloat(e.target.value) || 0
-                        })
-                      }
-                      className="w-20 px-2 py-1 bg-white border border-blue-300 rounded-lg font-mono font-bold text-xs"
-                    />
-                    <div className="flex-1 flex gap-1">
-                      {[0.30, 1.20, 2.20, 2.70].map((hz) => (
-                        <button
-                          key={hz}
-                          type="button"
-                          onClick={() => updateElectricalElement(selectedElectricalElement.id, { heightZ: hz })}
-                          className={`flex-1 py-1 rounded text-[10px] font-mono border ${
-                            Math.abs(selectedElectricalElement.heightZ - hz) < 0.01
-                              ? 'bg-blue-700 text-white border-blue-800 font-bold'
-                              : 'bg-white border-blue-200 text-blue-800 hover:bg-blue-100/60'
-                          }`}
-                        >
-                          {hz.toFixed(2)}m
-                        </button>
-                      ))}
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* ─── PROPIEDADES TRAZA: ESTADO DE RELEVAMIENTO ─── */}
-                <div>
-                  <label className="text-[10px] font-bold text-blue-900 block mb-1">ESTADO DE RELEVAMIENTO (TRAZA)</label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {(
-                      [
-                        { id: 'proyectado', label: 'Proyectado', color: 'bg-blue-600' },
-                        { id: 'existente', label: 'Existente', color: 'bg-emerald-600' },
-                        { id: 'a_reemplazar', label: 'A Reemplazar', color: 'bg-amber-600' }
-                      ] as const
-                    ).map((st) => (
+                {/* Lista de circuitos existentes */}
+                <div className="space-y-2">
+                  {project.circuits.map((circ) => {
+                    const bocasCount = project.electricalElements.filter((e) => e.circuitId === circ.id).length;
+                    const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
+
+                    return (
+                      <div
+                        key={circ.id}
+                        className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl space-y-1.5 shadow-xs transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+                              style={{ backgroundColor: circ.color || '#2563eb' }}
+                            />
+                            <span className="font-bold text-xs text-slate-900">{circ.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteCircuit(circ.id)}
+                            className="text-slate-400 hover:text-red-600 p-1 rounded-lg transition-colors"
+                            title="Eliminar circuito"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono">
+                          <span>
+                            Termomagnética: <strong>{circ.breakerAmperageA || 16}A</strong> · Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            isOverloaded
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {bocasCount} bocas {isOverloaded ? '(>15 AEA)' : ''}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ─── SUB-PESTAÑA 2: INSPECTOR DE ELEMENTO / CAÑERÍA Y RED ─── */}
+            {electricalSubTab === 'network' && (
+              <div className="space-y-3">
+                {/* 1. INSPECTOR DE CAÑERÍA SELECCIONADA */}
+                {selectedConduit && (() => {
+                  const elFrom = project.electricalElements.find((e) => e.id === selectedConduit.fromElementId);
+                  const elTo = project.electricalElements.find((e) => e.id === selectedConduit.toElementId);
+                  const autoLengthM = elFrom && elTo ? calculateConduitRealLength({ fromElement: elFrom, toElement: elTo, levelsMap }) : 0;
+                  const effectiveLengthM = selectedConduit.manualLengthM || autoLengthM;
+                  const occupancy = calculateConduitOccupancyFactor({
+                    conduitDiameterMM: selectedConduit.diameterMM,
+                    conductors: selectedConduit.conductors
+                  });
+
+                  return (
+                    <div className="bg-amber-50/90 border-2 border-amber-400 rounded-2xl p-3.5 space-y-3 shadow-sm animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-amber-500 text-white rounded-xl shadow-xs">
+                            <Cable size={18} />
+                          </div>
+                          <div>
+                            <span className="font-bold text-amber-950 block text-xs">
+                              Cañería: {elFrom?.label || 'Boca 1'} ➔ {elTo?.label || 'Boca 2'}
+                            </span>
+                            <span className="text-[10px] font-mono text-amber-800">
+                              Largo: {effectiveLengthM.toFixed(2)} m {selectedConduit.manualLengthM ? '(Manual)' : '(3D AEA)'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => deleteConduit(selectedConduit.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Eliminar tramo de cañería"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+
+                      {/* Diámetro de Cañería */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-amber-950">DIÁMETRO DEL CAÑO (EXTERIOR)</label>
+                          <span className="font-mono text-xs font-bold text-amber-900">
+                            Ø{selectedConduit.diameterMM} mm
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[19, 22, 25, 32].map((diam) => (
+                            <button
+                              key={diam}
+                              type="button"
+                              onClick={() => updateConduit(selectedConduit.id, { diameterMM: diam })}
+                              className={`py-1.5 rounded-xl font-mono text-xs font-bold border transition-all ${
+                                selectedConduit.diameterMM === diam
+                                  ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                                  : 'bg-white border-amber-200 text-amber-900 hover:bg-amber-100/60'
+                              }`}
+                            >
+                              Ø{diam}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Material de la Cañería */}
+                      <div>
+                        <label className="text-[10px] font-bold text-amber-950 block mb-1">MATERIAL DE LA CAÑERÍA</label>
+                        <select
+                          value={selectedConduit.material}
+                          onChange={(e) => updateConduit(selectedConduit.id, { material: e.target.value as ConduitMaterial })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-semibold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          <option value="corrugado_blanco">Corrugado Blanco (Liviano)</option>
+                          <option value="corrugado_ignifugo">Corrugado Ignífugo (Semipesado)</option>
+                          <option value="cano_rigido_pvc">Caño Rígido PVC</option>
+                          <option value="cano_acero">Caño de Acero Semipesado</option>
+                          <option value="bandeja">Bandeja Portacables</option>
+                        </select>
+                      </div>
+
+                      {/* Factor de Ocupación AEA 90364-771 (Máx 35%) */}
+                      <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-700 flex items-center gap-1">
+                            {occupancy.isCompliant ? (
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                            ) : (
+                              <AlertTriangle size={14} className="text-red-600" />
+                            )}
+                            Ocupación AEA:
+                          </span>
+                          <span className={`font-mono font-bold ${occupancy.isCompliant ? 'text-emerald-700' : 'text-red-700'}`}>
+                            {occupancy.occupancyPercent}% / 35.0%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              occupancy.isCompliant ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
+                            }`}
+                            style={{ width: `${Math.min(100, (occupancy.occupancyPercent / 35) * 100)}%` }}
+                          />
+                        </div>
+                        {!occupancy.isCompliant && (
+                          <p className="text-[10px] font-bold text-red-600">
+                            ⚠️ Cañería saturada según Norma AEA 90364-771. Aumentar a Ø{selectedConduit.diameterMM < 22 ? '22' : '25'}mm.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Asignación de Circuitos que pasan por este tramo */}
+                      <div>
+                        <label className="text-[10px] font-bold text-amber-950 block mb-1">
+                          CIRCUITOS EN ESTE TRAMO (MULTICIRCUITO TRAZA)
+                        </label>
+                        <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                          {project.circuits.map((c) => {
+                            const isIncluded = (selectedConduit.circuitIds || [selectedConduit.circuitId]).includes(c.id);
+                            return (
+                              <label
+                                key={c.id}
+                                className={`flex items-center justify-between p-1.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                                  isIncluded
+                                    ? 'bg-amber-100/70 border-amber-300 text-amber-950 font-bold'
+                                    : 'bg-white border-amber-200/80 text-slate-700 hover:bg-amber-50/50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isIncluded}
+                                    onChange={(e) => {
+                                      const currentIds = selectedConduit.circuitIds || (selectedConduit.circuitId ? [selectedConduit.circuitId] : []);
+                                      let newIds: string[];
+                                      if (e.target.checked) {
+                                        newIds = Array.from(new Set([...currentIds, c.id]));
+                                      } else {
+                                        newIds = currentIds.filter((id) => id !== c.id);
+                                      }
+                                      updateConduit(selectedConduit.id, {
+                                        circuitIds: newIds,
+                                        circuitId: newIds[0] || null
+                                      });
+                                    }}
+                                    className="rounded text-amber-600 focus:ring-amber-500"
+                                  />
+                                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color || '#2563eb' }} />
+                                  <span>{c.name}</span>
+                                </div>
+                                <span className="font-mono text-[10px] text-slate-500">{c.wireSectionBaseMM2}mm²</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Desglose de Conductores en la Cañería */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-amber-950">
+                            CONDUCTORES EN EL TRAMO ({selectedConduit.conductors.length})
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newConds = [...selectedConduit.conductors];
+                              newConds.push({ role: 'retorno', sectionMM2: 1.5, color: '#ca8a04', reference: 'a' });
+                              updateConduit(selectedConduit.id, { conductors: newConds });
+                            }}
+                            className="text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-200/70 px-2 py-0.5 rounded-lg transition-colors"
+                          >
+                            ＋ Añadir Retorno
+                          </button>
+                        </div>
+
+                        <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                          {selectedConduit.conductors.map((cond, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-1.5 p-1.5 bg-white border border-amber-200 rounded-xl text-xs"
+                            >
+                              <select
+                                value={cond.role}
+                                onChange={(e) => {
+                                  const newConds = [...selectedConduit.conductors];
+                                  newConds[idx].role = e.target.value as ConductorRole;
+                                  updateConduit(selectedConduit.id, { conductors: newConds });
+                                }}
+                                className="px-1 py-0.5 bg-slate-50 border rounded text-[11px] font-semibold"
+                              >
+                                <option value="fase">Fase</option>
+                                <option value="neutro">Neutro</option>
+                                <option value="pe">Tierra (PE)</option>
+                                <option value="retorno">Retorno</option>
+                                <option value="comando">Comando</option>
+                              </select>
+
+                              <select
+                                value={cond.sectionMM2}
+                                onChange={(e) => {
+                                  const newConds = [...selectedConduit.conductors];
+                                  newConds[idx].sectionMM2 = parseFloat(e.target.value);
+                                  updateConduit(selectedConduit.id, { conductors: newConds });
+                                }}
+                                className="px-1 py-0.5 bg-slate-50 border rounded text-[11px] font-mono font-bold"
+                              >
+                                <option value={1.5}>1.5 mm²</option>
+                                <option value={2.5}>2.5 mm²</option>
+                                <option value={4.0}>4.0 mm²</option>
+                                <option value={6.0}>6.0 mm²</option>
+                              </select>
+
+                              <input
+                                type="text"
+                                value={cond.reference || ''}
+                                onChange={(e) => {
+                                  const newConds = [...selectedConduit.conductors];
+                                  newConds[idx].reference = e.target.value;
+                                  updateConduit(selectedConduit.id, { conductors: newConds });
+                                }}
+                                placeholder="Ref: a"
+                                className="w-14 px-1 py-0.5 bg-slate-50 border rounded text-[11px] font-mono"
+                                title="Referencia de retorno (ej: a, b)"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newConds = selectedConduit.conductors.filter((_, i) => i !== idx);
+                                  updateConduit(selectedConduit.id, { conductors: newConds });
+                                }}
+                                className="text-slate-400 hover:text-red-600 p-1"
+                                title="Eliminar conductor"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 2. INSPECTOR DE BOCA ELÉCTRICA SELECCIONADA */}
+                {selectedElectricalElement && (
+                  <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-3.5 space-y-3 shadow-sm animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 bg-white border border-blue-200 rounded-xl shadow-xs">
+                          <AeaSymbolIcon symbolId={selectedElectricalElement.symbolId} size={30} />
+                        </div>
+                        <div>
+                          <span className="font-bold text-blue-950 block text-xs">
+                            {getSymbolById(selectedElectricalElement.symbolId)?.label || 'Boca Eléctrica'}
+                          </span>
+                          <span className="text-[10px] font-mono text-blue-700">
+                            ({selectedElectricalElement.x.toFixed(2)}, {selectedElectricalElement.y.toFixed(2)}) m
+                          </span>
+                        </div>
+                      </div>
                       <button
-                        key={st.id}
                         type="button"
-                        onClick={() =>
-                          updateElectricalElement(selectedElectricalElement.id, { status: st.id })
-                        }
-                        className={`py-1.5 rounded-lg font-semibold text-[10px] border transition-all ${
-                          (selectedElectricalElement.status || 'proyectado') === st.id
-                            ? `${st.color} text-white border-transparent shadow-sm`
-                            : 'bg-white border-blue-200 text-blue-900 hover:bg-blue-100/50'
-                        }`}
+                        onClick={() => deleteElectricalElement(selectedElectricalElement.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        title="Eliminar boca"
                       >
-                        {st.label}
+                        <Trash2 size={15} />
                       </button>
-                    ))}
-                  </div>
-                </div>
+                    </div>
 
-                {/* ─── PROPIEDADES TRAZA: POTENCIA ESTIMADA (W) Y FASES ─── */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-blue-900 block mb-1">POTENCIA (W)</label>
-                    <input
-                      type="number"
-                      step="50"
-                      min="0"
-                      value={selectedElectricalElement.powerW ?? 0}
-                      onChange={(e) =>
-                        updateElectricalElement(selectedElectricalElement.id, {
-                          powerW: Math.max(0, parseInt(e.target.value, 10) || 0)
-                        })
-                      }
-                      className="w-full px-2 py-1 bg-white border border-blue-300 rounded-lg font-mono font-bold text-xs text-blue-950"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-blue-900 block mb-1">FASES</label>
-                    <div className="grid grid-cols-2 gap-1">
-                      {([1, 3] as const).map((ph) => (
-                        <button
-                          key={ph}
-                          type="button"
-                          onClick={() =>
-                            updateElectricalElement(selectedElectricalElement.id, { phases: ph })
+                    {/* Circuito Asignado */}
+                    <div>
+                      <label className="text-[10px] font-bold text-blue-900 block mb-1">CIRCUITO ASIGNADO (TRAZA)</label>
+                      <select
+                        value={selectedElectricalElement.circuitId || ''}
+                        onChange={(e) =>
+                          updateElectricalElement(selectedElectricalElement.id, {
+                            circuitId: e.target.value || null
+                          })
+                        }
+                        className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-xl font-bold text-xs text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">— Sin Circuito Asignado —</option>
+                        {project.circuits.map((circ) => (
+                          <option key={circ.id} value={circ.id}>
+                            {circ.name} ({circ.wireSectionBaseMM2}mm²)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Referencia de Retorno (si aplica a llaves o luminarias) */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-blue-900 block mb-1">DESIGNACIÓN / RÓTULO</label>
+                        <input
+                          type="text"
+                          value={selectedElectricalElement.label || ''}
+                          onChange={(e) =>
+                            updateElectricalElement(selectedElectricalElement.id, { label: e.target.value })
                           }
-                          className={`py-1 rounded-lg font-bold text-[10px] border transition-all ${
-                            (selectedElectricalElement.phases ?? 1) === ph
-                              ? 'bg-blue-700 text-white border-blue-800'
-                              : 'bg-white border-blue-200 text-blue-800'
-                          }`}
+                          className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-xl font-bold text-xs text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ej: Toma 1, Centro 2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-blue-900 block mb-1">RETORNO (REF TRAZA)</label>
+                        <input
+                          type="text"
+                          value={selectedElectricalElement.returnRef || ''}
+                          onChange={(e) =>
+                            updateElectricalElement(selectedElectricalElement.id, { returnRef: e.target.value })
+                          }
+                          className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-xl font-mono font-bold text-xs text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ej: a, b"
+                          title="Referencia de retorno para vincular llave de efecto y boca de luz"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Montaje */}
+                    <div>
+                      <label className="text-[10px] font-bold text-blue-900 block mb-1">PLANO DE MONTAJE</label>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(['ceiling', 'wall', 'floor'] as const).map((pl) => (
+                          <button
+                            key={pl}
+                            type="button"
+                            onClick={() => {
+                              const defZ = pl === 'ceiling' ? 2.70 : pl === 'wall' ? 1.20 : 0.05;
+                              updateElectricalElement(selectedElectricalElement.id, {
+                                placement: pl,
+                                heightZ:
+                                  selectedElectricalElement.heightZ === 2.70 ||
+                                  selectedElectricalElement.heightZ === 1.20 ||
+                                  selectedElectricalElement.heightZ === 0.05
+                                    ? defZ
+                                    : selectedElectricalElement.heightZ
+                              });
+                            }}
+                            className={`py-1.5 rounded-lg font-semibold text-[10px] border transition-all ${
+                              selectedElectricalElement.placement === pl
+                                ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
+                                : 'bg-white border-blue-200 text-blue-800 hover:bg-blue-100/50'
+                            }`}
+                          >
+                            {pl === 'ceiling' ? 'Cielorraso' : pl === 'wall' ? 'Pared' : 'Piso'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Altura Z */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-blue-900">ALTURA SOBRE EL PISO (Z)</label>
+                        <span className="font-mono text-xs font-bold text-blue-950">
+                          {selectedElectricalElement.heightZ.toFixed(2)} m
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={selectedElectricalElement.heightZ}
+                          onChange={(e) =>
+                            updateElectricalElement(selectedElectricalElement.id, {
+                              heightZ: parseFloat(e.target.value) || 0
+                            })
+                          }
+                          className="w-20 px-2 py-1 bg-white border border-blue-300 rounded-lg font-mono font-bold text-xs"
+                        />
+                        <div className="flex-1 flex gap-1">
+                          {[0.30, 1.20, 2.20, 2.70].map((hz) => (
+                            <button
+                              key={hz}
+                              type="button"
+                              onClick={() => updateElectricalElement(selectedElectricalElement.id, { heightZ: hz })}
+                              className={`flex-1 py-1 rounded text-[10px] font-mono border ${
+                                Math.abs(selectedElectricalElement.heightZ - hz) < 0.01
+                                  ? 'bg-blue-700 text-white border-blue-800 font-bold'
+                                  : 'bg-white border-blue-200 text-blue-800 hover:bg-blue-100/60'
+                              }`}
+                            >
+                              {hz.toFixed(2)}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ─── ROTACIÓN / GIRO DEL SÍMBOLO ─── */}
+                    <div className="pt-2 border-t border-blue-200/80">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-blue-900">ORIENTACIÓN DEL SÍMBOLO</label>
+                        <span className="font-mono text-xs font-bold text-blue-950">
+                          {Math.round(selectedElectricalElement.rotation || 0)}°
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[-90, -45, 45, 90].map((delta) => (
+                          <button
+                            key={delta}
+                            type="button"
+                            onClick={() => {
+                              const cur = selectedElectricalElement.rotation || 0;
+                              const next = (cur + delta + 360) % 360;
+                              updateElectricalElement(selectedElectricalElement.id, { rotation: next });
+                            }}
+                            className="py-1 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-lg text-[10px] font-mono font-bold text-blue-900"
+                          >
+                            {delta > 0 ? `+${delta}°` : `${delta}°`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Si está adosado a muro: indicación y cambio exacto de cara física */}
+                    {selectedElectricalElement.wallId && (
+                      <div className="pt-2 border-t border-blue-200/80 flex items-center justify-between">
+                        <span className="text-[10px] font-semibold text-blue-800">
+                          Muro: {selectedElectricalElement.side === 'left' ? 'Cara Izquierda' : 'Cara Derecha'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const wall = project.walls.find((w) => w.id === selectedElectricalElement.wallId);
+                            if (!wall) return;
+                            const vStart = verticesMap.get(wall.startVertexId);
+                            const vEnd = verticesMap.get(wall.endVertexId);
+                            if (!vStart || !vEnd) return;
+
+                            const dx = vEnd.x - vStart.x;
+                            const dy = vEnd.y - vStart.y;
+                            const len = Math.hypot(dx, dy);
+                            if (len < 0.001) return;
+
+                            const ux = dx / len;
+                            const uy = dy / len;
+                            const nx = -uy;
+                            const ny = ux;
+
+                            const curSide = selectedElectricalElement.side || 'left';
+                            const newSide: 'left' | 'right' = curSide === 'left' ? 'right' : 'left';
+                            const mult = curSide === 'left' ? -1 : 1;
+                            const newX = selectedElectricalElement.x + mult * wall.thickness * nx;
+                            const newY = selectedElectricalElement.y + mult * wall.thickness * ny;
+                            const curRot = selectedElectricalElement.rotation || 0;
+
+                            updateElectricalElement(selectedElectricalElement.id, {
+                              x: Number(newX.toFixed(3)),
+                              y: Number(newY.toFixed(3)),
+                              side: newSide,
+                              rotation: (curRot + 180) % 360
+                            });
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg text-[10px] font-bold text-blue-900 transition-colors shadow-xs"
                         >
-                          {ph === 1 ? '1F (220V)' : '3F (380V)'}
+                          <ArrowLeftRight size={12} />
+                          <span>Invertir Cara Física</span>
                         </button>
-                      ))}
+                      </div>
+                    )}
+
+                    {/* Estado de relevamiento de TRAZA */}
+                    <div className="pt-2 border-t border-blue-200/80">
+                      <label className="text-[10px] font-bold text-blue-900 block mb-1">ESTADO DE RELEVAMIENTO (TRAZA)</label>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(
+                          [
+                            { id: 'proyectado', label: 'Proyectado', color: 'bg-blue-600' },
+                            { id: 'existente', label: 'Existente', color: 'bg-emerald-600' },
+                            { id: 'a_reemplazar', label: 'A Reemplazar', color: 'bg-amber-600' }
+                          ] as const
+                        ).map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() =>
+                              updateElectricalElement(selectedElectricalElement.id, { status: st.id })
+                            }
+                            className={`py-1.5 rounded-lg font-semibold text-[10px] border transition-all ${
+                              (selectedElectricalElement.status || 'proyectado') === st.id
+                                ? `${st.color} text-white border-transparent shadow-sm`
+                                : 'bg-white border-blue-200 text-blue-900 hover:bg-blue-100/50'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Chips rápidos de potencia */}
-                <div className="flex gap-1 flex-wrap">
-                  {[60, 100, 150, 1500, 2200].map((pw) => (
+                {/* Banner de ayuda si no hay nada seleccionado */}
+                {!selectedElectricalElement && !selectedConduit && (
+                  <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center text-xs text-slate-500">
+                    Tocá una boca o una cañería en el plano para editar sus características, o elegí un símbolo abajo para emplazar.
+                  </div>
+                )}
+
+                {/* Botón para Trazar Cañería */}
+                <button
+                  onClick={onToggleConnectConduit}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
+                    isConnectingConduit
+                      ? 'bg-amber-600 border-amber-700 text-white animate-pulse shadow-md'
+                      : 'bg-amber-50 border-amber-300 text-amber-950 hover:bg-amber-100 shadow-xs'
+                  }`}
+                >
+                  <Zap size={16} className={isConnectingConduit ? 'text-white' : 'text-amber-600'} />
+                  <span>{isConnectingConduit ? 'Tocá 2 bocas en el plano para unirlas' : 'Trazar Cañería entre Bocas'}</span>
+                </button>
+
+                {/* Categorías de símbolos */}
+                <div className="flex gap-1 overflow-x-auto pb-1 border-b border-slate-200 scrollbar-none">
+                  {SYMBOL_CATEGORIES.slice(0, 4).map((cat) => (
                     <button
-                      key={pw}
-                      type="button"
-                      onClick={() => updateElectricalElement(selectedElectricalElement.id, { powerW: pw })}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${
-                        selectedElectricalElement.powerW === pw
-                          ? 'bg-blue-800 text-white border-blue-900 font-bold'
-                          : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-100'
+                      key={cat.id}
+                      onClick={() => setActiveCategory(cat.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap ${
+                        activeCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      {pw}W
+                      {cat.name}
                     </button>
                   ))}
                 </div>
 
-                {/* ─── ROTACIÓN / GIRO DEL SÍMBOLO ─── */}
-                <div className="pt-2 border-t border-blue-200/80">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[10px] font-bold text-blue-900">ORIENTACIÓN DEL SÍMBOLO</label>
-                    <span className="font-mono text-xs font-bold text-blue-950">
-                      {Math.round(selectedElectricalElement.rotation || 0)}°
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1">
-                    {[-90, -45, 45, 90].map((delta) => (
+                {/* Grilla de símbolos AEA puros */}
+                <div className="grid grid-cols-3 gap-2">
+                  {symbols.map((sym) => {
+                    const isSelected = selectedSymbolId === sym.id;
+                    return (
                       <button
-                        key={delta}
-                        type="button"
-                        onClick={() => {
-                          const cur = selectedElectricalElement.rotation || 0;
-                          const next = (cur + delta + 360) % 360;
-                          updateElectricalElement(selectedElectricalElement.id, { rotation: next });
-                        }}
-                        className="py-1 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-lg text-[10px] font-mono font-bold text-blue-900"
+                        key={sym.id}
+                        onClick={() => onSelectSymbol(isSelected ? null : sym.id)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-400 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
                       >
-                        {delta > 0 ? `+${delta}°` : `${delta}°`}
+                        <AeaSymbolIcon symbolId={sym.id} size={28} />
+                        <span className="text-[9px] font-medium text-slate-700 mt-1.5 truncate w-full text-center">
+                          {sym.label}
+                        </span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-
-                {/* Si está adosado a muro: indicación y cambio de cara */}
-                {selectedElectricalElement.wallId && (
-                  <div className="pt-2 border-t border-blue-200/80 flex items-center justify-between">
-                    <span className="text-[10px] font-semibold text-blue-800">
-                      Muro: {selectedElectricalElement.side === 'left' ? 'Cara Izq' : 'Cara Der'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newSide = selectedElectricalElement.side === 'left' ? 'right' : 'left';
-                        const curRot = selectedElectricalElement.rotation || 0;
-                        updateElectricalElement(selectedElectricalElement.id, {
-                          side: newSide,
-                          rotation: (curRot + 180) % 360
-                        });
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg text-[10px] font-bold text-blue-900"
-                    >
-                      <ArrowLeftRight size={11} />
-                      <span>Invertir Cara</span>
-                    </button>
-                  </div>
-                )}
               </div>
             )}
-
-            {/* Trazado de cañería */}
-            <button
-              onClick={onToggleConnectConduit}
-              className={`w-full py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 ${
-                isConnectingConduit
-                  ? 'bg-amber-600 border-amber-700 text-white animate-pulse'
-                  : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
-              }`}
-            >
-              <Zap size={15} />
-              <span>{isConnectingConduit ? 'Tocá 2 bocas en el plano para unirlas' : 'Trazar Cañería'}</span>
-            </button>
-
-            {/* Categorías */}
-            <div className="flex gap-1 overflow-x-auto pb-1 border-b border-slate-200 scrollbar-none">
-              {SYMBOL_CATEGORIES.slice(0, 4).map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap ${
-                    activeCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-
-            {/* Grilla de símbolos AEA */}
-            <div className="grid grid-cols-3 gap-2">
-              {symbols.map((sym) => {
-                const isSelected = selectedSymbolId === sym.id;
-                return (
-                  <button
-                    key={sym.id}
-                    onClick={() => onSelectSymbol(isSelected ? null : sym.id)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-400 shadow-sm'
-                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <AeaSymbolIcon symbolId={sym.id} size={28} />
-                    <span className="text-[9px] font-medium text-slate-700 mt-1.5 truncate w-full text-center">
-                      {sym.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
       </div>

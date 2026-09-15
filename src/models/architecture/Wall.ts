@@ -197,8 +197,8 @@ export function calculateWallSnap(
 
       // Ángulo del muro
       const wallAngleDeg = (Math.atan2(uy, ux) * 180) / Math.PI;
-      // Para que el símbolo se oriente apoyado en la pared y proyectando hacia el ambiente:
-      let rotationDeg = side === 'left' ? wallAngleDeg : wallAngleDeg + 180;
+      // Para que el símbolo se oriente apoyado en la pared y proyectando hacia el ambiente (fuera del muro):
+      let rotationDeg = side === 'left' ? wallAngleDeg + 180 : wallAngleDeg;
       rotationDeg = (rotationDeg % 360 + 360) % 360;
 
       bestResult = {

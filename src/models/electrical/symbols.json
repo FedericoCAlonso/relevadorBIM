@@ -56,7 +56,7 @@
       },
       "uso": "planta",
       "categoria": "iluminacion",
-      "svgContent": "<circle cx=\"0\" cy=\"0\" r=\"0.45\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.06\"/><line x1=\"-0.32\" y1=\"-0.32\" x2=\"0.32\" y2=\"0.32\" stroke=\"currentColor\" stroke-width=\"0.06\"/><line x1=\"0.32\" y1=\"-0.32\" x2=\"-0.32\" y2=\"0.32\" stroke=\"currentColor\" stroke-width=\"0.06\"/><line x1=\"-0.45\" y1=\"0\" x2=\"-0.8\" y2=\"0\" stroke=\"currentColor\" stroke-width=\"0.06\"/>"
+      "svgContent": "<line x1=\"-0.35\" y1=\"0\" x2=\"0.35\" y2=\"0\" stroke=\"currentColor\" stroke-width=\"0.08\"/><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"-0.25\" stroke=\"currentColor\" stroke-width=\"0.06\"/><circle cx=\"0\" cy=\"-0.65\" r=\"0.4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.06\"/><line x1=\"-0.28\" y1=\"-0.93\" x2=\"0.28\" y2=\"-0.37\" stroke=\"currentColor\" stroke-width=\"0.06\"/><line x1=\"0.28\" y1=\"-0.93\" x2=\"-0.28\" y2=\"-0.37\" stroke=\"currentColor\" stroke-width=\"0.06\"/>"
     },
     {
       "id": "sym-planta-toma",
@@ -140,7 +140,7 @@
       },
       "uso": "planta",
       "categoria": "tableros",
-      "svgContent": "<rect x=\"-1.8\" y=\"-0.6\" width=\"3.6\" height=\"1.2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.1\"/><line x1=\"-1.8\" y1=\"-0.6\" x2=\"1.8\" y2=\"0.6\" stroke=\"currentColor\" stroke-width=\"0.07\"/><line x1=\"1.8\" y1=\"-0.6\" x2=\"-1.8\" y2=\"0.6\" stroke=\"currentColor\" stroke-width=\"0.07\"/>"
+      "svgContent": "<rect x=\"-1.5\" y=\"-1.0\" width=\"3.0\" height=\"1.0\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.1\"/><line x1=\"-1.5\" y1=\"-1.0\" x2=\"1.5\" y2=\"0\" stroke=\"currentColor\" stroke-width=\"0.07\"/><line x1=\"1.5\" y1=\"-1.0\" x2=\"-1.5\" y2=\"0\" stroke=\"currentColor\" stroke-width=\"0.07\"/>"
     },
     {
       "id": "sym-planta-ts",
@@ -152,7 +152,7 @@
       },
       "uso": "planta",
       "categoria": "tableros",
-      "svgContent": "<rect x=\"-1.8\" y=\"-0.6\" width=\"3.6\" height=\"1.2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.1\"/><line x1=\"-1.8\" y1=\"-0.6\" x2=\"1.8\" y2=\"0.6\" stroke=\"currentColor\" stroke-width=\"0.07\"/>"
+      "svgContent": "<rect x=\"-1.5\" y=\"-1.0\" width=\"3.0\" height=\"1.0\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"0.1\"/><line x1=\"-1.5\" y1=\"-1.0\" x2=\"1.5\" y2=\"0\" stroke=\"currentColor\" stroke-width=\"0.07\"/>"
     },
     {
       "id": "sym-planta-medidor",

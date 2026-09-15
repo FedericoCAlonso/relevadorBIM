@@ -143,8 +143,17 @@ export function App() {
           ? 100
           : 0;
 
+      // Inferir circuito sugerido según el tipo de boca (Norma AEA)
+      let defaultCircuitId: string | null = null;
+      if (isCeiling || selectedSymbolId.includes('aplique') || selectedSymbolId.includes('llave')) {
+        defaultCircuitId = project.circuits.find((c) => c.type === 'IUG')?.id || null;
+      } else if (selectedSymbolId.includes('toma') || selectedSymbolId.includes('enchufe')) {
+        defaultCircuitId = project.circuits.find((c) => c.type === 'TUG')?.id || null;
+      }
+
+      const newElementId = `el-${Date.now()}`;
       addElectricalElement({
-        id: `el-${Date.now()}`,
+        id: newElementId,
         symbolId: selectedSymbolId,
         levelId: project.activeLevelId,
         spaceId: containingSpace?.id || project.spaces[0]?.id || 'espacio-principal',
@@ -156,6 +165,7 @@ export function App() {
         wallOffset: snapInfo?.wallOffset,
         rotation: snapInfo?.rotationDeg ?? 0,
         side: snapInfo?.side,
+        circuitId: defaultCircuitId,
         status: 'proyectado',
         powerW,
         phases: 1,
@@ -166,6 +176,7 @@ export function App() {
         label
       });
 
+      setSelectedEntity({ type: 'electrical_element', id: newElementId });
       setSelectedSymbolId(null);
       return;
     }

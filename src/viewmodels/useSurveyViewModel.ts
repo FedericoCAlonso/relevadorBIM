@@ -153,8 +153,16 @@ export function useSurveyViewModel() {
         if (!pendingConduitStartId) {
           setPendingConduitStartId(elementId);
         } else if (pendingConduitStartId !== elementId) {
+          const fromEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
+          const toEl = project.electricalElements.find((e) => e.id === elementId);
+          const inheritedCircuitId = fromEl?.circuitId || toEl?.circuitId || project.circuits[0]?.id || null;
+          const circ = project.circuits.find((c) => c.id === inheritedCircuitId);
+          const wireSec = circ?.wireSectionBaseMM2 || 2.5;
+
           addConduit({
             id: `cond-${Date.now()}`,
+            circuitId: inheritedCircuitId,
+            circuitIds: inheritedCircuitId ? [inheritedCircuitId] : [],
             fromElementId: pendingConduitStartId,
             toElementId: elementId,
             fromLevelId: project.activeLevelId,
@@ -163,9 +171,9 @@ export function useSurveyViewModel() {
             material: 'corrugado_blanco',
             isVerticalRiser: false,
             conductors: [
-              { role: 'fase', sectionMM2: 2.5, color: '#8B4513' },
-              { role: 'neutro', sectionMM2: 2.5, color: '#1E90FF' },
-              { role: 'pe', sectionMM2: 2.5, color: '#32CD32' }
+              { role: 'fase', sectionMM2: wireSec, color: '#8B4513' },
+              { role: 'neutro', sectionMM2: wireSec, color: '#1E90FF' },
+              { role: 'pe', sectionMM2: wireSec, color: '#32CD32' }
             ]
           });
           setPendingConduitStartId(null);
@@ -174,7 +182,15 @@ export function useSurveyViewModel() {
         setSelectedEntity({ type: 'electrical_element', id: elementId });
       }
     },
-    [isConnectingConduit, pendingConduitStartId, addConduit, project.activeLevelId, setSelectedEntity]
+    [
+      isConnectingConduit,
+      pendingConduitStartId,
+      addConduit,
+      project.activeLevelId,
+      project.electricalElements,
+      project.circuits,
+      setSelectedEntity
+    ]
   );
 
   return {

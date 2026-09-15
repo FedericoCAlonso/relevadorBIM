@@ -620,6 +620,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const pathD = `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`;
       const isSelected = selectedEntity?.type === 'conduit' && selectedEntity.id === conduit.id;
 
+      // Color del circuito asignado o anaranjado por defecto
+      const assignedCircuitId = conduit.circuitId || conduit.circuitIds?.[0];
+      const circ = assignedCircuitId ? project.circuits.find((c) => c.id === assignedCircuitId) : null;
+      const strokeColor = isSelected ? '#2563eb' : circ?.color || '#ea580c';
+      const labelText = circ
+        ? `${circ.name.split(' ')[0]} · Ø${conduit.diameterMM}mm`
+        : conduit.label || `Ø${conduit.diameterMM}mm`;
+
       return (
         <g
           key={conduit.id}
@@ -627,35 +635,37 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             e.stopPropagation();
             setSelectedEntity({ type: 'conduit', id: conduit.id });
           }}
+          onMouseDown={(e) => e.stopPropagation()}
           className="cursor-pointer group"
         >
           {/* Hit area amplia */}
-          <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} pointerEvents="stroke" />
+          <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
           {/* Cañería en arco estilo unifilar AEA */}
           <path
             d={pathD}
             fill="none"
-            stroke={isSelected ? '#2563eb' : '#ea580c'}
-            strokeWidth={isSelected ? 3 : 2}
+            stroke={strokeColor}
+            strokeWidth={isSelected ? 3.5 : 2.2}
             strokeDasharray={conduit.material.includes('corrugado') ? '6 3' : 'none'}
             strokeLinecap="round"
           />
-          {/* Diámetro de cañería */}
+          {/* Diámetro y circuito de la cañería */}
           <text
             x={midX}
-            y={midY - 4}
+            y={midY - 5}
             textAnchor="middle"
             fontSize={9}
-            className="font-mono font-bold fill-amber-900 pointer-events-none select-none"
+            fill={isSelected ? '#1d4ed8' : strokeColor}
+            className="font-mono font-bold pointer-events-none select-none"
           >
-            Ø{conduit.diameterMM}mm
+            {labelText}
           </text>
         </g>
       );
     });
-  }, [project.conduits, project.activeLevelId, elementsMap, zoom, selectedEntity, setSelectedEntity]);
+  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, setSelectedEntity]);
 
-  // 7. Símbolos Eléctricos AEA con visibilidad absoluta y respaldo de contraste (Halo)
+  // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
   const renderedElements = useMemo(() => {
     return project.electricalElements
       .filter((el) => el.levelId === project.activeLevelId)
@@ -663,6 +673,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const pxX = element.x * zoom;
         const pxY = element.y * zoom;
         const isSelected = selectedEntity?.type === 'electrical_element' && selectedEntity.id === element.id;
+        const circ = element.circuitId ? project.circuits.find((c) => c.id === element.circuitId) : null;
+        const circuitLabel = circ ? circ.name.split(' ')[0] : undefined;
 
         return (
           <g
@@ -672,6 +684,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               e.stopPropagation();
               onElectricalElementClick?.(element.id);
             }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
             className="cursor-pointer"
           >
             <AeaCanvasSymbol
@@ -679,12 +694,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               zoom={zoom}
               isSelected={isSelected}
               elementLabel={element.label}
+              circuitLabel={circuitLabel}
+              returnRef={element.returnRef}
               rotationDeg={element.rotation || 0}
             />
           </g>
         );
       });
-  }, [project.electricalElements, project.activeLevelId, zoom, selectedEntity, onElectricalElementClick]);
+  }, [project.electricalElements, project.circuits, project.activeLevelId, zoom, selectedEntity, onElectricalElementClick]);
 
   return (
     <div

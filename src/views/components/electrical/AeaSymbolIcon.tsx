@@ -81,8 +81,10 @@ export const AeaCanvasSymbol: React.FC<{
   zoom: number;
   isSelected?: boolean;
   elementLabel?: string;
+  circuitLabel?: string;
+  returnRef?: string;
   rotationDeg?: number;
-}> = ({ symbolId, isSelected = false, elementLabel, rotationDeg = 0 }) => {
+}> = ({ symbolId, isSelected = false, elementLabel, circuitLabel, returnRef, rotationDeg = 0 }) => {
   const symDef = getSymbolById(symbolId);
   const isTablero =
     symbolId.includes('tablero') ||
@@ -96,6 +98,21 @@ export const AeaCanvasSymbol: React.FC<{
 
   return (
     <g className="select-none" transform={`rotate(${rotationDeg})`}>
+      {/* Área de impacto invisible para selección táctil y de ratón al 100% de efectividad */}
+      <circle r={22} fill="transparent" pointerEvents="all" className="cursor-pointer" />
+
+      {/* Halo de selección punteado discreto para feedback visual claro */}
+      {isSelected && (
+        <circle
+          r={20}
+          fill="rgba(37, 99, 235, 0.12)"
+          stroke="#2563eb"
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
+          pointerEvents="none"
+        />
+      )}
+
       {/* Geometría PURA del símbolo AEA: sin fondos, sin recuadros ni enmarcados */}
       <g
         transform={`scale(${scale})`}
@@ -104,6 +121,7 @@ export const AeaCanvasSymbol: React.FC<{
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
+        pointerEvents="none"
       >
         {symDef?.svgContent ? (
           <g dangerouslySetInnerHTML={{ __html: symDef.svgContent }} color={strokeColor} />
@@ -113,17 +131,19 @@ export const AeaCanvasSymbol: React.FC<{
       </g>
 
       {/* Rótulo identificatorio puro (sin cajas ni fondos), compensado para mantenerse horizontal */}
-      {elementLabel && (
+      {(elementLabel || circuitLabel || returnRef) && (
         <text
-          x={14}
+          x={16}
           y={4}
-          transform={`rotate(${-rotationDeg}, 14, 4)`}
+          transform={`rotate(${-rotationDeg}, 16, 4)`}
           fontSize={10}
           fontWeight="bold"
           fill={isSelected ? '#2563eb' : '#334155'}
           className="font-mono select-none pointer-events-none"
         >
-          {elementLabel}
+          {circuitLabel ? `[${circuitLabel}] ` : ''}
+          {elementLabel || ''}
+          {returnRef ? ` (${returnRef})` : ''}
         </text>
       )}
     </g>

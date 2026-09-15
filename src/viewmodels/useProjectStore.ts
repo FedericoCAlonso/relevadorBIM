@@ -14,7 +14,7 @@ import { getWallVector, getWallLength, getWallLeftNormal } from '../models/archi
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { Space } from '../models/architecture/Space';
 import { findEnclosedCycles } from '../models/architecture/Space';
-import type { ElectricalElement, Conduit } from '../models/electrical/ElectricalModel';
+import type { ElectricalElement, Conduit, Circuit, Panel } from '../models/electrical/ElectricalModel';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -91,12 +91,20 @@ interface ProjectStoreState {
   updateSpace: (spaceId: string, updates: Partial<Space>) => void;
   autoDetectSpaces: () => void;
 
-  // Acciones Electromecánicas
+  // Acciones Electromecánicas y Circuitos (Norma AEA 90364-771)
   addElectricalElement: (element: ElectricalElement) => void;
   updateElectricalElement: (elementId: string, updates: Partial<ElectricalElement>) => void;
   deleteElectricalElement: (elementId: string) => void;
   addConduit: (conduit: Conduit) => void;
+  updateConduit: (conduitId: string, updates: Partial<Conduit>) => void;
   deleteConduit: (conduitId: string) => void;
+  addCircuit: (circuit: Circuit) => void;
+  updateCircuit: (circuitId: string, updates: Partial<Circuit>) => void;
+  deleteCircuit: (circuitId: string) => void;
+  addPanel: (panel: Panel) => void;
+  updatePanel: (panelId: string, updates: Partial<Panel>) => void;
+  deletePanel: (panelId: string) => void;
+  ensureDefaultCircuits: () => void;
 
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
@@ -587,14 +595,156 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       }
     })),
 
+  updateConduit: (conduitId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        conduits: state.project.conduits.map((c) =>
+          c.id === conduitId ? { ...c, ...updates } : c
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
   deleteConduit: (conduitId) =>
     set((state) => ({
       project: {
         ...state.project,
         conduits: state.project.conduits.filter((c) => c.id !== conduitId),
         meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: state.selectedEntity?.id === conduitId ? null : state.selectedEntity
+    })),
+
+  addCircuit: (circuit) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        circuits: [...state.project.circuits, circuit],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
       }
     })),
+
+  updateCircuit: (circuitId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        circuits: state.project.circuits.map((c) =>
+          c.id === circuitId ? { ...c, ...updates } : c
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  deleteCircuit: (circuitId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        circuits: state.project.circuits.filter((c) => c.id !== circuitId),
+        electricalElements: state.project.electricalElements.map((el) =>
+          el.circuitId === circuitId ? { ...el, circuitId: null } : el
+        ),
+        conduits: state.project.conduits.map((cd) =>
+          cd.circuitId === circuitId
+            ? { ...cd, circuitId: null, circuitIds: cd.circuitIds?.filter((id) => id !== circuitId) }
+            : cd
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  addPanel: (panel) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        panels: [...state.project.panels, panel],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  updatePanel: (panelId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        panels: state.project.panels.map((p) =>
+          p.id === panelId ? { ...p, ...updates } : p
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  deletePanel: (panelId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        panels: state.project.panels.filter((p) => p.id !== panelId),
+        circuits: state.project.circuits.filter((c) => c.panelId !== panelId),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  ensureDefaultCircuits: () => {
+    const { project } = get();
+    if (project.circuits.length > 0) return;
+    const now = Date.now();
+    const panelId = project.panels[0]?.id || `pan-${now}`;
+    const newPanels: Panel[] = project.panels.length > 0 ? project.panels : [
+      {
+        id: panelId,
+        name: 'Tablero Seccional General (TSG)',
+        type: 'principal',
+        levelId: project.activeLevelId,
+        spaceId: 'espacio-principal',
+        elementId: '',
+        isThreePhase: false,
+        mainBreakerAmperageA: 32,
+        mainDifferentialAmperageA: 40
+      }
+    ];
+    const newCircuits: Circuit[] = [
+      {
+        id: `circ-${now}-1`,
+        panelId,
+        name: 'C1 - IUG (Iluminación)',
+        type: 'IUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 1.5,
+        breakerAmperageA: 10,
+        color: '#2563eb',
+        description: 'Circuito de Iluminación Uso General'
+      },
+      {
+        id: `circ-${now}-2`,
+        panelId,
+        name: 'C2 - TUG (Tomacorrientes)',
+        type: 'TUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 2.5,
+        breakerAmperageA: 16,
+        color: '#ea580c',
+        description: 'Circuito de Tomas de Uso General'
+      },
+      {
+        id: `circ-${now}-3`,
+        panelId,
+        name: 'C3 - TUE (Tomas Especiales)',
+        type: 'TUE',
+        voltageV: 220,
+        wireSectionBaseMM2: 2.5,
+        breakerAmperageA: 20,
+        color: '#16a34a',
+        description: 'Circuito de Tomas de Uso Especial'
+      }
+    ];
+    set((state) => ({
+      project: {
+        ...state.project,
+        panels: newPanels,
+        circuits: newCircuits,
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    }));
+  },
 
   loadProject: (project) => set({ project, selectedEntity: null, activeAnchorVertexId: null }),
 

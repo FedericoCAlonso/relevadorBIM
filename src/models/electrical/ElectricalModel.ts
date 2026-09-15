@@ -22,6 +22,7 @@ export interface ConductorLine {
   role: ConductorRole;
   sectionMM2: number;      // Sección en mm² (ej: 1.5, 2.5, 4.0, 6.0)
   color?: string;          // Marrón, celeste, verde-amarillo, etc.
+  reference?: string;      // Referencia o letra de retorno (ej: "a", "b", "c")
 }
 
 export interface ElectricalElement {
@@ -37,6 +38,7 @@ export interface ElectricalElement {
   wallOffset?: number;     // Distancia a lo largo de la pared en metros
   circuitId?: string | null;
   label?: string;          // Ej: "IUG 1", "TUG 2", "B1"
+  returnRef?: string;      // Letra o código de retorno (ej: "a", "b") para enlazar llave con luminaria
   notes?: string;
 
   // ─── PROPIEDADES ENRIQUECIDAS DE TRAZA ───
@@ -59,15 +61,17 @@ export type ConduitMaterial = 'corrugado_blanco' | 'corrugado_ignifugo' | 'cano_
 export interface Conduit {
   id: string;
   circuitId?: string | null;
+  circuitIds?: string[];    // Soporte multi-circuito de TRAZA
   fromElementId: string;    // ID del elemento eléctrico de inicio
   toElementId: string;      // ID del elemento eléctrico final
   fromLevelId: string;
   toLevelId: string;
-  diameterMM: number;       // Diámetro exterior en mm (19 = 3/4", 25 = 1", 32 = 1 1/4")
+  diameterMM: number;       // Diámetro exterior en mm (19 = 3/4", 22 = 7/8", 25 = 1", 32 = 1 1/4")
   material: ConduitMaterial;
   isVerticalRiser: boolean; // ¿Es montante que atraviesa losa entre pisos?
   conductors: ConductorLine[];
   manualLengthM?: number;   // Longitud forzada manualmente si aplica
+  label?: string;           // Referencia o rótulo en plano (ej: "C1", "X1")
 }
 
 export type CircuitType = 'IUG' | 'IUE' | 'TUG' | 'TUE' | 'FM' | 'ACU' | 'OTRO';
