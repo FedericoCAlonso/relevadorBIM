@@ -1,8 +1,8 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * VISTA PRINCIPAL: App.tsx
- * Ensamblador de Vistas del Relevador BIM 2D y Red Eléctrica AEA 90364.
- * Flujo de Relevamiento Directo por Puntos de Referencia y Rumbo Ortogonal.
+ * Ensamblador de Vistas del Relevador BIM 2D con Ergonomía Móvil (Thumb Zone).
+ * Conecta el lienzo CAD con la botonera inferior de carga continua y anclajes.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -10,7 +10,8 @@ import { useState, useEffect } from 'react';
 import { useProjectStore } from './viewmodels/useProjectStore';
 import { useSurveyViewModel } from './viewmodels/useSurveyViewModel';
 import { BimCanvas } from './views/components/canvas/BimCanvas';
-import { QuickMeasureBar } from './views/components/survey/QuickMeasureBar';
+import { TopStatusBar } from './views/components/survey/TopStatusBar';
+import { ThumbSurveyDock } from './views/components/survey/ThumbSurveyDock';
 import { SurveyActionSheets } from './views/components/survey/SurveyActionSheets';
 import { SymbolPalette } from './views/components/electrical/SymbolPalette';
 import { ComputoModal } from './views/components/survey/ComputoModal';
@@ -24,15 +25,18 @@ export function App() {
   } = useProjectStore();
 
   const {
-    currentDirection,
-    setCurrentDirection,
+    relativeTurn,
+    setRelativeTurn,
+    customAngleDeg,
+    setCustomAngleDeg,
+    effectiveAngleDeg,
     currentDistanceInput,
     setCurrentDistanceInput,
     selectedSymbolId,
     setSelectedSymbolId,
     isConnectingConduit,
     setIsConnectingConduit,
-    commitWallFromAnchor,
+    commitWall,
     handleElectricalElementClick
   } = useSurveyViewModel();
 
@@ -40,7 +44,7 @@ export function App() {
   const [showTeeModal, setShowTeeModal] = useState(false);
   const [showOpeningModal, setShowOpeningModal] = useState(false);
 
-  // Escuchar eventos de apertura de modales de acción contextual
+  // Escuchar eventos de apertura de modales de acción contextual (Empalme / Abertura)
   useEffect(() => {
     const handleOpenTee = () => setShowTeeModal(true);
     const handleOpenOpening = () => setShowOpeningModal(true);
@@ -54,9 +58,8 @@ export function App() {
     };
   }, []);
 
-  // Manejo de clic sobre el lienzo (colocación de punto inicial o bocas eléctricas)
+  // Manejo de clic en el lienzo (colocación de punto inicial o bocas eléctricas)
   const handleCanvasClick = (worldX: number, worldY: number) => {
-    // Si hay un símbolo eléctrico seleccionado en la paleta, colocarlo
     if (selectedSymbolId) {
       const symDef = getSymbolById(selectedSymbolId);
       const isCeiling = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
@@ -81,10 +84,9 @@ export function App() {
       return;
     }
 
-    // Si el proyecto no tiene paredes, el primer clic establece el punto cero inicial
+    // Si el proyecto no tiene paredes, el primer clic inicia el muro
     if (project.vertices.length === 0) {
-      // Inicia un muro desde la coordenada clickeada
-      commitWallFromAnchor();
+      commitWall();
     } else {
       setSelectedEntity(null);
     }
@@ -93,21 +95,14 @@ export function App() {
   const previewDist = parseFloat(currentDistanceInput) || 3.50;
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-100 flex flex-col font-sans">
-      {/* 1. Barra de Rumbo Ortogonal y Medición Láser */}
-      <QuickMeasureBar
-        currentDirection={currentDirection}
-        onSelectDirection={setCurrentDirection}
-        currentDistance={currentDistanceInput}
-        onChangeDistance={setCurrentDistanceInput}
-        onCommitWall={() => commitWallFromAnchor()}
-        onViewComputoClick={() => setShowComputoModal(true)}
-      />
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
+      {/* 1. Barra Superior Pasiva (Lectura de Estado y Cotizador) */}
+      <TopStatusBar onViewComputoClick={() => setShowComputoModal(true)} />
 
-      {/* 2. Lienzo Gráfico CAD BIM 2D con Snaps y Rayo Láser */}
-      <main className="flex-1 w-full h-full">
+      {/* 2. Lienzo Gráfico CAD BIM 2D con Snaps Interactivos y Rayo Láser */}
+      <main className="flex-1 w-full h-full pb-48">
         <BimCanvas
-          currentDirectionDeg={currentDirection}
+          currentDirectionDeg={effectiveAngleDeg}
           previewDistanceM={previewDist}
           onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
           onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
@@ -117,7 +112,7 @@ export function App() {
         />
       </main>
 
-      {/* 3. Acciones Contextuales de Paredes (Empalme en T, Abertura) */}
+      {/* 3. Acciones Contextuales de Paredes (Empalme en T, Aberturas) */}
       <SurveyActionSheets
         showTeeModal={showTeeModal}
         onCloseTeeModal={() => setShowTeeModal(false)}
@@ -125,15 +120,28 @@ export function App() {
         onCloseOpeningModal={() => setShowOpeningModal(false)}
       />
 
-      {/* 4. Paleta de Símbolos AEA 90364 */}
-      <SymbolPalette
-        selectedSymbolId={selectedSymbolId}
-        onSelectSymbol={setSelectedSymbolId}
-        isConnectingConduit={isConnectingConduit}
-        onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
+      {/* 4. Paleta de Símbolos AEA 90364 Flotante (Sobre la botonera) */}
+      <div className="absolute bottom-44 right-4 z-10">
+        <SymbolPalette
+          selectedSymbolId={selectedSymbolId}
+          onSelectSymbol={setSelectedSymbolId}
+          isConnectingConduit={isConnectingConduit}
+          onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
+        />
+      </div>
+
+      {/* 5. BOTONERA ERGONÓMICA INFERIOR (ZONA NATURAL DEL PULGAR) */}
+      <ThumbSurveyDock
+        relativeTurn={relativeTurn}
+        onSelectTurn={setRelativeTurn}
+        customAngle={customAngleDeg}
+        onChangeCustomAngle={setCustomAngleDeg}
+        currentDistance={currentDistanceInput}
+        onChangeDistance={setCurrentDistanceInput}
+        onCommitWall={() => commitWall()}
       />
 
-      {/* 5. Cómputo Métrico / Cotizador IEBA */}
+      {/* 6. Modal de Cómputo Métrico para Cotizador IEBA */}
       <ComputoModal isOpen={showComputoModal} onClose={() => setShowComputoModal(false)} />
     </div>
   );

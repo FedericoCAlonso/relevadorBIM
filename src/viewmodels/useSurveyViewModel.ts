@@ -1,27 +1,32 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * VIEWMODEL: useSurveyViewModel.ts
- * Orquestador de Flujo de Relevamiento por Puntos de Referencia Físicos.
- * Permite encadenar muros ortogonales (N, S, E, O), empalmes en T y aberturas.
+ * Orquestador de Relevamiento Móvil Optimizado para la Zona del Pulgar.
+ * Maneja giros relativos (Derecha +90°, Izquierda -90°, Recto 0°) respecto
+ * al muro anterior y encadenamiento continuo de anclajes.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
+import { getWallAngleDeg } from '../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
 
-export type DrawingDirection = 0 | 90 | 180 | 270; // 0 = Este (+X), 90 = Norte (+Y), 180 = Oeste (-X), 270 = Sur (-Y)
+export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
 
 export function useSurveyViewModel() {
-  const [currentDirection, setCurrentDirection] = useState<DrawingDirection>(0); // Default Este
+  const [relativeTurn, setRelativeTurn] = useState<RelativeTurnType>('right'); // Por defecto derecha (horario)
+  const [customAngleDeg, setCustomAngleDeg] = useState<number>(45);
   const [currentDistanceInput, setCurrentDistanceInput] = useState<string>('3.50');
+
+  // Herramientas adicionales
   const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
   const [isConnectingConduit, setIsConnectingConduit] = useState(false);
   const [pendingConduitStartId, setPendingConduitStartId] = useState<string | null>(null);
 
-  // Estados de diálogo contextual para pared seleccionada
-  const [showTeeDialog, setShowTeeDialog] = useState(false);
-  const [showOpeningDialog, setShowOpeningDialog] = useState(false);
+  // Modales contextuales para empalmes y aberturas
+  const [showTeeModal, setShowTeeModal] = useState(false);
+  const [showOpeningModal, setShowOpeningModal] = useState(false);
 
   const {
     project,
@@ -34,10 +39,52 @@ export function useSurveyViewModel() {
     addConduit
   } = useProjectStore();
 
+  const verticesMap = useMemo(() => {
+    return new Map(project.vertices.map((v) => [v.id, v]));
+  }, [project.vertices]);
+
   /**
-   * Traza una nueva pared desde el anclaje activo en la dirección seleccionada con la distancia actual.
+   * Determina el ángulo absoluto (en grados 0-360) de la siguiente pared
+   * calculando el giro relativo respecto al muro anterior que llega al anclaje.
    */
-  const commitWallFromAnchor = useCallback(
+  const effectiveAngleDeg = useMemo(() => {
+    // 1. Si no hay anclaje o no hay muros, arrancar en dirección Este (0°)
+    if (!activeAnchorVertexId || project.walls.length === 0) {
+      return 0;
+    }
+
+    // 2. Buscar el muro que termina o conecta en este vértice de anclaje
+    const incomingWall = project.walls.find((w) => w.endVertexId === activeAnchorVertexId);
+    let baseAngle = 0;
+
+    if (incomingWall) {
+      baseAngle = getWallAngleDeg(incomingWall, verticesMap);
+    } else {
+      // Si no es un extremo final, buscar si es el vértice de inicio
+      const outgoingWall = project.walls.find((w) => w.startVertexId === activeAnchorVertexId);
+      if (outgoingWall) {
+        baseAngle = getWallAngleDeg(outgoingWall, verticesMap);
+      }
+    }
+
+    // 3. Aplicar el giro relativo
+    // En coordenadas de pantalla: girar a la derecha (horario) suma 90°, girar a la izquierda resta 90°
+    let turn = 0;
+    if (relativeTurn === 'right') turn = 90;
+    else if (relativeTurn === 'left') turn = -90;
+    else if (relativeTurn === 'straight') turn = 0;
+    else if (relativeTurn === 'custom') turn = customAngleDeg;
+
+    let targetAngle = (baseAngle + turn) % 360;
+    if (targetAngle < 0) targetAngle += 360;
+
+    return targetAngle;
+  }, [activeAnchorVertexId, project.walls, verticesMap, relativeTurn, customAngleDeg]);
+
+  /**
+   * Agrega la pared usando la distancia del láser y el ángulo relativo calculado.
+   */
+  const commitWall = useCallback(
     (customDist?: number) => {
       const dist = customDist !== undefined ? customDist : parseFloat(currentDistanceInput);
       if (isNaN(dist) || dist <= 0) return null;
@@ -45,22 +92,23 @@ export function useSurveyViewModel() {
       let startVertexId = activeAnchorVertexId || undefined;
       let startCoord = undefined;
 
-      // Si no hay ningún vértice en el proyecto, empezar en (2.0, 2.0)
+      // Si es el primer trazo, plantar el inicio en el centro del lienzo
       if (project.vertices.length === 0 && !startVertexId) {
         startCoord = { x: 2.0, y: 2.0 };
       }
 
-      const res = addWallFromAnchor({
+      const result = addWallFromAnchor({
         startVertexId,
         startCoord,
         lengthM: dist,
-        angleDeg: currentDirection,
+        angleDeg: effectiveAngleDeg,
         thickness: 0.15
       });
 
-      return res;
+      // El store ya coloca automáticamente el extremo final como activeAnchorVertexId
+      return result;
     },
-    [activeAnchorVertexId, currentDistanceInput, currentDirection, project.vertices.length, addWallFromAnchor]
+    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor]
   );
 
   /**
@@ -97,7 +145,7 @@ export function useSurveyViewModel() {
   );
 
   /**
-   * Conexión de cañerías haciendo clic secuencial en dos bocas eléctricas.
+   * Conexión de cañerías entre bocas eléctricas.
    */
   const handleElectricalElementClick = useCallback(
     (elementId: string) => {
@@ -130,20 +178,22 @@ export function useSurveyViewModel() {
   );
 
   return {
-    currentDirection,
-    setCurrentDirection,
+    relativeTurn,
+    setRelativeTurn,
+    customAngleDeg,
+    setCustomAngleDeg,
+    effectiveAngleDeg,
     currentDistanceInput,
     setCurrentDistanceInput,
     selectedSymbolId,
     setSelectedSymbolId,
     isConnectingConduit,
     setIsConnectingConduit,
-    pendingConduitStartId,
-    showTeeDialog,
-    setShowTeeDialog,
-    showOpeningDialog,
-    setShowOpeningDialog,
-    commitWallFromAnchor,
+    showTeeModal,
+    setShowTeeModal,
+    showOpeningModal,
+    setShowOpeningModal,
+    commitWall,
     commitBranchWall,
     commitReferencedOpening,
     handleElectricalElementClick,

@@ -60,7 +60,7 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
     const store = useProjectStore.getState();
 
     // Muro base de 5.00m hacia el Este
-    const w1 = store.addWallFromAnchor({
+    store.addWallFromAnchor({
       startCoord: { x: 0, y: 0 },
       lengthM: 5.0,
       angleDeg: 0
