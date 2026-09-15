@@ -6,9 +6,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Zap, RotateCcw, Building2 } from 'lucide-react';
+import { Zap, RotateCcw, Building2, Maximize, Minimize } from 'lucide-react';
 
 interface TopStatusBarProps {
   onViewComputoClick: () => void;
@@ -16,6 +16,45 @@ interface TopStatusBarProps {
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }) => {
   const { project, resetProject } = useProjectStore();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!document.fullscreenElement) {
+      try {
+        const el = document.documentElement as HTMLElement & {
+          webkitRequestFullscreen?: () => Promise<void>;
+        };
+        if (el.requestFullscreen) {
+          await el.requestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          await el.webkitRequestFullscreen();
+        }
+      } catch (err) {
+        console.warn('No se pudo activar pantalla completa:', err);
+      }
+    } else {
+      try {
+        const doc = document as Document & {
+          webkitExitFullscreen?: () => Promise<void>;
+        };
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        }
+      } catch (err) {
+        console.warn('No se pudo salir de pantalla completa:', err);
+      }
+    }
+  };
 
   const handleReset = () => {
     if (window.confirm('¿Reiniciar plano actual?')) {
@@ -51,6 +90,16 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }
           title="Reiniciar plano"
         >
           <RotateCcw size={15} />
+        </button>
+
+        <button
+          onClick={toggleFullscreen}
+          className={`p-1.5 rounded-lg transition-colors ${
+            isFullscreen ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+          }`}
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa (ocultar barras del navegador)'}
+        >
+          {isFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
         </button>
       </div>
     </header>

@@ -190,7 +190,7 @@ export function App() {
   const previewDist = parseFloat(currentDistanceInput) || 3.50;
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
+    <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
       {/* 1. Barra Superior (Nombre, Planta, Acceso al Cotizador) */}
       <TopStatusBar onViewComputoClick={() => setShowComputoModal(true)} />
 

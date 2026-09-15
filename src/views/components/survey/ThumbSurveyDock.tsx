@@ -114,7 +114,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   // ═════════════════════════════════════════════════════════════════════════
   if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit) {
     return (
-      <footer className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 pb-6 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150">
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         {/* ── Inspector de Muro ── */}
         {selectedWall && (() => {
           const wallLen = getWallLength(selectedWall, verticesMap);
@@ -496,7 +499,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   const selectedSymDef = selectedSymbolId ? getSymbolById(selectedSymbolId) : null;
 
   return (
-    <footer className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 pb-6 flex flex-col gap-2 z-20 touch-manipulation">
+    <footer
+      className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation"
+      style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+    >
       {/* ─── PESTAÑAS DE MODO PRINCIPAL + BLUETOOTH / ACCIONES ─── */}
       <div className="flex items-center justify-between pb-1 border-b border-slate-100">
         <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
