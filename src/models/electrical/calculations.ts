@@ -6,9 +6,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import type { ElectricalElement, ConductorLine } from './ElectricalModel';
+import type { ElectricalElement, ConductorLine, ConduitMaterial } from './ElectricalModel';
 import type { Level } from '../architecture/Level';
-import { AEA_CALCULATION_CONSTANTS } from './electricalStandards';
+import { AEA_CALCULATION_CONSTANTS, getSizesForConduitMaterial } from './electricalStandards';
 
 /** Conductividad del cobre comercial en m / (Ohm * mm²) a 20°C */
 export const CONDUCTIVIDAD_COBRE = AEA_CALCULATION_CONSTANTS.COPPER_CONDUCTIVITY_M_OHM_MM2;
@@ -122,25 +122,31 @@ export function calculateVoltageDropPercent(params: {
  * no debe superar el 35% de la sección interna de la cañería.
  */
 export function calculateConduitOccupancyFactor(params: {
-  conduitDiameterMM: number; // Diámetro exterior comercial (19, 25, 32 mm)
+  conduitDiameterMM: number; // Diámetro exterior comercial o ancho de bandeja
+  material?: ConduitMaterial;
   conductors: ConductorLine[];
 }): {
   occupancyPercent: number;
   maxAllowedPercent: number;
   isCompliant: boolean;
 } {
-  const { conduitDiameterMM, conductors } = params;
+  const { conduitDiameterMM, material, conductors } = params;
 
-  // Diámetro interior aproximado según tipo comercial estándar
-  // Tubo rígido/semirrígido RL19 int ~ 15.5mm; RS25 int ~ 20.8mm; RS32 int ~ 27.2mm
-  const internalDiameter = conduitDiameterMM * 0.82;
-  const conduitArea = (Math.PI * Math.pow(internalDiameter, 2)) / 4;
+  let conduitArea = 0;
+  if (material) {
+    const sizeOpt = getSizesForConduitMaterial(material).find((s) => s.value === conduitDiameterMM);
+    if (sizeOpt && sizeOpt.usefulAreaMM2 > 0) {
+      conduitArea = sizeOpt.usefulAreaMM2;
+    }
+  }
+
+  if (conduitArea <= 0) {
+    // Diámetro interior aproximado según tipo comercial estándar
+    const internalDiameter = conduitDiameterMM * 0.82;
+    conduitArea = (Math.PI * Math.pow(internalDiameter, 2)) / 4;
+  }
 
   // Estimación de diámetro exterior por conductor (cobre + aislación PVC IRAM 247-3)
-  // 1.5mm² ~ 3.0mm ext (área 7.1mm²)
-  // 2.5mm² ~ 3.6mm ext (área 10.2mm²)
-  // 4.0mm² ~ 4.2mm ext (área 13.9mm²)
-  // 6.0mm² ~ 4.8mm ext (área 18.1mm²)
   let totalCablesArea = 0;
   for (const c of conductors) {
     const cableExtDiam = 2.0 + Math.sqrt(c.sectionMM2) * 1.0;

@@ -14,7 +14,7 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { Plus, Minus, Maximize2 } from 'lucide-react';
+import { Plus, Minus, Maximize2, Ruler } from 'lucide-react';
 
 export interface WallPlacementSnap {
   wallId: string;
@@ -50,7 +50,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     selectedEntity,
     setSelectedEntity,
     activeAnchorVertexId,
-    setActiveAnchorVertexId
+    setActiveAnchorVertexId,
+    showDimensions,
+    toggleDimensions
   } = useProjectStore();
 
   // Escala y transformación de vista (Pan y Zoom)
@@ -487,32 +489,34 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             )}
 
             {/* 4. Cota métrica al centro del muro */}
-            <g transform={`translate(${midX}, ${midY})`}>
-              <rect
-                x={-24}
-                y={-10}
-                width={48}
-                height={16}
-                rx={4}
-                fill="#ffffff"
-                fillOpacity={0.95}
-                stroke={isSelected ? '#2563eb' : '#cbd5e1'}
-                strokeWidth={isSelected ? 1.5 : 0.5}
-              />
-              <text
-                x={0}
-                y={2}
-                textAnchor="middle"
-                fontSize={9}
-                className="font-mono font-bold fill-slate-800 select-none pointer-events-none"
-              >
-                {lenM.toFixed(2)} m
-              </text>
-            </g>
+            {(showDimensions || isSelected) && (
+              <g transform={`translate(${midX}, ${midY})`}>
+                <rect
+                  x={-24}
+                  y={-10}
+                  width={48}
+                  height={16}
+                  rx={4}
+                  fill="#ffffff"
+                  fillOpacity={0.95}
+                  stroke={isSelected ? '#2563eb' : '#cbd5e1'}
+                  strokeWidth={isSelected ? 1.5 : 0.5}
+                />
+                <text
+                  x={0}
+                  y={2}
+                  textAnchor="middle"
+                  fontSize={9}
+                  className="font-mono font-bold fill-slate-800 select-none pointer-events-none"
+                >
+                  {lenM.toFixed(2)} m
+                </text>
+              </g>
+            )}
           </g>
         );
       });
-  }, [project.walls, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, onWallClick]);
+  }, [project.walls, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, showDimensions, onWallClick]);
 
   // 3. Aberturas con zona de clic amplia y gestión visual
   const renderedOpenings = useMemo(() => {
@@ -931,6 +935,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           title="Recentrar y encuadrar plano"
         >
           <Maximize2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleDimensions}
+          className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+            showDimensions
+              ? 'bg-blue-600 text-white border-blue-700'
+              : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-700'
+          }`}
+          title={showDimensions ? 'Ocultar cotas métricas' : 'Mostrar cotas métricas'}
+        >
+          <Ruler size={16} />
         </button>
       </div>
 

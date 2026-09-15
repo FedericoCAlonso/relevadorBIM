@@ -21,7 +21,10 @@ import {
   AEA_HEIGHT_PRESETS,
   AEA_CONDUCTOR_PRESETS,
   AEA_CONDUCTOR_COLORS,
-  SUGGESTED_ELEMENT_METADATA_KEYS
+  SUGGESTED_ELEMENT_METADATA_KEYS,
+  getSizesForConduitMaterial,
+  getDefaultSizeForConduitMaterial,
+  type ConduitSizeOption
 } from '../models/electrical/electricalStandards';
 import {
   calculateConduitOccupancyFactor,
@@ -86,9 +89,16 @@ export function useElectricalViewModel() {
     if (!selectedConduit) return null;
     return calculateConduitOccupancyFactor({
       conduitDiameterMM: selectedConduit.diameterMM,
+      material: selectedConduit.material,
       conductors: selectedConduit.conductors
     });
   }, [selectedConduit]);
+
+  // Medidas normalizadas válidas para el material de conducto seleccionado
+  const conduitAvailableSizes = useMemo<readonly ConduitSizeOption[]>(() => {
+    if (!selectedConduit) return [];
+    return getSizesForConduitMaterial(selectedConduit.material);
+  }, [selectedConduit?.material]);
 
   // Muro al que está adosada la boca activa
   const elementWall = useMemo(() => {
@@ -183,13 +193,61 @@ export function useElectricalViewModel() {
     [deleteElectricalElement, setSelectedEntity]
   );
 
+  /** Activa o desactiva un circuito en tránsito por la caja de la boca (caja de paso/derivación) */
+  const toggleElementPassingCircuit = useCallback(
+    (elementId: string, circuitId: string) => {
+      const el = project.electricalElements.find((e) => e.id === elementId);
+      if (!el) return;
+      const current = el.passingCircuitIds ? [...el.passingCircuitIds] : [];
+      const updated = current.includes(circuitId)
+        ? current.filter((id) => id !== circuitId)
+        : [...current, circuitId];
+      updateElectricalElement(elementId, { passingCircuitIds: updated });
+    },
+    [project.electricalElements, updateElectricalElement]
+  );
+
   // ─── ACCIONES / COMANDOS DE CAÑERÍAS Y CONDUCTORES ───
 
   const setConduitProperties = useCallback(
     (conduitId: string, patch: Partial<Conduit>) => {
-      updateConduit(conduitId, patch);
+      const conduit = project.conduits.find((c) => c.id === conduitId);
+      if (!conduit) return;
+
+      const finalPatch = { ...patch };
+
+      // Si cambia el tipo de material, verificar si el calibre actual es válido para ese material
+      if (patch.material && patch.material !== conduit.material) {
+        const validSizes = getSizesForConduitMaterial(patch.material);
+        const currentDiameter = patch.diameterMM ?? conduit.diameterMM;
+        const isValid = validSizes.some((s) => s.value === currentDiameter);
+        if (!isValid) {
+          finalPatch.diameterMM = getDefaultSizeForConduitMaterial(patch.material);
+        }
+      }
+
+      updateConduit(conduitId, finalPatch);
     },
-    [updateConduit]
+    [project.conduits, updateConduit]
+  );
+
+  /** Alterna la asignación de un circuito a la cañería (multi-circuito) */
+  const toggleConduitCircuit = useCallback(
+    (conduitId: string, circuitId: string) => {
+      const conduit = project.conduits.find((c) => c.id === conduitId);
+      if (!conduit) return;
+
+      const current = conduit.circuitIds || (conduit.circuitId ? [conduit.circuitId] : []);
+      const updated = current.includes(circuitId)
+        ? current.filter((id) => id !== circuitId)
+        : [...current, circuitId];
+
+      updateConduit(conduitId, {
+        circuitIds: updated,
+        circuitId: updated[0] || null
+      });
+    },
+    [project.conduits, updateConduit]
   );
 
   /** Aplica un preset reglamentario de conductores de un solo toque */
@@ -273,6 +331,7 @@ export function useElectricalViewModel() {
     conduitToElement,
     conduitBreakdown,
     conduitOccupancy,
+    conduitAvailableSizes,
     circuits: project.circuits,
 
     // Catálogos normativos (cero código hardcodeado en la vista)
@@ -292,6 +351,7 @@ export function useElectricalViewModel() {
     updateElementAttribute,
     removeElementAttribute,
     removeElement,
+    toggleElementPassingCircuit,
 
     // Comandos de Cañerías
     setConduitProperties,
@@ -299,6 +359,7 @@ export function useElectricalViewModel() {
     addConductorToConduit,
     updateConduitConductor,
     removeConductorFromConduit,
-    removeConduit
+    removeConduit,
+    toggleConduitCircuit
   };
 }

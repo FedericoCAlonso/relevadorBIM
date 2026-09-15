@@ -109,12 +109,21 @@ interface ProjectStoreState {
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
   resetProject: () => void;
+
+  // Visualización CAD
+  showDimensions: boolean;
+  setShowDimensions: (show: boolean) => void;
+  toggleDimensions: () => void;
 }
 
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   project: createEmptyProject(),
   selectedEntity: null,
   activeAnchorVertexId: null,
+  showDimensions: true,
+
+  setShowDimensions: (show) => set({ showDimensions: show }),
+  toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
 
   setSelectedEntity: (entity) => set({ selectedEntity: entity }),
   setActiveAnchorVertexId: (vertexId) => set({ activeAnchorVertexId: vertexId }),
@@ -516,11 +525,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   autoDetectSpaces: () => {
     const { project } = get();
     const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
-    const cycles = findEnclosedCycles(wallsInLevel);
+    const verticesMap = new Map(project.vertices.map((v) => [v.id, { x: v.x, y: v.y }]));
+    const cycles = findEnclosedCycles(wallsInLevel, verticesMap);
 
-    const newSpaces: Space[] = cycles.map((c, idx) => {
+    const otherLevelSpaces = project.spaces.filter((s) => s.levelId !== project.activeLevelId);
+
+    const newSpacesInLevel: Space[] = cycles.map((c, idx) => {
       const existing = project.spaces.find(
         (s) =>
+          s.levelId === project.activeLevelId &&
           s.boundaryVertexIds.length === c.vertexIds.length &&
           c.vertexIds.every((id) => s.boundaryVertexIds.includes(id))
       );
@@ -535,7 +548,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
       return {
         id: generateUniqueId('space'),
-        name: `Ambiente ${project.spaces.length + idx + 1}`,
+        name: `Ambiente ${otherLevelSpaces.length + idx + 1}`,
         category: 'living',
         levelId: project.activeLevelId,
         ceilingHeight: 2.70,
@@ -548,7 +561,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     set({
       project: {
         ...project,
-        spaces: newSpaces
+        spaces: [...otherLevelSpaces, ...newSpacesInLevel]
       }
     });
   },

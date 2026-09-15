@@ -30,6 +30,7 @@ export interface ConductorLine {
   color?: string;          // Marrón, celeste, verde-amarillo, etc.
   reference?: string;      // Referencia o letra de retorno (ej: "a", "b", "c")
   cableStandard?: CableStandard;
+  circuitId?: string;      // ID del circuito al que pertenece este conductor en el conducto
 }
 
 export interface ElectricalElement {
@@ -43,7 +44,8 @@ export interface ElectricalElement {
   heightZ: number;         // Altura Z sobre el piso del nivel en metros (ej: 0.30 para tomas, 1.20 para llaves, 2.70 para centros)
   wallId?: string | null;  // Si está adosado a una pared específica
   wallOffset?: number;     // Distancia a lo largo de la pared en metros
-  circuitId?: string | null;
+  circuitId?: string | null; // Circuito asignado que alimenta el consumo de esta boca
+  passingCircuitIds?: string[]; // Circuitos adicionales que transitan o pasan por esta caja (caja de paso/derivación)
   label?: string;          // Ej: "IUG 1", "TUG 2", "B1"
   returnRef?: string;      // Letra o código de retorno (ej: "a", "b") para enlazar llave con luminaria
   notes?: string;

@@ -141,12 +141,120 @@ export function resolveSpacePolygon(
 }
 
 /**
- * Detecta ciclos simples en el grafo de muros para identificar ambientes cerrados.
+ * Detecta las caras interiores de un grafo plano de muros (Planar Straight-Line Graph)
+ * utilizando el recorrido angular de semiaristas (Half-Edges / Left-hand rule).
+ * Garantiza que:
+ * 1. Cada recinto interior sea detectado exactamente una vez.
+ * 2. NO se generen ambientes fantasma por uniones de ambientes adyacentes ni el perímetro exterior.
+ * 3. Los vértices del ambiente queden estrictamente ordenados a lo largo de su perímetro.
  */
-export function findEnclosedCycles(walls: Array<{ id: string; startVertexId: string; endVertexId: string }>): {
+export function findEnclosedCycles(
+  walls: Array<{ id: string; startVertexId: string; endVertexId: string }>,
+  verticesMap?: Map<string, { x: number; y: number }> | Array<{ id: string; x: number; y: number }>
+): {
   vertexIds: string[];
   wallIds: string[];
 }[] {
+  // Si no disponemos de coordenadas de vértices, recurrir al método topológico de respaldo
+  if (!verticesMap) {
+    return findCyclesTopologicalFallback(walls);
+  }
+
+  const vMap =
+    verticesMap instanceof Map
+      ? verticesMap
+      : new Map(verticesMap.map((v) => [v.id, { x: v.x, y: v.y }]));
+
+  interface HalfEdge {
+    from: string;
+    to: string;
+    wallId: string;
+    angle: number;
+    visited: boolean;
+  }
+
+  const outgoing = new Map<string, HalfEdge[]>();
+  const halfEdges: HalfEdge[] = [];
+
+  for (const w of walls) {
+    if (w.startVertexId === w.endVertexId) continue;
+    const v1 = vMap.get(w.startVertexId);
+    const v2 = vMap.get(w.endVertexId);
+    if (!v1 || !v2) continue;
+
+    if (!outgoing.has(w.startVertexId)) outgoing.set(w.startVertexId, []);
+    if (!outgoing.has(w.endVertexId)) outgoing.set(w.endVertexId, []);
+
+    const angle1 = Math.atan2(v2.y - v1.y, v2.x - v1.x);
+    const angle2 = Math.atan2(v1.y - v2.y, v1.x - v2.x);
+
+    const he1: HalfEdge = { from: w.startVertexId, to: w.endVertexId, wallId: w.id, angle: angle1, visited: false };
+    const he2: HalfEdge = { from: w.endVertexId, to: w.startVertexId, wallId: w.id, angle: angle2, visited: false };
+
+    outgoing.get(w.startVertexId)!.push(he1);
+    outgoing.get(w.endVertexId)!.push(he2);
+    halfEdges.push(he1, he2);
+  }
+
+  // Ordenar semiaristas salientes por ángulo polar ascendente
+  for (const list of outgoing.values()) {
+    list.sort((a, b) => a.angle - b.angle);
+  }
+
+  const cycles: { vertexIds: string[]; wallIds: string[] }[] = [];
+
+  for (const he of halfEdges) {
+    if (he.visited) continue;
+
+    const faceEdges: HalfEdge[] = [];
+    let curr: HalfEdge | undefined = he;
+
+    while (curr && !curr.visited) {
+      curr.visited = true;
+      faceEdges.push(curr);
+
+      const nextVertex = curr.to;
+      const outList = outgoing.get(nextVertex);
+      if (!outList || outList.length === 0) break;
+
+      // En el vértice destino, ubicar la semiarista de regreso hacia curr.from
+      const revIdx = outList.findIndex((e) => e.to === curr!.from);
+      if (revIdx === -1) break;
+
+      // La semiarista que dobla más cerrado a la izquierda es la inmediatamente precedente
+      const nextIdx = (revIdx - 1 + outList.length) % outList.length;
+      curr = outList[nextIdx];
+    }
+
+    if (faceEdges.length >= 3 && curr === he) {
+      // Calcular área con signo mediante fórmula de Gauss (Shoelace)
+      const poly = faceEdges.map((e) => vMap.get(e.from)!);
+      let signedArea = 0;
+      const n = poly.length;
+      for (let i = 0; i < n; i++) {
+        const p1 = poly[i];
+        const p2 = poly[(i + 1) % n];
+        signedArea += p1.x * p2.y - p2.x * p1.y;
+      }
+      signedArea /= 2;
+
+      // Las caras interiores recorridas en sentido antihorario tienen signedArea > 0
+      // La cara infinita exterior tiene signo opuesto (negativo) y no se agrega
+      if (signedArea > 0.05) {
+        cycles.push({
+          vertexIds: faceEdges.map((e) => e.from),
+          wallIds: faceEdges.map((e) => e.wallId)
+        });
+      }
+    }
+  }
+
+  return cycles;
+}
+
+function findCyclesTopologicalFallback(
+  walls: Array<{ id: string; startVertexId: string; endVertexId: string }>
+): { vertexIds: string[]; wallIds: string[] }[] {
   const adj = new Map<string, Array<{ to: string; wallId: string }>>();
 
   for (const w of walls) {

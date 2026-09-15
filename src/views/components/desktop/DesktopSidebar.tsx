@@ -174,7 +174,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           }`}
         >
           <Building2 size={15} />
-          <span>Ambientes ({project.spaces.length})</span>
+          <span>Ambientes ({project.spaces.filter((s) => s.levelId === project.activeLevelId).length})</span>
         </button>
 
         <button
@@ -960,14 +960,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               </button>
             </div>
 
-            {project.spaces.length === 0 ? (
+            {project.spaces.filter((s) => s.levelId === project.activeLevelId).length === 0 ? (
               <div className="p-5 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center text-slate-400 space-y-1">
                 <Building2 size={24} className="mx-auto text-slate-300 mb-1" />
-                <p className="font-medium text-xs text-slate-600">No hay ambientes detectados</p>
+                <p className="font-medium text-xs text-slate-600">No hay ambientes detectados en este nivel</p>
                 <p className="text-[11px]">Cerrá un circuito de 3 o más paredes para generar un ambiente automáticamente.</p>
               </div>
             ) : (
-              project.spaces.map((space, idx) => {
+              project.spaces
+                .filter((s) => s.levelId === project.activeLevelId)
+                .map((space, idx) => {
                 const poly = resolveSpacePolygon(space, verticesMap);
                 const area = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
                 const volume = area * space.ceilingHeight;

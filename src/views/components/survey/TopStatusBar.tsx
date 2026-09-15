@@ -8,14 +8,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Zap, RotateCcw, Building2, Maximize, Minimize } from 'lucide-react';
+import { Zap, RotateCcw, Building2, Maximize, Minimize, Ruler } from 'lucide-react';
 
 interface TopStatusBarProps {
   onViewComputoClick: () => void;
 }
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }) => {
-  const { project, resetProject } = useProjectStore();
+  const { project, resetProject, showDimensions, toggleDimensions } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -82,6 +82,19 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onViewComputoClick }
         >
           <Zap size={14} className="text-amber-600" />
           <span>Cotizador</span>
+        </button>
+
+        <button
+          onClick={toggleDimensions}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors ${
+            showDimensions
+              ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
+          }`}
+          title={showDimensions ? 'Ocultar cotas métricas' : 'Mostrar cotas métricas'}
+        >
+          <Ruler size={14} className={showDimensions ? 'text-blue-600' : 'text-slate-400'} />
+          <span className="hidden sm:inline">Cotas</span>
         </button>
 
         <button

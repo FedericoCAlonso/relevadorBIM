@@ -11,7 +11,9 @@ import {
   DEFAULT_CONDUIT_MATERIAL,
   DEFAULT_CONDUIT_DIAMETER_MM,
   AEA_CALCULATION_CONSTANTS,
-  AEA_CONDUCTOR_PRESETS
+  AEA_CONDUCTOR_PRESETS,
+  getSizesForConduitMaterial,
+  getDefaultSizeForConduitMaterial
 } from '../electricalStandards';
 import {
   getConduitLengthBreakdown,
@@ -111,5 +113,26 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
         expect(cond.color?.startsWith('#')).toBe(true);
       }
     }
+  });
+
+  it('debe proveer calibres normalizados dependientes del material de conducto', () => {
+    // Caño Hierro Semipesado RS
+    const rsSizes = getSizesForConduitMaterial('hierro_semipesado_rs');
+    expect(rsSizes.length).toBeGreaterThanOrEqual(6);
+    expect(rsSizes[0].standardSize).toBe('RS 16');
+    expect(getDefaultSizeForConduitMaterial('hierro_semipesado_rs')).toBe(19);
+
+    // PVC Rígido Métrico
+    const pvcSizes = getSizesForConduitMaterial('pvc_rigido_metrico');
+    expect(pvcSizes.some((s: any) => s.value === 20)).toBe(true);
+    expect(pvcSizes.some((s: any) => s.value === 63)).toBe(true);
+    expect(getDefaultSizeForConduitMaterial('pvc_rigido_metrico')).toBe(20);
+
+    // Bandeja Perforada de 20 (no tiene diámetros sino ancho x alto)
+    const bandejaSizes = getSizesForConduitMaterial('bandeja_perforada_20');
+    expect(bandejaSizes.some((s: any) => s.standardSize.includes('100x20'))).toBe(true);
+    expect(bandejaSizes.some((s: any) => s.standardSize.includes('200x20'))).toBe(true);
+    expect(bandejaSizes.find((s: any) => s.value === 200)?.usefulAreaMM2).toBe(4000);
+    expect(getDefaultSizeForConduitMaterial('bandeja_perforada_20')).toBe(200);
   });
 });

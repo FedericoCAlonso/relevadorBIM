@@ -30,6 +30,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
     conduitToElement,
     conduitBreakdown,
     conduitOccupancy,
+    conduitAvailableSizes,
     circuits,
     catalogs,
     setConduitProperties,
@@ -37,7 +38,8 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
     addConductorToConduit,
     updateConduitConductor,
     removeConductorFromConduit,
-    removeConduit
+    removeConduit,
+    toggleConduitCircuit
   } = useElectricalViewModel();
 
   if (!isOpen || !conduit) return null;
@@ -113,26 +115,32 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           )}
 
-          {/* 2. Diámetro Exterior Comercial (Desde Catálogo del Modelo) */}
+          {/* 2. Calibre / Diámetro Comercial según Material */}
           <div>
-            <label className="block font-bold text-slate-700 mb-1">Diámetro Exterior Comercial:</label>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-              {catalogs.diameters.map((d) => {
-                const isSelected = conduit.diameterMM === d.mm;
+            <label className="block font-bold text-slate-700 mb-1">
+              {conduit.material.includes('bandeja')
+                ? 'Dimensión de Bandeja Perforada (Ancho × Ala 20 mm):'
+                : 'Calibre / Diámetro Comercial Específico:'}
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {conduitAvailableSizes.map((sizeOpt) => {
+                const isSelected = conduit.diameterMM === sizeOpt.value;
                 return (
                   <button
-                    key={d.mm}
+                    key={sizeOpt.value}
                     type="button"
-                    onClick={() => setConduitProperties(conduit.id, { diameterMM: d.mm })}
-                    className={`py-2 px-1 rounded-xl border text-center transition-all ${
+                    onClick={() => setConduitProperties(conduit.id, { diameterMM: sizeOpt.value })}
+                    className={`py-2 px-2 rounded-xl border text-center transition-all ${
                       isSelected
                         ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-sm'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <div className="font-mono text-xs font-bold leading-tight">Ø{d.mm}</div>
+                    <div className="font-mono text-xs font-bold leading-tight">
+                      {sizeOpt.standardSize}
+                    </div>
                     <div className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
-                      {d.inches}
+                      {sizeOpt.label.split('[')[0].trim()}
                     </div>
                   </button>
                 );
@@ -190,7 +198,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </select>
           </div>
 
-          {/* 5. Circuito Asignado */}
+          {/* 5. Circuito Asignado y Multi-circuito */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Circuito Principal:</label>
@@ -243,6 +251,44 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               </div>
             </div>
           </div>
+
+          {/* Circuitos en tránsito / compartidos por el conducto (Multi-circuito AEA) */}
+          {circuits.length > 0 && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-800">
+                  Circuitos en este Conducto (Multi-circuito AEA 771):
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {(conduit.circuitIds?.length || (conduit.circuitId ? 1 : 0))} seleccionado(s)
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {circuits.map((c) => {
+                  const isAssigned = (conduit.circuitIds || (conduit.circuitId ? [conduit.circuitId] : [])).includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleConduitCircuit(conduit.id, c.id)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
+                        isAssigned
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isAssigned ? '✓ ' : '+ '} {c.name} ({c.type})
+                    </button>
+                  );
+                })}
+              </div>
+              {(conduit.circuitIds?.length || 0) > 3 && (
+                <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 p-2 rounded-xl border border-amber-200">
+                  ⚠️ AEA 90364-771.12.3: La reglamentación limita a un máximo de 3 circuitos terminales en la misma cañería.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Desglose Métrico Reglamentario (Planta Ortogonal + Desnivel Z) */}
           {conduitBreakdown && (

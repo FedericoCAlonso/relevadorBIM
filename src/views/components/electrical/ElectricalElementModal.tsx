@@ -38,7 +38,8 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
     addElementAttribute,
     updateElementAttribute,
     removeElementAttribute,
-    removeElement
+    removeElement,
+    toggleElementPassingCircuit
   } = useElectricalViewModel();
 
   if (!isOpen || !element) return null;
@@ -89,7 +90,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Circuito Asignado:</label>
+              <label className="block font-bold text-slate-700 mb-1">Circuito Asignado (Alimentación):</label>
               <select
                 value={element.circuitId || ''}
                 onChange={(e) =>
@@ -107,6 +108,50 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                 ))}
               </select>
             </div>
+
+            {/* Circuitos en Tránsito / De Paso por esta Caja (AEA 771.12) */}
+            {circuits.length > 0 && (
+              <div className="sm:col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-xs text-slate-800 block">
+                      Circuitos en Tránsito / De Paso por esta Caja:
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      AEA 771.12: Cables que atraviesan la caja sin alimentar este artefacto
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                    {(element.passingCircuitIds?.length || 0)} en tránsito
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {circuits.map((c) => {
+                    const isPassing = (element.passingCircuitIds || []).includes(c.id);
+                    const isPrimary = element.circuitId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleElementPassingCircuit(element.id, c.id)}
+                        disabled={isPrimary}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
+                          isPrimary
+                            ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
+                            : isPassing
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                        }`}
+                        title={isPrimary ? 'Es el circuito de alimentación de esta boca' : undefined}
+                      >
+                        {isPrimary ? '⚡ Alimenta: ' : isPassing ? '✓ Pasa: ' : '+ '} {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 2. Altura de Montaje Z (Desde Catálogo Reglamentario AEA) */}
