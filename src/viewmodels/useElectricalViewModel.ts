@@ -15,15 +15,16 @@ import type {
   ConductorRole
 } from '../models/electrical/ElectricalModel';
 import {
-  CONDUIT_MATERIALS_CATALOG,
   CONDUIT_DIAMETERS_CATALOG,
-  CABLE_STANDARDS_CATALOG,
   AEA_HEIGHT_PRESETS,
   AEA_CONDUCTOR_PRESETS,
   AEA_CONDUCTOR_COLORS,
   SUGGESTED_ELEMENT_METADATA_KEYS,
-  getSizesForConduitMaterial,
-  getDefaultSizeForConduitMaterial,
+  DEFAULT_CONDUIT_TYPES,
+  DEFAULT_CABLE_TYPES,
+  DEFAULT_BOX_TYPES,
+  getSizesForConduitType,
+  getDefaultSizeForConduitType,
   type ConduitSizeOption
 } from '../models/electrical/electricalStandards';
 import {
@@ -40,7 +41,13 @@ export function useElectricalViewModel() {
     updateElectricalElement,
     deleteElectricalElement,
     updateConduit,
-    deleteConduit
+    deleteConduit,
+    addConduitType,
+    removeConduitType,
+    addCableType,
+    removeCableType,
+    addBoxType,
+    removeBoxType
   } = useProjectStore();
 
   // Entidades activas según la entidad seleccionada en el almacén
@@ -97,8 +104,8 @@ export function useElectricalViewModel() {
   // Medidas normalizadas válidas para el material de conducto seleccionado
   const conduitAvailableSizes = useMemo<readonly ConduitSizeOption[]>(() => {
     if (!selectedConduit) return [];
-    return getSizesForConduitMaterial(selectedConduit.material);
-  }, [selectedConduit?.material]);
+    return getSizesForConduitType(selectedConduit.material, project.materialCatalog);
+  }, [selectedConduit?.material, project.materialCatalog]);
 
   // Muro al que está adosada la boca activa
   const elementWall = useMemo(() => {
@@ -218,11 +225,11 @@ export function useElectricalViewModel() {
 
       // Si cambia el tipo de material, verificar si el calibre actual es válido para ese material
       if (patch.material && patch.material !== conduit.material) {
-        const validSizes = getSizesForConduitMaterial(patch.material);
+        const validSizes = getSizesForConduitType(patch.material, project.materialCatalog);
         const currentDiameter = patch.diameterMM ?? conduit.diameterMM;
         const isValid = validSizes.some((s) => s.value === currentDiameter);
         if (!isValid) {
-          finalPatch.diameterMM = getDefaultSizeForConduitMaterial(patch.material);
+          finalPatch.diameterMM = getDefaultSizeForConduitType(patch.material, project.materialCatalog);
         }
       }
 
@@ -334,15 +341,36 @@ export function useElectricalViewModel() {
     conduitAvailableSizes,
     circuits: project.circuits,
 
-    // Catálogos normativos (cero código hardcodeado en la vista)
+    // Catálogos normativos y abiertos (cero código hardcodeado en la vista)
     catalogs: {
-      materials: CONDUIT_MATERIALS_CATALOG,
+      conduitTypes: project.materialCatalog?.conduitTypes || DEFAULT_CONDUIT_TYPES,
+      cableTypes: project.materialCatalog?.cableTypes || DEFAULT_CABLE_TYPES,
+      boxTypes: project.materialCatalog?.boxTypes || DEFAULT_BOX_TYPES,
+      materials: (project.materialCatalog?.conduitTypes || DEFAULT_CONDUIT_TYPES).map((c) => ({
+        id: c.id,
+        label: c.name,
+        description: c.description || '',
+        standardReference: c.name,
+        allowedInSlab: true
+      })),
       diameters: CONDUIT_DIAMETERS_CATALOG,
-      cableStandards: CABLE_STANDARDS_CATALOG,
+      cableStandards: (project.materialCatalog?.cableTypes || DEFAULT_CABLE_TYPES).map((c) => ({
+        id: c.id,
+        label: c.name,
+        description: c.description || ''
+      })),
       heightPresets: AEA_HEIGHT_PRESETS,
       conductorPresets: AEA_CONDUCTOR_PRESETS,
       suggestedMetadataKeys: SUGGESTED_ELEMENT_METADATA_KEYS
     },
+
+    // Gestión del Catálogo de Materiales
+    addConduitType,
+    removeConduitType,
+    addCableType,
+    removeCableType,
+    addBoxType,
+    removeBoxType,
 
     // Comandos de Bocas
     setElementProperties,

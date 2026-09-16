@@ -253,7 +253,17 @@ export function App() {
                 setEditingSpaceId(spaceId);
               }
             }}
-            onElectricalElementClick={handleElectricalElementClick}
+            onElectricalElementClick={(elementId) => {
+              if (selectedEntity?.type === 'electrical_element' && selectedEntity.id === elementId) {
+                setShowElementModal(true);
+              } else {
+                handleElectricalElementClick(elementId);
+              }
+            }}
+            onElectricalElementDoubleClick={(elementId) => {
+              handleElectricalElementClick(elementId);
+              setShowElementModal(true);
+            }}
             onCanvasClick={handleCanvasClick}
           />
         </main>

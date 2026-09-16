@@ -10,8 +10,53 @@ import type {
   ConduitMaterial,
   CableStandard,
   ConductorRole,
-  ConductorLine
+  ConductorLine,
+  ConduitSizeOption,
+  ConduitTypeDefinition,
+  CableTypeDefinition,
+  BoxTypeDefinition,
+  BoxCategory,
+  BoxMaterialBase,
+  ProjectMaterialCatalog
 } from './ElectricalModel';
+
+export type {
+  ConduitSizeOption,
+  ConduitTypeDefinition,
+  CableTypeDefinition,
+  BoxTypeDefinition,
+  BoxCategory,
+  BoxMaterialBase,
+  ProjectMaterialCatalog
+};
+
+export interface BoxCategoryOption {
+  readonly id: BoxCategory;
+  readonly label: string;
+}
+
+export const BOX_CATEGORIES_CATALOG: readonly BoxCategoryOption[] = [
+  { id: 'caja_rectangular', label: 'Caja Rectangular (5x10)' },
+  { id: 'caja_octogonal', label: 'Caja Octogonal (Losa/Centro)' },
+  { id: 'caja_cuadrada', label: 'Caja Cuadrada (10x10 Paso/Deriv.)' },
+  { id: 'caja_mignon', label: 'Caja Mignon (5x5)' },
+  { id: 'gabinete_tablero', label: 'Gabinete / Caja de Tablero' },
+  { id: 'otro', label: 'Otro tipo de caja / pase' }
+];
+
+export interface BoxMaterialOption {
+  readonly id: BoxMaterialBase;
+  readonly label: string;
+}
+
+export const BOX_MATERIALS_CATALOG: readonly BoxMaterialOption[] = [
+  { id: 'chapa', label: 'Chapa de Acero' },
+  { id: 'pvc', label: 'PVC / Ignífugo' },
+  { id: 'aluminio', label: 'Aluminio' },
+  { id: 'otro', label: 'Otro material' }
+];
+
+export const DEFAULT_CABLE_SECTIONS: readonly number[] = [1.0, 1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0, 35.0, 50.0];
 
 /** Constantes de Cálculo y Seguridad según Reglamentación AEA */
 export const AEA_CALCULATION_CONSTANTS = {
@@ -106,16 +151,7 @@ export const CONDUIT_DIAMETERS_CATALOG: readonly ConduitDiameterOption[] = [
   { mm: 38, inches: '1 1/2"', standardSize: 'RL38 / RS38' }
 ] as const;
 
-/** Calibres y Medidas Específicas según Tipo de Conducto */
-export interface ConduitSizeOption {
-  readonly value: number;       // Identificador numérico en mm (diámetro exterior o ancho de bandeja)
-  readonly label: string;       // Etiqueta legible en interfaz
-  readonly standardSize: string;// Nomenclatura comercial
-  readonly usefulAreaMM2: number; // Área interna útil real en mm² para cálculo de ocupación
-  readonly isTray?: boolean;    // ¿Es bandeja portacables?
-}
-
-export const CONDUIT_SIZES_BY_MATERIAL: Record<ConduitMaterial, readonly ConduitSizeOption[]> = {
+export const CONDUIT_SIZES_BY_MATERIAL: Record<string, readonly ConduitSizeOption[]> = {
   hierro_semipesado_rs: [
     { value: 16, label: 'RS 16 (5/8")', standardSize: 'RS 16', usefulAreaMM2: 143.1 },
     { value: 19, label: 'RS 19 (3/4") [Estándar]', standardSize: 'RS 19', usefulAreaMM2: 213.8 },
@@ -329,13 +365,249 @@ export const AEA_CONDUCTOR_PRESETS: readonly ConductorPresetOption[] = [
   }
 ] as const;
 
-/** Sugerencias de Claves Técnicas de Metadatos (TRAZA) */
+/** Sugerencias de Claves Técnicas y Mediciones de Campo (TRAZA / Instrumental) */
 export const SUGGESTED_ELEMENT_METADATA_KEYS = [
+  'PAT (Ohm)',
+  'Tensión Vfn',
+  'Tensión Vft',
+  'Tensión Vnt',
+  'Aislación (MOhm)',
+  'Corriente (A)',
+  'Disyuntor (ms)',
   'Marca',
   'Modelo',
   'IP',
   'Tipo Lámpara',
-  'Consumo',
-  'Garantía',
-  'Circuito Auxiliar'
+  'Consumo (W)'
 ] as const;
+
+// ─── CATÁLOGOS INICIALES POR DEFECTO (3 CATEGORÍAS RÍGIDAS CON TIPOS EXTENSIBLES) ───
+
+export const DEFAULT_CONDUIT_TYPES: ConduitTypeDefinition[] = [
+  {
+    id: 'hierro_semipesado_rs',
+    name: 'Caño Hierro Semipesado RS',
+    description: 'Acero semipesado según IRAM-IAS U 500-2604 (losas y embutido)',
+    defaultSizeMM: 19,
+    availableSizes: [
+      { value: 16, label: 'RS 16 (5/8")', standardSize: 'RS 16', usefulAreaMM2: 143.1 },
+      { value: 19, label: 'RS 19 (3/4") [Estándar]', standardSize: 'RS 19', usefulAreaMM2: 213.8 },
+      { value: 22, label: 'RS 22 (7/8")', standardSize: 'RS 22', usefulAreaMM2: 298.6 },
+      { value: 25, label: 'RS 25 (1")', standardSize: 'RS 25', usefulAreaMM2: 394.1 },
+      { value: 32, label: 'RS 32 (1 1/4")', standardSize: 'RS 32', usefulAreaMM2: 642.4 },
+      { value: 38, label: 'RS 38 (1 1/2")', standardSize: 'RS 38', usefulAreaMM2: 934.8 },
+      { value: 51, label: 'RS 51 (2")', standardSize: 'RS 51', usefulAreaMM2: 1705.5 }
+    ]
+  },
+  {
+    id: 'hierro_liviano_rl',
+    name: 'Hierro Liviano RL',
+    description: 'Acero liviano con costura IRAM-IAS U 500-2005',
+    defaultSizeMM: 19,
+    availableSizes: [
+      { value: 16, label: 'RL 16 (5/8")', standardSize: 'RL 16', usefulAreaMM2: 158.4 },
+      { value: 19, label: 'RL 19 (3/4") [Estándar]', standardSize: 'RL 19', usefulAreaMM2: 232.4 },
+      { value: 22, label: 'RL 22 (7/8")', standardSize: 'RL 22', usefulAreaMM2: 320.5 },
+      { value: 25, label: 'RL 25 (1")', standardSize: 'RL 25', usefulAreaMM2: 422.7 },
+      { value: 32, label: 'RL 32 (1 1/4")', standardSize: 'RL 32', usefulAreaMM2: 678.9 },
+      { value: 38, label: 'RL 38 (1 1/2")', standardSize: 'RL 38', usefulAreaMM2: 973.1 },
+      { value: 51, label: 'RL 51 (2")', standardSize: 'RL 51', usefulAreaMM2: 1749.7 }
+    ]
+  },
+  {
+    id: 'pvc_rigido_metrico',
+    name: 'Caño PVC Rígido (métrico)',
+    description: 'Termoplástico rígido curvable en caliente IRAM 62386-21',
+    defaultSizeMM: 20,
+    availableSizes: [
+      { value: 16, label: 'Ø16 mm (Métrico)', standardSize: 'PVC 16', usefulAreaMM2: 132.7 },
+      { value: 20, label: 'Ø20 mm (Métrico) [Estándar]', standardSize: 'PVC 20', usefulAreaMM2: 221.7 },
+      { value: 25, label: 'Ø25 mm (Métrico)', standardSize: 'PVC 25', usefulAreaMM2: 363.0 },
+      { value: 32, label: 'Ø32 mm (Métrico)', standardSize: 'PVC 32', usefulAreaMM2: 615.7 },
+      { value: 40, label: 'Ø40 mm (Métrico)', standardSize: 'PVC 40', usefulAreaMM2: 989.8 },
+      { value: 50, label: 'Ø50 mm (Métrico)', standardSize: 'PVC 50', usefulAreaMM2: 1590.4 },
+      { value: 63, label: 'Ø63 mm (Métrico)', standardSize: 'PVC 63', usefulAreaMM2: 2551.7 }
+    ]
+  },
+  {
+    id: 'corrugado_blanco_pvc',
+    name: 'Corrugado Blanco PVC',
+    description: 'Termoplástico corrugado liviano IRAM 62386-22',
+    defaultSizeMM: 20,
+    availableSizes: [
+      { value: 16, label: 'Ø16 mm (5/8")', standardSize: 'Corrugado 16', usefulAreaMM2: 132.7 },
+      { value: 20, label: 'Ø20 mm (3/4") [Estándar]', standardSize: 'Corrugado 20', usefulAreaMM2: 201.0 },
+      { value: 22, label: 'Ø22 mm (7/8")', standardSize: 'Corrugado 22', usefulAreaMM2: 254.4 },
+      { value: 25, label: 'Ø25 mm (1")', standardSize: 'Corrugado 25', usefulAreaMM2: 314.1 },
+      { value: 32, label: 'Ø32 mm (1 1/4")', standardSize: 'Corrugado 32', usefulAreaMM2: 530.9 }
+    ]
+  },
+  {
+    id: 'corrugado_naranja',
+    name: 'Corrugado Naranja (Existente)',
+    description: 'Corrugado no ignífugo habitual en instalaciones existentes',
+    defaultSizeMM: 20,
+    availableSizes: [
+      { value: 16, label: 'Ø16 mm (5/8")', standardSize: 'Naranja 16', usefulAreaMM2: 132.7 },
+      { value: 20, label: 'Ø20 mm (3/4")', standardSize: 'Naranja 20', usefulAreaMM2: 201.0 },
+      { value: 25, label: 'Ø25 mm (1")', standardSize: 'Naranja 25', usefulAreaMM2: 314.1 }
+    ]
+  },
+  {
+    id: 'manguera_negra',
+    name: 'Manguera Negra Polietileno',
+    description: 'Manguera plástica flexible (común en relevamientos rurales/precarios)',
+    defaultSizeMM: 19,
+    availableSizes: [
+      { value: 16, label: '1/2" (13 mm)', standardSize: 'Manguera 1/2"', usefulAreaMM2: 132.7 },
+      { value: 19, label: '3/4" (19 mm)', standardSize: 'Manguera 3/4"', usefulAreaMM2: 283.5 },
+      { value: 25, label: '1" (25 mm)', standardSize: 'Manguera 1"', usefulAreaMM2: 490.8 }
+    ]
+  },
+  {
+    id: 'bandeja_perforada_20',
+    name: 'Bandeja Perforada de 20',
+    description: 'Chapa de acero perforada ala 20 mm para montaje superficial',
+    defaultSizeMM: 100,
+    availableSizes: [
+      { value: 50, label: '50 × 20 mm', standardSize: 'Bandeja 50x20', usefulAreaMM2: 1000, isTray: true },
+      { value: 100, label: '100 × 20 mm', standardSize: 'Bandeja 100x20', usefulAreaMM2: 2000, isTray: true },
+      { value: 150, label: '150 × 20 mm', standardSize: 'Bandeja 150x20', usefulAreaMM2: 3000, isTray: true },
+      { value: 200, label: '200 × 20 mm', standardSize: 'Bandeja 200x20', usefulAreaMM2: 4000, isTray: true },
+      { value: 300, label: '300 × 20 mm', standardSize: 'Bandeja 300x20', usefulAreaMM2: 6000, isTray: true }
+    ]
+  }
+];
+
+export const DEFAULT_CABLE_TYPES: CableTypeDefinition[] = [
+  {
+    id: 'IRAM_NM_247_3',
+    name: 'IRAM NM 247-3 (Unipolar PVC)',
+    description: 'Antiflama 450/750V estándar para canalizaciones embutidas o a la vista',
+    defaultSectionMM2: 2.5,
+    availableSectionsMM2: [1.0, 1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0, 35.0]
+  },
+  {
+    id: 'IRAM_62267_LSOH',
+    name: 'IRAM 62267 (Libre de Halógenos)',
+    description: 'Baja emisión de humos y cero halógenos (Afumex / LSOH)',
+    defaultSectionMM2: 2.5,
+    availableSectionsMM2: [1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0]
+  },
+  {
+    id: 'IRAM_2178_SUB',
+    name: 'IRAM 2178 (Subterráneo / Sintenax)',
+    description: 'Aislación XLPE / Vaina exterior resistente a intemperie 0.6/1.1 kV',
+    defaultSectionMM2: 4.0,
+    availableSectionsMM2: [1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0]
+  },
+  {
+    id: 'IRAM_NM_247_5',
+    name: 'IRAM NM 247-5 (Tipo Taller)',
+    description: 'Conductor flexible envainado redondo doble aislación',
+    defaultSectionMM2: 2.5,
+    availableSectionsMM2: [1.0, 1.5, 2.5, 4.0]
+  },
+  {
+    id: 'TELA_GOMA',
+    name: 'Antiguo Tela / Goma (Histórico)',
+    description: 'Conductores antiguos con trenza textil o goma vulcanizada',
+    defaultSectionMM2: 1.5,
+    availableSectionsMM2: [1.0, 1.5, 2.5, 4.0]
+  },
+  {
+    id: 'ALAMBRE_MACIZO',
+    name: 'Alambre de Cobre Macizo',
+    description: 'Conductor rígido macizo sin hebras flexibles',
+    defaultSectionMM2: 2.0,
+    availableSectionsMM2: [1.0, 1.5, 2.0, 2.5, 4.0]
+  }
+];
+
+export const DEFAULT_BOX_TYPES: BoxTypeDefinition[] = [
+  {
+    id: 'caja_rectangular_chapa',
+    name: 'Caja Rectangular 5x10 (Chapa)',
+    category: 'caja_rectangular',
+    materialBase: 'chapa',
+    description: 'Chapa de acero estampada embutida'
+  },
+  {
+    id: 'caja_rectangular_pvc',
+    name: 'Caja Rectangular 5x10 (PVC)',
+    category: 'caja_rectangular',
+    materialBase: 'pvc',
+    description: 'Termoplástico ignífugo embutido'
+  },
+  {
+    id: 'caja_octogonal_chica',
+    name: 'Caja Octogonal Chica 75mm',
+    category: 'caja_octogonal',
+    materialBase: 'chapa',
+    description: 'Para centros de iluminación y apliques'
+  },
+  {
+    id: 'caja_octogonal_grande',
+    name: 'Caja Octogonal Grande 90mm (Losa)',
+    category: 'caja_octogonal',
+    materialBase: 'chapa',
+    description: 'Para cruce de cañerías en losa'
+  },
+  {
+    id: 'caja_cuadrada_10x10',
+    name: 'Caja Cuadrada 10x10 (Paso / Derivación)',
+    category: 'caja_cuadrada',
+    materialBase: 'chapa',
+    description: 'Caja de paso para empalmes y tirada'
+  },
+  {
+    id: 'caja_mignon',
+    name: 'Caja Mignon (5x5)',
+    category: 'caja_mignon',
+    materialBase: 'chapa',
+    description: 'Para tomas pequeños o pulsadores'
+  },
+  {
+    id: 'gabinete_tablero_embutir',
+    name: 'Gabinete Tablero Embutir DIN',
+    category: 'gabinete_tablero',
+    materialBase: 'pvc',
+    description: 'Gabinete plástico o metálico para riel DIN'
+  },
+  {
+    id: 'gabinete_tablero_superficie',
+    name: 'Gabinete Tablero Superficie DIN',
+    category: 'gabinete_tablero',
+    materialBase: 'chapa',
+    description: 'Gabinete exterior estanco o chapa'
+  }
+];
+
+export function createDefaultMaterialCatalog(): ProjectMaterialCatalog {
+  return {
+    conduitTypes: [...DEFAULT_CONDUIT_TYPES],
+    cableTypes: [...DEFAULT_CABLE_TYPES],
+    boxTypes: [...DEFAULT_BOX_TYPES]
+  };
+}
+
+export function getSizesForConduitType(
+  typeId: string,
+  catalog?: ProjectMaterialCatalog
+): readonly ConduitSizeOption[] {
+  const found = catalog?.conduitTypes.find((c) => c.id === typeId);
+  if (found && found.availableSizes.length > 0) {
+    return found.availableSizes;
+  }
+  return CONDUIT_SIZES_BY_MATERIAL[typeId] || CONDUIT_SIZES_BY_MATERIAL.hierro_semipesado_rs;
+}
+
+export function getDefaultSizeForConduitType(
+  typeId: string,
+  catalog?: ProjectMaterialCatalog
+): number {
+  const found = catalog?.conduitTypes.find((c) => c.id === typeId);
+  if (found) return found.defaultSizeMM;
+  return getDefaultSizeForConduitMaterial(typeId as ConduitMaterial);
+}
+

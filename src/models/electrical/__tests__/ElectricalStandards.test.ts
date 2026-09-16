@@ -13,7 +13,12 @@ import {
   AEA_CALCULATION_CONSTANTS,
   AEA_CONDUCTOR_PRESETS,
   getSizesForConduitMaterial,
-  getDefaultSizeForConduitMaterial
+  getDefaultSizeForConduitMaterial,
+  createDefaultMaterialCatalog,
+  getSizesForConduitType,
+  getDefaultSizeForConduitType,
+  BOX_CATEGORIES_CATALOG,
+  BOX_MATERIALS_CATALOG
 } from '../electricalStandards';
 import {
   getConduitLengthBreakdown,
@@ -134,5 +139,49 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
     expect(bandejaSizes.some((s: any) => s.standardSize.includes('200x20'))).toBe(true);
     expect(bandejaSizes.find((s: any) => s.value === 200)?.usefulAreaMM2).toBe(4000);
     expect(getDefaultSizeForConduitMaterial('bandeja_perforada_20')).toBe(200);
+  });
+
+  it('debe generar un catálogo inicial completo con las 3 categorías físicas rígidas', () => {
+    const catalog = createDefaultMaterialCatalog();
+    expect(catalog.conduitTypes.length).toBeGreaterThanOrEqual(5);
+    expect(catalog.cableTypes.length).toBeGreaterThanOrEqual(4);
+    expect(catalog.boxTypes.length).toBeGreaterThanOrEqual(5);
+
+    // Canalizaciones
+    expect(catalog.conduitTypes[0].id).toBe('hierro_semipesado_rs');
+    expect(catalog.conduitTypes[0].availableSizes.length).toBeGreaterThan(0);
+
+    // Conductores
+    expect(catalog.cableTypes.some((c) => c.id === 'IRAM_NM_247_3')).toBe(true);
+    expect(catalog.cableTypes.some((c) => c.id === 'IRAM_2178_SUB')).toBe(true);
+
+    // Cajas
+    expect(catalog.boxTypes.some((b) => b.id === 'caja_rectangular_chapa')).toBe(true);
+    expect(catalog.boxTypes.some((b) => b.category === 'gabinete_tablero')).toBe(true);
+
+    // Catálogos auxiliares
+    expect(BOX_CATEGORIES_CATALOG.length).toBeGreaterThanOrEqual(5);
+    expect(BOX_MATERIALS_CATALOG.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('debe soportar tipos personalizados de canalización y resolver sus calibres dinámicamente', () => {
+    const catalog = createDefaultMaterialCatalog();
+    const customConduit = {
+      id: 'custom_bergman',
+      name: 'Caño Bergman Histórico',
+      description: 'Caño aislante de latón con papel alquitranado',
+      defaultSizeMM: 16,
+      availableSizes: [
+        { value: 11, label: 'Bergman 11', standardSize: '11', usefulAreaMM2: 95 },
+        { value: 16, label: 'Bergman 16', standardSize: '16', usefulAreaMM2: 201 }
+      ],
+      isCustom: true
+    };
+    catalog.conduitTypes.push(customConduit);
+
+    const sizes = getSizesForConduitType('custom_bergman', catalog);
+    expect(sizes.length).toBe(2);
+    expect(sizes[0].standardSize).toBe('11');
+    expect(getDefaultSizeForConduitType('custom_bergman', catalog)).toBe(16);
   });
 });

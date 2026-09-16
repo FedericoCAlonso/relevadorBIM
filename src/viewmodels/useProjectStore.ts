@@ -14,7 +14,16 @@ import { getWallVector, getWallLength, getWallLeftNormal } from '../models/archi
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { Space } from '../models/architecture/Space';
 import { findEnclosedCycles } from '../models/architecture/Space';
-import type { ElectricalElement, Conduit, Circuit, Panel } from '../models/electrical/ElectricalModel';
+import type {
+  ElectricalElement,
+  Conduit,
+  Circuit,
+  Panel,
+  ConduitTypeDefinition,
+  CableTypeDefinition,
+  BoxTypeDefinition
+} from '../models/electrical/ElectricalModel';
+import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -106,6 +115,14 @@ interface ProjectStoreState {
   deletePanel: (panelId: string) => void;
   ensureDefaultCircuits: () => void;
 
+  // Catálogo Abierto de Materiales (3 Categorías)
+  addConduitType: (def: ConduitTypeDefinition) => void;
+  removeConduitType: (id: string) => void;
+  addCableType: (def: CableTypeDefinition) => void;
+  removeCableType: (id: string) => void;
+  addBoxType: (def: BoxTypeDefinition) => void;
+  removeBoxType: (id: string) => void;
+
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
   resetProject: () => void;
@@ -137,6 +154,90 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         }
       }
     })),
+
+  addConduitType: (def) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            conduitTypes: [...current.conduitTypes.filter((c) => c.id !== def.id), def]
+          }
+        }
+      };
+    }),
+
+  removeConduitType: (id) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            conduitTypes: current.conduitTypes.filter((c) => c.id !== id)
+          }
+        }
+      };
+    }),
+
+  addCableType: (def) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            cableTypes: [...current.cableTypes.filter((c) => c.id !== def.id), def]
+          }
+        }
+      };
+    }),
+
+  removeCableType: (id) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            cableTypes: current.cableTypes.filter((c) => c.id !== id)
+          }
+        }
+      };
+    }),
+
+  addBoxType: (def) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            boxTypes: [...current.boxTypes.filter((b) => b.id !== def.id), def]
+          }
+        }
+      };
+    }),
+
+  removeBoxType: (id) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            boxTypes: current.boxTypes.filter((b) => b.id !== id)
+          }
+        }
+      };
+    }),
 
   setSelectedEntity: (entity) => set({ selectedEntity: entity }),
   setActiveAnchorVertexId: (vertexId) => set({ activeAnchorVertexId: vertexId }),
@@ -772,7 +873,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     }));
   },
 
-  loadProject: (project) => set({ project, selectedEntity: null, activeAnchorVertexId: null }),
+  loadProject: (project) =>
+    set({
+      project: {
+        ...project,
+        materialCatalog: project.materialCatalog || createDefaultMaterialCatalog()
+      },
+      selectedEntity: null,
+      activeAnchorVertexId: null
+    }),
 
   resetProject: () => set({ project: createEmptyProject(), selectedEntity: null, activeAnchorVertexId: null })
 }));

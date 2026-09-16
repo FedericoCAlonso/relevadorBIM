@@ -17,8 +17,10 @@ import type {
   Circuit,
   Panel,
   ConduitMaterial,
-  CableStandard
+  CableStandard,
+  ProjectMaterialCatalog
 } from '../electrical/ElectricalModel';
+import { createDefaultMaterialCatalog } from '../electrical/electricalStandards';
 
 export interface ProjectMetadata {
   id: string;
@@ -47,6 +49,7 @@ export interface BuildingProject {
   conduits: Conduit[];
   circuits: Circuit[];
   panels: Panel[];
+  materialCatalog?: ProjectMaterialCatalog; // Catálogo abierto de materiales de este proyecto
 }
 
 /**
@@ -128,6 +131,7 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
     electricalElements: [],
     conduits: [],
     circuits: defaultCircuits,
-    panels: defaultPanels
+    panels: defaultPanels,
+    materialCatalog: createDefaultMaterialCatalog()
   };
 }

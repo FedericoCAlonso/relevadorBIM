@@ -31,6 +31,7 @@ interface BimCanvasProps {
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
   onElectricalElementClick?: (elementId: string) => void;
+  onElectricalElementDoubleClick?: (elementId: string) => void;
   onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap) => void;
 }
 
@@ -42,6 +43,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onOpeningClick,
   onSpaceClick,
   onElectricalElementClick,
+  onElectricalElementDoubleClick,
   onCanvasClick
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -310,6 +312,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     let wx = (clientX - rect.left - pan.x) / zoom;
     let wy = (clientY - rect.top - pan.y) / zoom;
     let snapInfo: WallPlacementSnap | null = null;
+
+    if (!selectedSymbolId) {
+      // Prioridad táctil: chequear si el click/tap cayó cerca de una boca eléctrica (tolerancia de 34px)
+      const touchToleranceWorld = 34 / zoom;
+      const nearbyElement = project.electricalElements
+        .filter((el) => el.levelId === project.activeLevelId)
+        .find((el) => Math.hypot(el.x - wx, el.y - wy) <= touchToleranceWorld);
+
+      if (nearbyElement) {
+        onElectricalElementClick?.(nearbyElement.id);
+        return;
+      }
+    }
 
     if (selectedSymbolId) {
       const isCeilingSymbol = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
@@ -829,6 +844,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               e.stopPropagation();
               onElectricalElementClick?.(element.id);
             }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onElectricalElementDoubleClick?.(element.id);
+            }}
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
@@ -843,10 +862,45 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               returnRef={element.returnRef}
               rotationDeg={element.rotation || 0}
             />
+
+            {/* Si está seleccionado, botón contextual flotante para abrir ficha técnica / registrar mediciones */}
+            {isSelected && (
+              <g
+                transform="translate(0, -36)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onElectricalElementDoubleClick?.(element.id);
+                }}
+                className="cursor-pointer group"
+              >
+                <rect
+                  x="-52"
+                  y="-11"
+                  width="104"
+                  height="22"
+                  rx="11"
+                  fill="#0f172a"
+                  stroke="#3b82f6"
+                  strokeWidth="1.5"
+                  className="shadow-md group-hover:fill-blue-600 transition-colors"
+                />
+                <text
+                  x="0"
+                  y="4"
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="10"
+                  fontWeight="bold"
+                  className="select-none font-sans pointer-events-none"
+                >
+                  ⚙️ Ficha / Medir
+                </text>
+              </g>
+            )}
           </g>
         );
       });
-  }, [project.electricalElements, project.circuits, project.activeLevelId, zoom, selectedEntity, onElectricalElementClick]);
+  }, [project.electricalElements, project.circuits, project.activeLevelId, zoom, selectedEntity, onElectricalElementClick, onElectricalElementDoubleClick]);
 
   return (
     <div

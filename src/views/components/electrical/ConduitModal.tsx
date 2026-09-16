@@ -6,7 +6,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { Conduit, CableStandard, ConductorRole } from '../../../models/electrical/ElectricalModel';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -14,8 +14,7 @@ import {
   X,
   Cable,
   Trash2,
-  AlertTriangle,
-  CheckCircle2
+  Plus
 } from 'lucide-react';
 
 interface ConduitModalProps {
@@ -39,13 +38,47 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
     updateConduitConductor,
     removeConductorFromConduit,
     removeConduit,
-    toggleConduitCircuit
+    toggleConduitCircuit,
+    addConduitType
   } = useElectricalViewModel();
+
+  const [showNewMaterialForm, setShowNewMaterialForm] = useState(false);
+  const [newMaterialName, setNewMaterialName] = useState('');
+  const [newMaterialSizes, setNewMaterialSizes] = useState('');
 
   if (!isOpen || !conduit) return null;
 
   const symFrom = conduitFromElement ? getSymbolById(conduitFromElement.symbolId) : null;
   const symTo = conduitToElement ? getSymbolById(conduitToElement.symbolId) : null;
+
+  const handleCreateConduitType = () => {
+    if (!newMaterialName.trim()) return;
+    const sizes = newMaterialSizes
+      .split(',')
+      .map((s) => parseFloat(s.trim()))
+      .filter((n) => !isNaN(n) && n > 0);
+    const availableSizes = (sizes.length > 0 ? sizes : [19]).map((mm) => ({
+      value: mm,
+      label: `Ø${mm} mm`,
+      standardSize: `Ø${mm} mm`,
+      usefulAreaMM2: Number((Math.PI * Math.pow((mm * 0.85) / 2, 2)).toFixed(1))
+    }));
+    const newId = `custom-cond-${Date.now()}`;
+    addConduitType({
+      id: newId,
+      name: newMaterialName.trim(),
+      availableSizes,
+      defaultSizeMM: availableSizes[0].value,
+      isCustom: true
+    });
+    setConduitProperties(conduit.id, {
+      material: newId,
+      diameterMM: availableSizes[0].value
+    });
+    setShowNewMaterialForm(false);
+    setNewMaterialName('');
+    setNewMaterialSizes('');
+  };
 
   const autoLengthM = conduitBreakdown ? conduitBreakdown.totalLengthM : 2.5;
   const effectiveLengthM = conduit.manualLengthM || autoLengthM;
@@ -79,38 +112,19 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
         {/* Cuerpo Scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
-          {/* 1. Verificación AEA en tiempo real */}
+          {/* 1. Datos técnicos de ocupación del tramo (Sereno y neutral) */}
           {conduitOccupancy && (
-            <div
-              className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
-                conduitOccupancy.isCompliant
-                  ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-                  : 'bg-red-50/90 border-red-300 text-red-950'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                {conduitOccupancy.isCompliant ? (
-                  <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
-                ) : (
-                  <AlertTriangle size={20} className="text-red-600 flex-shrink-0 animate-bounce" />
-                )}
-                <div>
-                  <div className="font-bold text-xs">
-                    {conduitOccupancy.isCompliant
-                      ? `Factor de Llenado AEA: ${conduitOccupancy.occupancyPercent}% (Máx ${conduitOccupancy.maxAllowedPercent}%)`
-                      : `⚠️ CAÑERÍA SATURADA: ${conduitOccupancy.occupancyPercent}% supera el ${conduitOccupancy.maxAllowedPercent}% AEA`}
-                  </div>
-                  <div className="text-[11px] opacity-80">
-                    {conduitOccupancy.isCompliant
-                      ? `Sección interna útil adecuada para ${conduit.conductors.length} conductores.`
-                      : `Reglamento AEA 90364-771: Aumentar diámetro comercial.`}
-                  </div>
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 text-slate-800">
+              <div>
+                <div className="font-bold text-xs">
+                  Factor de Ocupación: {conduitOccupancy.occupancyPercent}% (Ref. AEA: {conduitOccupancy.maxAllowedPercent}%)
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {conduit.conductors.length} {conduit.conductors.length === 1 ? 'conductor alojado' : 'conductores alojados'}.
                 </div>
               </div>
-              <div className="text-right font-mono font-bold text-sm">
-                <span className={conduitOccupancy.isCompliant ? 'text-emerald-700' : 'text-red-700'}>
-                  {conduitOccupancy.occupancyPercent}%
-                </span>
+              <div className="text-right font-mono font-bold text-sm text-slate-700">
+                {conduitOccupancy.occupancyPercent}%
               </div>
             </div>
           )}
@@ -120,7 +134,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             <label className="block font-bold text-slate-700 mb-1">
               {conduit.material.includes('bandeja')
                 ? 'Dimensión de Bandeja Perforada (Ancho × Ala 20 mm):'
-                : 'Calibre / Diámetro Comercial Específico:'}
+                : 'Calibre / Diámetro Comercial:'}
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               {conduitAvailableSizes.map((sizeOpt) => {
@@ -137,7 +151,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                     }`}
                   >
                     <div className="font-mono text-xs font-bold leading-tight">
-                      {sizeOpt.standardSize}
+                      {sizeOpt.standardSize || `Ø${sizeOpt.value} mm`}
                     </div>
                     <div className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
                       {sizeOpt.label.split('[')[0].trim()}
@@ -150,8 +164,56 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
           {/* 3. Tipo de Conducto / Material (Desde Catálogo del Modelo) */}
           <div>
-            <label className="block font-bold text-slate-700 mb-1">Tipo de Conducto (Material):</label>
-            <div className="space-y-1.5">
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-bold text-slate-700 block">Tipo de Conducto (Material):</label>
+              <button
+                type="button"
+                onClick={() => setShowNewMaterialForm(!showNewMaterialForm)}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <Plus size={12} />
+                <span>{showNewMaterialForm ? 'Cerrar formulario' : 'Nuevo tipo...'}</span>
+              </button>
+            </div>
+
+            {/* Formulario rápido para alta de nuevo tipo */}
+            {showNewMaterialForm && (
+              <div className="p-3 mb-2 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+                <span className="font-bold text-xs text-blue-950 block">Nuevo Tipo de Conducto:</span>
+                <input
+                  type="text"
+                  placeholder="Nombre (ej: Caño Bergman, Manguera 3/4)"
+                  value={newMaterialName}
+                  onChange={(e) => setNewMaterialName(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Calibres mm separados por coma (ej: 16, 19, 25)"
+                  value={newMaterialSizes}
+                  onChange={(e) => setNewMaterialSizes(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMaterialForm(false)}
+                    className="px-2.5 py-1 text-slate-600 text-xs hover:bg-slate-200 rounded-lg"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateConduitType}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                  >
+                    Guardar y Usar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {catalogs.materials.map((mat) => {
                 const isSelected = (conduit.material || catalogs.materials[0].id) === mat.id;
                 return (
@@ -169,7 +231,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                       <div className={`font-bold text-xs ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
                         {mat.label}
                       </div>
-                      <div className="text-[10px] text-slate-500">{mat.description}</div>
+                      {mat.description && <div className="text-[10px] text-slate-500">{mat.description}</div>}
                     </div>
                     {isSelected && <span className="text-blue-600 font-bold text-xs">✓ Activo</span>}
                   </button>

@@ -98,8 +98,8 @@ export const AeaCanvasSymbol: React.FC<{
 
   return (
     <g className="select-none" transform={`rotate(${rotationDeg})`}>
-      {/* Área de impacto invisible para selección táctil y de ratón al 100% de efectividad */}
-      <circle r={22} fill="transparent" pointerEvents="all" className="cursor-pointer" />
+      {/* Área de impacto táctil y de ratón ampliada (r=32px / 64px diámetro) para selección certera en campo */}
+      <circle r={32} fill="transparent" pointerEvents="all" className="cursor-pointer" />
 
       {/* Halo de selección punteado discreto para feedback visual claro */}
       {isSelected && (

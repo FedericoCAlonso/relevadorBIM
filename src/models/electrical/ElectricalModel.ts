@@ -18,12 +18,6 @@ export type ConductorRole =
   | 'fase_t'
   | 'comando';
 
-export type CableStandard =
-  | 'IRAM_NM_247_3'     // Unipolar estándar PVC antiflama 450/750V
-  | 'IRAM_62267_LSOH'   // Libre de halógenos y baja emisión de humos (lugares concurridos)
-  | 'IRAM_2178_SUB'     // Subterráneo / intemperie 0.6/1.1 kV
-  | 'IRAM_NM_247_5';    // Tipo Taller doble aislación
-
 export interface ConductorLine {
   role: ConductorRole;
   sectionMM2: number;      // Sección en mm² (ej: 1.5, 2.5, 4.0, 6.0)
@@ -57,6 +51,7 @@ export interface ElectricalElement {
   powerW?: number;         // Potencia nominal estimada en Watts (TRAZA)
   phases?: 1 | 3;          // 1 = Monofásico, 3 = Trifásico (TRAZA)
   isPanel?: boolean;       // Indica si representa un tablero eléctrico
+  boxTypeId?: string;     // Tipo de caja / contenedor físico asociado
   attributes?: Array<{ key: string; value: string }>; // Metadatos técnicos libres clave-valor (TRAZA)
   earthMeasurement?: {
     ohms: number;
@@ -65,17 +60,84 @@ export interface ElectricalElement {
   };
 }
 
-export type ConduitMaterial =
+export type BuiltinConduitMaterial =
   | 'hierro_semipesado_rs'
   | 'hierro_liviano_rl'
   | 'pvc_rigido_metrico'
   | 'corrugado_blanco_pvc'
   | 'bandeja_perforada_20'
+  | 'corrugado_naranja'
+  | 'manguera_negra'
   | 'corrugado_blanco'
   | 'corrugado_ignifugo'
   | 'cano_rigido_pvc'
   | 'cano_acero'
   | 'bandeja';
+
+export type ConduitMaterial = BuiltinConduitMaterial | (string & {});
+
+export type BuiltinCableStandard =
+  | 'IRAM_NM_247_3'     // Unipolar estándar PVC antiflama 450/750V
+  | 'IRAM_62267_LSOH'   // Libre de halógenos y baja emisión de humos (lugares concurridos)
+  | 'IRAM_2178_SUB'     // Subterráneo / intemperie 0.6/1.1 kV
+  | 'IRAM_NM_247_5'     // Tipo Taller doble aislación
+  | 'TELA_GOMA'         // Antiguo tela/goma
+  | 'ALAMBRE_MACIZO';   // Alambre macizo
+
+export type CableStandard = BuiltinCableStandard | (string & {});
+
+// ─── DEFINICIONES DE LAS 3 CATEGORÍAS FÍSICAS RÍGIDAS CON CATÁLOGO ABIERTO ───
+
+export interface ConduitSizeOption {
+  value: number;            // Dimensión en mm (diámetro exterior o ancho de bandeja)
+  label: string;            // Etiqueta legible (ej: 'RS 19 (3/4")')
+  standardSize?: string;    // Denominación estándar comercial
+  usefulAreaMM2?: number;   // Sección útil interior en mm² para cálculo de ocupación
+  isTray?: boolean;         // ¿Es bandeja portacables?
+}
+
+export interface ConduitTypeDefinition {
+  id: string;
+  name: string;             // Ej: "Caño Hierro Semipesado RS", "Manguera Negra de Riego"
+  description?: string;
+  availableSizes: ConduitSizeOption[];
+  defaultSizeMM: number;
+  isCustom?: boolean;       // True si fue agregado por el usuario
+}
+
+export interface CableTypeDefinition {
+  id: string;
+  name: string;             // Ej: "IRAM NM 247-3 (Unipolar PVC)", "Antiguo Tela / Goma"
+  description?: string;
+  availableSectionsMM2: number[]; // Ej: [1.0, 1.5, 2.5, 4.0, 6.0, 10.0]
+  defaultSectionMM2: number;
+  isCustom?: boolean;
+}
+
+export type BoxCategory =
+  | 'caja_rectangular'
+  | 'caja_octogonal'
+  | 'caja_cuadrada'
+  | 'caja_mignon'
+  | 'gabinete_tablero'
+  | 'otro';
+
+export type BoxMaterialBase = 'chapa' | 'pvc' | 'aluminio' | 'otro';
+
+export interface BoxTypeDefinition {
+  id: string;
+  name: string;             // Ej: "Caja Rectangular 5x10 Chapa", "Caja Octogonal Chica", "Gabinete 12 Polos DIN"
+  category: BoxCategory;
+  materialBase?: BoxMaterialBase;
+  description?: string;
+  isCustom?: boolean;
+}
+
+export interface ProjectMaterialCatalog {
+  conduitTypes: ConduitTypeDefinition[];
+  cableTypes: CableTypeDefinition[];
+  boxTypes: BoxTypeDefinition[];
+}
 
 export interface Conduit {
   id: string;

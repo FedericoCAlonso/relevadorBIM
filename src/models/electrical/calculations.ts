@@ -135,7 +135,7 @@ export function calculateConduitOccupancyFactor(params: {
   let conduitArea = 0;
   if (material) {
     const sizeOpt = getSizesForConduitMaterial(material).find((s) => s.value === conduitDiameterMM);
-    if (sizeOpt && sizeOpt.usefulAreaMM2 > 0) {
+    if (sizeOpt && typeof sizeOpt.usefulAreaMM2 === 'number' && sizeOpt.usefulAreaMM2 > 0) {
       conduitArea = sizeOpt.usefulAreaMM2;
     }
   }

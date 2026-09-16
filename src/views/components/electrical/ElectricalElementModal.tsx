@@ -77,7 +77,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
         {/* Cuerpo Scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
           {/* 1. Rótulo y Circuito */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Rótulo / Nombre:</label>
               <input
@@ -90,7 +90,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Circuito Asignado (Alimentación):</label>
+              <label className="block font-bold text-slate-700 mb-1">Circuito Asignado:</label>
               <select
                 value={element.circuitId || ''}
                 onChange={(e) =>
@@ -109,9 +109,29 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
               </select>
             </div>
 
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Caja / Gabinete Físico:</label>
+              <select
+                value={element.boxTypeId || ''}
+                onChange={(e) =>
+                  setElementProperties(element.id, {
+                    boxTypeId: e.target.value ? e.target.value : undefined
+                  })
+                }
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+              >
+                <option value="">(Sin especificar caja)</option>
+                {catalogs.boxTypes.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Circuitos en Tránsito / De Paso por esta Caja (AEA 771.12) */}
             {circuits.length > 0 && (
-              <div className="sm:col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="sm:col-span-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-bold text-xs text-slate-800 block">
@@ -374,10 +394,10 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <label className="font-bold text-slate-700 block">
-                  Propiedades Arbitrarias / Metadatos (TRAZA):
+                  Mediciones de Campo y Propiedades (Array Clave-Valor):
                 </label>
                 <span className="text-[10px] text-slate-500">
-                  Array de clave-valor ({attributes.length} {attributes.length === 1 ? 'propiedad' : 'propiedades'})
+                  Valores de instrumental (PAT, tensión, aislación) o datos técnicos ({attributes.length})
                 </span>
               </div>
               <button
