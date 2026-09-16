@@ -149,23 +149,43 @@ export function useSurveyViewModel() {
     [addOpeningReferenced]
   );
 
+  const handleSetIsConnectingConduit = useCallback((connecting: boolean | ((prev: boolean) => boolean)) => {
+    setIsConnectingConduit((prev) => {
+      const next = typeof connecting === 'function' ? connecting(prev) : connecting;
+      if (!next) {
+        setPendingConduitStartId(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const cancelConduitConnection = useCallback(() => {
+    setIsConnectingConduit(false);
+    setPendingConduitStartId(null);
+  }, []);
+
   /**
-   * Conexión de cañerías entre bocas eléctricas.
+   * Conexión de cañerías entre bocas eléctricas y tableros.
    */
   const handleElectricalElementClick = useCallback(
     (elementId: string) => {
       if (isConnectingConduit) {
         if (!pendingConduitStartId) {
           setPendingConduitStartId(elementId);
-        } else if (pendingConduitStartId !== elementId) {
+          setSelectedEntity({ type: 'electrical_element', id: elementId });
+        } else if (pendingConduitStartId === elementId) {
+          // Deseleccionar si hace clic sobre el mismo elemento inicial
+          setPendingConduitStartId(null);
+        } else {
           const fromEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
           const toEl = project.electricalElements.find((e) => e.id === elementId);
           const inheritedCircuitId = fromEl?.circuitId || toEl?.circuitId || project.circuits[0]?.id || null;
           const circ = project.circuits.find((c) => c.id === inheritedCircuitId);
           const wireSec = circ?.wireSectionBaseMM2 || 2.5;
 
+          const newConduitId = `cond-${Date.now()}`;
           addConduit({
-            id: `cond-${Date.now()}`,
+            id: newConduitId,
             circuitId: inheritedCircuitId,
             circuitIds: inheritedCircuitId ? [inheritedCircuitId] : [],
             fromElementId: pendingConduitStartId,
@@ -182,6 +202,7 @@ export function useSurveyViewModel() {
             ]
           });
           setPendingConduitStartId(null);
+          setSelectedEntity({ type: 'conduit', id: newConduitId });
         }
       } else {
         setSelectedEntity({ type: 'electrical_element', id: elementId });
@@ -209,7 +230,10 @@ export function useSurveyViewModel() {
     selectedSymbolId,
     setSelectedSymbolId,
     isConnectingConduit,
-    setIsConnectingConduit,
+    setIsConnectingConduit: handleSetIsConnectingConduit,
+    pendingConduitStartId,
+    setPendingConduitStartId,
+    cancelConduitConnection,
     showTeeModal,
     setShowTeeModal,
     showOpeningModal,

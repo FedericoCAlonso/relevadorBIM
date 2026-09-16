@@ -53,6 +53,8 @@ export function App() {
     setSelectedSymbolId,
     isConnectingConduit,
     setIsConnectingConduit,
+    pendingConduitStartId,
+    cancelConduitConnection,
     commitWall,
     handleElectricalElementClick
   } = useSurveyViewModel();
@@ -91,6 +93,10 @@ export function App() {
       }
 
       if (e.key === 'Escape') {
+        if (isConnectingConduit) {
+          cancelConduitConnection();
+          return;
+        }
         setSelectedEntity(null);
         setSelectedSymbolId(null);
         return;
@@ -143,6 +149,10 @@ export function App() {
         selectedSymbolId.includes('interruptor') ||
         selectedSymbolId.includes('llave') ||
         selectedSymbolId.includes('tablero') ||
+        selectedSymbolId.includes('tp') ||
+        selectedSymbolId.includes('ts') ||
+        selectedSymbolId.includes('medidor') ||
+        selectedSymbolId.includes('caja-pase') ||
         selectedSymbolId.includes('aplique');
 
       // Buscar si el punto cae dentro de algún ambiente cerrado
@@ -184,7 +194,13 @@ export function App() {
         placement: isCeiling ? 'ceiling' : isWall ? 'wall' : 'floor',
         x: Number(worldX.toFixed(3)),
         y: Number(worldY.toFixed(3)),
-        heightZ: isCeiling ? ceilingH : selectedSymbolId.includes('enchufe') || selectedSymbolId.includes('toma') ? 0.30 : 1.20,
+        heightZ: isCeiling
+          ? ceilingH
+          : selectedSymbolId.includes('tp') || selectedSymbolId.includes('ts') || selectedSymbolId.includes('tablero') || selectedSymbolId.includes('medidor')
+          ? 1.40
+          : selectedSymbolId.includes('enchufe') || selectedSymbolId.includes('toma')
+          ? 0.30
+          : 1.20,
         wallId: snapInfo?.wallId || null,
         wallOffset: snapInfo?.wallOffset,
         rotation: snapInfo?.rotationDeg ?? 0,
@@ -196,13 +212,18 @@ export function App() {
         isPanel:
           selectedSymbolId.includes('tablero') ||
           selectedSymbolId.includes('tp') ||
-          selectedSymbolId.includes('ts'),
+          selectedSymbolId.includes('ts') ||
+          selectedSymbolId.includes('medidor'),
         label,
         attributes: []
       });
 
       setSelectedEntity({ type: 'electrical_element', id: newElementId });
       setSelectedSymbolId(null);
+      return;
+    }
+
+    if (isConnectingConduit) {
       return;
     }
 
@@ -245,6 +266,9 @@ export function App() {
             currentDirectionDeg={effectiveAngleDeg}
             previewDistanceM={previewDist}
             selectedSymbolId={selectedSymbolId}
+            isConnectingConduit={isConnectingConduit}
+            pendingConduitStartId={pendingConduitStartId}
+            onCancelConnectingConduit={cancelConduitConnection}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {
@@ -254,15 +278,19 @@ export function App() {
               }
             }}
             onElectricalElementClick={(elementId) => {
-              if (selectedEntity?.type === 'electrical_element' && selectedEntity.id === elementId) {
+              if (!isConnectingConduit && selectedEntity?.type === 'electrical_element' && selectedEntity.id === elementId) {
                 setShowElementModal(true);
               } else {
                 handleElectricalElementClick(elementId);
               }
             }}
             onElectricalElementDoubleClick={(elementId) => {
-              handleElectricalElementClick(elementId);
-              setShowElementModal(true);
+              if (!isConnectingConduit) {
+                handleElectricalElementClick(elementId);
+                setShowElementModal(true);
+              } else {
+                handleElectricalElementClick(elementId);
+              }
             }}
             onCanvasClick={handleCanvasClick}
           />

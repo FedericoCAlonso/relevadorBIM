@@ -27,6 +27,9 @@ interface BimCanvasProps {
   currentDirectionDeg: number;
   previewDistanceM: number;
   selectedSymbolId?: string | null;
+  isConnectingConduit?: boolean;
+  pendingConduitStartId?: string | null;
+  onCancelConnectingConduit?: () => void;
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -39,6 +42,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   currentDirectionDeg,
   previewDistanceM,
   selectedSymbolId,
+  isConnectingConduit = false,
+  pendingConduitStartId = null,
+  onCancelConnectingConduit,
   onWallClick,
   onOpeningClick,
   onSpaceClick,
@@ -314,14 +320,24 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     let snapInfo: WallPlacementSnap | null = null;
 
     if (!selectedSymbolId) {
-      // Prioridad táctil: chequear si el click/tap cayó cerca de una boca eléctrica (tolerancia de 34px)
-      const touchToleranceWorld = 34 / zoom;
-      const nearbyElement = project.electricalElements
+      // Prioridad táctil: chequear si el click/tap cayó cerca de una boca eléctrica o tablero (tolerancia de 48px)
+      const touchToleranceWorld = 48 / zoom;
+      const candidates = project.electricalElements
         .filter((el) => el.levelId === project.activeLevelId)
-        .find((el) => Math.hypot(el.x - wx, el.y - wy) <= touchToleranceWorld);
+        .map((el) => ({
+          el,
+          dist: Math.hypot(el.x - wx, el.y - wy)
+        }))
+        .filter((item) => item.dist <= touchToleranceWorld)
+        .sort((a, b) => a.dist - b.dist);
 
-      if (nearbyElement) {
-        onElectricalElementClick?.(nearbyElement.id);
+      if (candidates.length > 0) {
+        onElectricalElementClick?.(candidates[0].el.id);
+        return;
+      }
+
+      if (isConnectingConduit) {
+        // En modo conexión de conductos, no activar inserción de muros ni clics residuales en fondo vacío
         return;
       }
     }
@@ -388,10 +404,23 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={space.id}
             onClick={(e) => {
-              if (selectedSymbolId) {
-                // Modo inserción de elemento eléctrico: no bloquear, emplazar boca en el ambiente!
+              if (selectedSymbolId || isConnectingConduit) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
+              }
+              if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                const clickWx = (e.clientX - rect.left - pan.x) / zoom;
+                const clickWy = (e.clientY - rect.top - pan.y) / zoom;
+                const tolerance = 48 / zoom;
+                const nearby = project.electricalElements
+                  .filter((el) => el.levelId === project.activeLevelId)
+                  .find((el) => Math.hypot(el.x - clickWx, el.y - clickWy) <= tolerance);
+                if (nearby) {
+                  e.stopPropagation();
+                  onElectricalElementClick?.(nearby.id);
+                  return;
+                }
               }
               e.stopPropagation();
               onSpaceClick?.(space.id);
@@ -420,7 +449,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </g>
         );
       });
-  }, [project.spaces, project.activeLevelId, verticesMap, zoom, selectedSymbolId, onSpaceClick]);
+  }, [
+    project.spaces,
+    project.electricalElements,
+    project.activeLevelId,
+    verticesMap,
+    zoom,
+    pan,
+    selectedSymbolId,
+    isConnectingConduit,
+    onSpaceClick,
+    onElectricalElementClick
+  ]);
 
   // 2. Muros físicos con espesor
   const renderedWalls = useMemo(() => {
@@ -445,10 +485,24 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseEnter={() => setHoveredWallId(wall.id)}
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
-              if (selectedSymbolId) {
-                // Modo inserción de elemento eléctrico: permitir emplazar sobre el muro!
+              if (selectedSymbolId || isConnectingConduit) {
+                // Modo inserción de elemento eléctrico o conexión de cañerías
                 triggerPlacement(e.clientX, e.clientY);
                 return;
+              }
+              if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                const clickWx = (e.clientX - rect.left - pan.x) / zoom;
+                const clickWy = (e.clientY - rect.top - pan.y) / zoom;
+                const tolerance = 48 / zoom;
+                const nearby = project.electricalElements
+                  .filter((el) => el.levelId === project.activeLevelId)
+                  .find((el) => Math.hypot(el.x - clickWx, el.y - clickWy) <= tolerance);
+                if (nearby) {
+                  e.stopPropagation();
+                  onElectricalElementClick?.(nearby.id);
+                  return;
+                }
               }
               e.stopPropagation();
               onWallClick?.(wall.id);
@@ -531,7 +585,20 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </g>
         );
       });
-  }, [project.walls, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, showDimensions, onWallClick]);
+  }, [
+    project.walls,
+    project.electricalElements,
+    project.activeLevelId,
+    verticesMap,
+    zoom,
+    pan,
+    selectedEntity,
+    selectedSymbolId,
+    isConnectingConduit,
+    showDimensions,
+    onWallClick,
+    onElectricalElementClick
+  ]);
 
   // 3. Aberturas con zona de clic amplia y gestión visual
   const renderedOpenings = useMemo(() => {
@@ -556,7 +623,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={opening.id}
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
-            if (selectedSymbolId) {
+            if (selectedSymbolId || isConnectingConduit) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -665,7 +732,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, onOpeningClick]);
+  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, onOpeningClick]);
 
   // 4. Vértices y Puntos de Anclaje (Snaps)
   const renderedVertices = useMemo(() => {
@@ -679,7 +746,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={v.id}
           transform={`translate(${pxX}, ${pxY})`}
           onClick={(e) => {
-            if (selectedSymbolId) {
+            if (selectedSymbolId || isConnectingConduit) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -709,7 +776,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, setActiveAnchorVertexId]);
+  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, setActiveAnchorVertexId]);
 
   // 5. Previsualización del rayo láser proyectado desde el anclaje activo
   const renderedPreviewRay = useMemo(() => {
@@ -792,6 +859,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <g
           key={conduit.id}
           onClick={(e) => {
+            if (isConnectingConduit) {
+              triggerPlacement(e.clientX, e.clientY);
+              return;
+            }
             e.stopPropagation();
             setSelectedEntity({ type: 'conduit', id: conduit.id });
           }}
@@ -823,7 +894,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, setSelectedEntity]);
+  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, setSelectedEntity]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
   const renderedElements = useMemo(() => {
@@ -833,6 +904,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const pxX = element.x * zoom;
         const pxY = element.y * zoom;
         const isSelected = selectedEntity?.type === 'electrical_element' && selectedEntity.id === element.id;
+        const isPendingStart = pendingConduitStartId === element.id;
         const circ = element.circuitId ? project.circuits.find((c) => c.id === element.circuitId) : null;
         const circuitLabel = circ ? circ.name.split(' ')[0] : undefined;
 
@@ -853,18 +925,62 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
+            {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
+            {isPendingStart && (
+              <g pointerEvents="none">
+                <circle
+                  r={32}
+                  fill="rgba(245, 158, 11, 0.22)"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  strokeDasharray="4 2"
+                  className="animate-pulse"
+                />
+                <circle
+                  r={44}
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth={1}
+                  strokeDasharray="2 2"
+                  opacity={0.6}
+                />
+                <g transform="translate(0, -38)">
+                  <rect
+                    x="-42"
+                    y="-10"
+                    width={84}
+                    height={20}
+                    rx="10"
+                    fill="#d97706"
+                    className="shadow-md"
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="9"
+                    fontWeight="bold"
+                    className="font-sans select-none"
+                  >
+                    ⚡ Inicio Cañería
+                  </text>
+                </g>
+              </g>
+            )}
+
             <AeaCanvasSymbol
               symbolId={element.symbolId}
               zoom={zoom}
-              isSelected={isSelected}
+              isSelected={isSelected || isPendingStart}
               elementLabel={element.label}
               circuitLabel={circuitLabel}
               returnRef={element.returnRef}
               rotationDeg={element.rotation || 0}
             />
 
-            {/* Si está seleccionado, botón contextual flotante para abrir ficha técnica / registrar mediciones */}
-            {isSelected && (
+            {/* Si está seleccionado y NO estamos enlazando cañerías, botón contextual flotante */}
+            {isSelected && !isConnectingConduit && (
               <g
                 transform="translate(0, -36)"
                 onClick={(e) => {
@@ -900,7 +1016,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </g>
         );
       });
-  }, [project.electricalElements, project.circuits, project.activeLevelId, zoom, selectedEntity, onElectricalElementClick, onElectricalElementDoubleClick]);
+  }, [
+    project.electricalElements,
+    project.circuits,
+    project.activeLevelId,
+    zoom,
+    selectedEntity,
+    isConnectingConduit,
+    pendingConduitStartId,
+    onElectricalElementClick,
+    onElectricalElementDoubleClick
+  ]);
 
   return (
     <div
@@ -940,6 +1066,32 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedVertices}
           {renderedElements}
 
+          {/* Línea elástica interactiva guiando al usuario hacia el segundo extremo */}
+          {isConnectingConduit && pendingConduitStartId && hoverWorldPos && (() => {
+            const startEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
+            if (!startEl) return null;
+            return (
+              <g pointerEvents="none">
+                <line
+                  x1={startEl.x * zoom}
+                  y1={startEl.y * zoom}
+                  x2={hoverWorldPos.x * zoom}
+                  y2={hoverWorldPos.y * zoom}
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  strokeDasharray="6 4"
+                />
+                <circle
+                  cx={hoverWorldPos.x * zoom}
+                  cy={hoverWorldPos.y * zoom}
+                  r={6}
+                  fill="#f59e0b"
+                  opacity={0.8}
+                />
+              </g>
+            );
+          })()}
+
           {/* Previsualización del elemento eléctrico que sigue al cursor (Ghost preview con snap al centro o a pared) */}
           {selectedSymbolId && hoverWorldPos && (
             <g
@@ -963,6 +1115,31 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           )}
         </g>
       </svg>
+
+      {/* Banner / Píldora superior cuando se conecta cañería */}
+      {isConnectingConduit && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+          <span>
+            {pendingConduitStartId
+              ? '⚡ 1° Extremo fijado · Tocá la boca o tablero de destino'
+              : '⚡ Trazar Cañería: Tocá la primera boca o tablero'}
+          </span>
+          {onCancelConnectingConduit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelConnectingConduit();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar conexión de cañería"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Botonera flotante CAD (Zoom In / Out / Recentrar) */}
       <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-10">

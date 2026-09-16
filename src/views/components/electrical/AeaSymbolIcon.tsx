@@ -98,13 +98,25 @@ export const AeaCanvasSymbol: React.FC<{
 
   return (
     <g className="select-none" transform={`rotate(${rotationDeg})`}>
-      {/* Área de impacto táctil y de ratón ampliada (r=32px / 64px diámetro) para selección certera en campo */}
-      <circle r={32} fill="transparent" pointerEvents="all" className="cursor-pointer" />
+      {/* Área de impacto táctil y de ratón ampliada para selección certera en campo */}
+      <circle r={36} fill="#000000" opacity={0} pointerEvents="all" className="cursor-pointer" />
+      {isTablero && (
+        <rect
+          x={-36}
+          y={-28}
+          width={72}
+          height={56}
+          fill="#000000"
+          opacity={0}
+          pointerEvents="all"
+          className="cursor-pointer"
+        />
+      )}
 
       {/* Halo de selección punteado discreto para feedback visual claro */}
       {isSelected && (
         <circle
-          r={20}
+          r={22}
           fill="rgba(37, 99, 235, 0.12)"
           stroke="#2563eb"
           strokeWidth={1.5}
