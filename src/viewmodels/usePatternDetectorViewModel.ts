@@ -9,10 +9,12 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
 import {
-  detectPatternMatches,
+  detectPatternMatchesWithExemplars,
+  createPatternExemplar,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
-  type DetectedPatternMatch
+  type DetectedPatternMatch,
+  type PatternExemplar
 } from '../models/underlay/PatternDetector';
 import { getUnderlayBinaryMask } from '../services/imageProcessingService';
 
@@ -24,10 +26,13 @@ export function usePatternDetectorViewModel() {
     return project.underlaySheets?.[activeLevelId] || null;
   }, [project.underlaySheets, activeLevelId]);
 
-  // Estados del flujo de detección
+  // Estados del flujo de detección y aprendizaje activo
   const [isSamplingPattern, setIsSamplingPattern] = useState(false);
+  const [isAddingSample, setIsAddingSample] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [sampleBoxPx, setSampleBoxPx] = useState<BoundingBoxPx | null>(null);
+  const [positiveExemplars, setPositiveExemplars] = useState<PatternExemplar[]>([]);
+  const [negativeExemplars, setNegativeExemplars] = useState<PatternExemplar[]>([]);
   const [detectedMatches, setDetectedMatches] = useState<DetectedPatternMatch[]>([]);
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(
     PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD
@@ -36,18 +41,21 @@ export function usePatternDetectorViewModel() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   /**
-   * Coincidencias activas (excluyendo las descartadas por el usuario)
+   * Coincidencias activas (excluyendo las descartadas por el usuario y filtradas por umbral)
    */
   const activeMatches = useMemo(() => {
-    return detectedMatches.filter((m) => !dismissedMatchIds.has(m.id) && m.similarityScore >= similarityThreshold);
+    return detectedMatches.filter(
+      (m) => !dismissedMatchIds.has(m.id) && m.similarityScore >= similarityThreshold
+    );
   }, [detectedMatches, dismissedMatchIds, similarityThreshold]);
 
   /**
-   * Inicia el modo de muestreo rectangular
+   * Inicia el modo de muestreo rectangular (para primera muestra o muestras adicionales)
    */
-  const startSamplingPattern = useCallback(() => {
+  const startSamplingPattern = useCallback((isAdditional: boolean = false) => {
     if (!activeUnderlay) return;
     setIsSamplingPattern(true);
+    setIsAddingSample(isAdditional);
     setErrorMessage(null);
   }, [activeUnderlay]);
 
@@ -56,6 +64,7 @@ export function usePatternDetectorViewModel() {
    */
   const cancelSamplingPattern = useCallback(() => {
     setIsSamplingPattern(false);
+    setIsAddingSample(false);
     setErrorMessage(null);
   }, []);
 
@@ -85,13 +94,13 @@ export function usePatternDetectorViewModel() {
       // Descartar selecciones accidentales minúsculas
       if (boxPx.width < 6 || boxPx.height < 6) {
         setIsSamplingPattern(false);
+        setIsAddingSample(false);
         return;
       }
 
       setIsDetecting(true);
       setIsSamplingPattern(false);
       setSampleBoxPx(boxPx);
-      setDismissedMatchIds(new Set());
       setErrorMessage(null);
 
       try {
@@ -100,14 +109,29 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        const matches = detectPatternMatches(
+        const newExemplar = createPatternExemplar(mask, width, boxPx, false);
+        if (!newExemplar) {
+          throw new Error('La región seleccionada no contiene suficiente tinta negra para extraer un símbolo.');
+        }
+
+        const nextPositives = isAddingSample ? [...positiveExemplars, newExemplar] : [newExemplar];
+        const nextNegatives = isAddingSample ? negativeExemplars : [];
+
+        setPositiveExemplars(nextPositives);
+        if (!isAddingSample) {
+          setNegativeExemplars([]);
+          setDismissedMatchIds(new Set());
+        }
+
+        const matches = detectPatternMatchesWithExemplars(
           mask,
           width,
           height,
-          boxPx,
+          nextPositives,
+          nextNegatives,
           scale,
           { x: originX, y: originY },
-          0.60 // Umbral base para almacenar candidatos
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
         );
 
         setDetectedMatches(matches);
@@ -115,29 +139,71 @@ export function usePatternDetectorViewModel() {
         setErrorMessage(err.message || 'Error al procesar el plano para detección de patrones.');
       } finally {
         setIsDetecting(false);
+        setIsAddingSample(false);
       }
     },
-    [activeUnderlay]
+    [activeUnderlay, isAddingSample, positiveExemplars, negativeExemplars]
   );
 
   /**
-   * Descarta un falso positivo individual con un clic
+   * Descarta un falso positivo individual con un clic, aprendiendo del rechazo
+   * como ejemplar negativo para penalizar y eliminar patrones similares en todo el plano.
    */
-  const dismissMatch = useCallback((matchId: string) => {
-    setDismissedMatchIds((prev) => {
-      const next = new Set(prev);
-      next.add(matchId);
-      return next;
-    });
-  }, []);
+  const dismissMatch = useCallback(
+    async (matchId: string) => {
+      // 1. Quitar de inmediato de la vista reactiva
+      setDismissedMatchIds((prev) => {
+        const next = new Set(prev);
+        next.add(matchId);
+        return next;
+      });
+
+      // 2. Extraer ejemplar negativo y re-penalizar matches en segundo plano
+      const targetMatch = detectedMatches.find((m) => m.id === matchId);
+      if (!targetMatch || !activeUnderlay) return;
+
+      try {
+        const { width, height, mask } = await getUnderlayBinaryMask(
+          activeUnderlay.id,
+          activeUnderlay.imageUrl
+        );
+
+        const negExemplar = createPatternExemplar(mask, width, targetMatch.boxPx, true);
+        if (negExemplar) {
+          const nextNegatives = [...negativeExemplars, negExemplar];
+          setNegativeExemplars(nextNegatives);
+
+          if (positiveExemplars.length > 0) {
+            const updatedMatches = detectPatternMatchesWithExemplars(
+              mask,
+              width,
+              height,
+              positiveExemplars,
+              nextNegatives,
+              activeUnderlay.scaleMetersPerPx,
+              { x: activeUnderlay.originWorldX, y: activeUnderlay.originWorldY },
+              PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+            );
+            setDetectedMatches(updatedMatches);
+          }
+        }
+      } catch (err) {
+        console.error('Error al registrar ejemplar negativo:', err);
+      }
+    },
+    [detectedMatches, activeUnderlay, negativeExemplars, positiveExemplars]
+  );
 
   /**
-   * Limpia todas las coincidencias encontradas
+   * Limpia todas las coincidencias y ejemplares aprendidos
    */
   const clearMatches = useCallback(() => {
     setDetectedMatches([]);
     setSampleBoxPx(null);
+    setPositiveExemplars([]);
+    setNegativeExemplars([]);
     setDismissedMatchIds(new Set());
+    setIsAddingSample(false);
   }, []);
 
   /**
@@ -214,8 +280,11 @@ export function usePatternDetectorViewModel() {
   return {
     activeUnderlay,
     isSamplingPattern,
+    isAddingSample,
     isDetecting,
     sampleBoxPx,
+    positiveExemplars,
+    negativeExemplars,
     detectedMatches,
     activeMatches,
     similarityThreshold,

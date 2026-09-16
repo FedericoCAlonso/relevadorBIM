@@ -12,6 +12,9 @@ import {
   calculateImageMoments,
   calculateEigenSignature,
   compareEigenSignatures,
+  tightenBoundingBox,
+  createPatternExemplar,
+  detectPatternMatchesWithExemplars,
   detectPatternMatches,
   type BoundingBoxPx
 } from '../PatternDetector';
@@ -160,5 +163,132 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
     expect(match1).toBeDefined();
     expect(match1!.worldPos.x).toBeCloseTo(10 + 30 * 0.05, 2); // 11.5 m
     expect(match1!.worldPos.y).toBeCloseTo(20 + 30 * 0.05, 2); // 21.5 m
+  });
+
+  it('debe auto-ceñir la selección del usuario a los trazos de tinta negra (tightenBoundingBox)', () => {
+    const size = 50;
+    const mask = new Uint8Array(size * size);
+
+    // Dibuja un rectángulo pequeño de tinta entre x: 20..26, y: 20..26 (7x7 píxeles)
+    for (let y = 20; y <= 26; y++) {
+      for (let x = 20; x <= 26; x++) {
+        mask[y * size + x] = 1;
+      }
+    }
+
+    // El usuario seleccionó descuidadamente una caja holgada de 30x30 desde (10, 10)
+    const looseBox: BoundingBoxPx = { x: 10, y: 10, width: 30, height: 30 };
+    const tightBox = tightenBoundingBox(mask, size, looseBox);
+
+    // Debe ajustarse a x: 19..27, y: 19..27 (con margen de 1px)
+    expect(tightBox.x).toBe(19);
+    expect(tightBox.y).toBe(19);
+    expect(tightBox.width).toBe(9); // 7 + 2px padding
+    expect(tightBox.height).toBe(9);
+  });
+
+  it('debe descartar falsos positivos mediante aprendizaje activo con ejemplares negativos', () => {
+    const width = 150;
+    const height = 100;
+    const binary = new Uint8Array(width * height);
+
+    // 1. Dibuja dos bocas circulares legítimas (radio 4)
+    const drawCircle = (cx: number, cy: number) => {
+      for (let y = cy - 4; y <= cy + 4; y++) {
+        for (let x = cx - 4; x <= cx + 4; x++) {
+          const d = Math.hypot(x - cx, y - cy);
+          if (d >= 2.5 && d <= 4.2) {
+            binary[y * width + x] = 1;
+          }
+        }
+      }
+    };
+
+    // 2. Dibuja un símbolo falso positivo (ej. un cuadrado o texto "X" con densidad similar)
+    const drawSquareFalsePositive = (cx: number, cy: number) => {
+      for (let y = cy - 4; y <= cy + 4; y++) {
+        for (let x = cx - 4; x <= cx + 4; x++) {
+          if (x === cx - 4 || x === cx + 4 || y === cy - 4 || y === cy + 4) {
+            binary[y * width + x] = 1;
+          }
+        }
+      }
+    };
+
+    drawCircle(30, 30); // Boca 1 (Válida)
+    drawCircle(80, 30); // Boca 2 (Válida)
+    drawSquareFalsePositive(120, 30); // Falso positivo en (120, 30)
+
+    const posExemplar = createPatternExemplar(binary, width, { x: 24, y: 24, width: 12, height: 12 }, false)!;
+    expect(posExemplar).not.toBeNull();
+
+    // Detección inicial sin negativos (puede capturar el cuadrado si el umbral es permisivo)
+    const initialMatches = detectPatternMatchesWithExemplars(
+      binary,
+      width,
+      height,
+      [posExemplar],
+      [],
+      0.05,
+      { x: 0, y: 0 },
+      0.50
+    );
+    expect(initialMatches.length).toBeGreaterThanOrEqual(1);
+
+    // El usuario descarta el match en x ≈ 120, creando un ejemplar negativo
+    const negExemplar = createPatternExemplar(binary, width, { x: 114, y: 24, width: 12, height: 12 }, true)!;
+    expect(negExemplar).not.toBeNull();
+
+    // Detección con aprendizaje activo penalizando el negativo
+    const refinedMatches = detectPatternMatchesWithExemplars(
+      binary,
+      width,
+      height,
+      [posExemplar],
+      [negExemplar],
+      0.05,
+      { x: 0, y: 0 },
+      0.50
+    );
+
+    // Solo deben quedar las dos bocas legítimas
+    const centersX = refinedMatches.map((m) => Math.round(m.centerPx.x));
+    expect(centersX).toContain(30);
+    expect(centersX).toContain(80);
+    expect(centersX).not.toContain(120); // El falso positivo fue completamente eliminado
+  });
+
+  it('debe detectar un símbolo que se encuentra físicamente conectado a una cañería/línea', () => {
+    const width = 100;
+    const height = 60;
+    const binary = new Uint8Array(width * height);
+
+    // Dibuja una boca en (30, 30)
+    for (let x = 26; x <= 34; x++) {
+      binary[30 * width + x] = 1;
+    }
+    for (let y = 26; y <= 34; y++) {
+      binary[y * width + 30] = 1;
+    }
+
+    // Dibuja una línea de cañería que atraviesa la boca y sale hasta el borde
+    for (let x = 0; x < 60; x++) {
+      binary[30 * width + x] = 1;
+    }
+
+    const sampleBox: BoundingBoxPx = { x: 25, y: 25, width: 11, height: 11 };
+    const matches = detectPatternMatches(
+      binary,
+      width,
+      height,
+      sampleBox,
+      0.05,
+      { x: 0, y: 0 },
+      0.65
+    );
+
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    const m = matches.find((match) => Math.abs(match.centerPx.x - 30) <= 2 && Math.abs(match.centerPx.y - 30) <= 2);
+    expect(m).toBeDefined();
   });
 });

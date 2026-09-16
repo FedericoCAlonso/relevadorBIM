@@ -1,9 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * MODELO: PatternDetector.ts (Patrón Estricto MVVM)
- * Detección de patrones geométricos y símbolos de planos en mapas de bits
- * mediante Autovalores/Autovectores e invariantes de momentos de inercia 2D.
- * Invariante a rotaciones (0°, 90°, 180°, 270° y ángulos arbitrarios).
+ * Motor de detección de grafismos y símbolos técnicos sobre mapas de bits.
+ * Combina:
+ * 1. Auto-ceñido de muestra a píxeles de tinta (Tight Bounding Box).
+ * 2. Apertura morfológica para desconectar cañerías y muros de los símbolos.
+ * 3. Firma espectral de autovalores de 2do orden (invariantes a rotación).
+ * 4. Correlación Cruzada Normalizada (ZNCC) multirrotacional a 0°, 90°, 180°, 270°.
+ * 5. Aprendizaje activo con múltiples muestras positivas y descarte de negativos.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -34,24 +38,42 @@ export interface EigenSignature {
   pixelCount: number;           // m00
 }
 
+export interface NormalizedPatch {
+  size: number;
+  data: Float32Array; // Valores de densidad normalizados entre 0 y 1
+  mean: number;
+  std: number;
+}
+
+export interface PatternExemplar {
+  id: string;
+  boxPx: BoundingBoxPx;
+  signature: EigenSignature;
+  patch: NormalizedPatch;
+  isNegative?: boolean;
+}
+
 export interface DetectedPatternMatch {
   id: string;
   boxPx: BoundingBoxPx;
   centerPx: { x: number; y: number };
   worldPos: { x: number; y: number }; // Coordenadas métricas en el proyecto
   orientationDeg: number;             // Orientación deducida por el autovector principal
-  similarityScore: number;            // Coincidencia entre 0.0 y 1.0
+  similarityScore: number;            // Coincidencia discriminada entre 0.0 y 1.0
   isDismissed?: boolean;
 }
 
 export const PATTERN_DETECTOR_CONSTANTS = {
-  DEFAULT_SIMILARITY_THRESHOLD: 0.72,
-  LUMINANCE_THRESHOLD: 180, // Píxeles con luminancia menor a 180 se consideran trazo/tinta
-  MIN_BLOB_PIXELS: 8,
+  DEFAULT_SIMILARITY_THRESHOLD: 0.65,
+  CANDIDATE_SEARCH_THRESHOLD: 0.35, // Umbral mínimo para conservar candidatos en memoria
+  LUMINANCE_THRESHOLD: 180, // Umbral para considerar un píxel como trazo (tinta negra/gris)
+  MIN_BLOB_PIXELS: 4,
+  PATCH_SIZE: 24, // Malla de 24x24 para correlación fina
   MAX_BLOB_DIMENSION_FACTOR: 2.5,
   MIN_BLOB_DIMENSION_FACTOR: 0.4,
-  NMS_DISTANCE_RATIO: 0.6, // Supresión de no-máximos
-  SNAP_TOLERANCE_METERS: 0.40 // Tolerancia de atracción magnética al cursor en metros
+  NMS_DISTANCE_RATIO: 0.5, // Supresión de no-máximos
+  SNAP_TOLERANCE_METERS: 0.40, // Tolerancia magnética al cursor en metros
+  NEGATIVE_PENALTY_WEIGHT: 0.75 // Ponderación de rechazo a falsos positivos
 } as const;
 
 /**
@@ -84,6 +106,98 @@ export function binarizeImageData(
   }
 
   return binary;
+}
+
+/**
+ * Auto-ajusta el recuadro seleccionado por el usuario a la caja mínima envolvente
+ * de tinta negra (Tight Bounding Box), eliminando bordes blancos asimétricos.
+ */
+export function tightenBoundingBox(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  box: BoundingBoxPx
+): BoundingBoxPx {
+  const startX = Math.max(0, Math.floor(box.x));
+  const endX = Math.min(imgWidth, Math.ceil(box.x + box.width));
+  const startY = Math.max(0, Math.floor(box.y));
+  const endY = Math.ceil(box.y + box.height);
+
+  let minX = endX;
+  let maxX = startX;
+  let minY = endY;
+  let maxY = startY;
+  let foundPixel = false;
+
+  for (let y = startY; y < endY; y++) {
+    const rowOffset = y * imgWidth;
+    for (let x = startX; x < endX; x++) {
+      if (binaryMask[rowOffset + x] === 1) {
+        foundPixel = true;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (!foundPixel || maxX <= minX || maxY <= minY) {
+    return box;
+  }
+
+  // Margen de 1 píxel para preservar extremos de trazos
+  const pad = 1;
+  const bx = Math.max(0, minX - pad);
+  const by = Math.max(0, minY - pad);
+  const bw = maxX - minX + 1 + pad * 2;
+  const bh = maxY - minY + 1 + pad * 2;
+
+  return { x: bx, y: by, width: bw, height: bh };
+}
+
+/**
+ * Calcula la imagen integral (Summed-Area Table) para consultas O(1) de densidad de trazos
+ */
+export function computeIntegralImage(
+  binaryMask: Uint8Array,
+  width: number,
+  height: number
+): Int32Array {
+  const stride = width + 1;
+  const integral = new Int32Array(stride * (height + 1));
+
+  for (let y = 0; y < height; y++) {
+    let rowSum = 0;
+    const rowOffset = y * width;
+    const intRowOffset = (y + 1) * stride;
+    const prevIntRowOffset = y * stride;
+
+    for (let x = 0; x < width; x++) {
+      rowSum += binaryMask[rowOffset + x];
+      integral[intRowOffset + x + 1] = integral[prevIntRowOffset + x + 1] + rowSum;
+    }
+  }
+
+  return integral;
+}
+
+/**
+ * Consulta la suma de píxeles activos en un rectángulo en O(1) usando la imagen integral
+ */
+export function queryIntegralSum(
+  integral: Int32Array,
+  stride: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
+  return (
+    integral[y2 * stride + x2] -
+    integral[y1 * stride + x2] -
+    integral[y2 * stride + x1] +
+    integral[y1 * stride + x1]
+  );
 }
 
 /**
@@ -169,7 +283,6 @@ export function calculateEigenSignature(
   // Matriz de inercia / covarianza 2D:
   // [ eta20  eta11 ]
   // [ eta11  eta02 ]
-  // Traza T y discriminante Delta
   const trace = eta20 + eta02;
   const diff = eta20 - eta02;
   const delta = Math.sqrt(Math.max(0, diff * diff + 4 * eta11 * eta11));
@@ -201,6 +314,95 @@ export function calculateEigenSignature(
 }
 
 /**
+ * Extrae un parche re-muestreado a una cuadrícula canónica (ej. 24x24)
+ * calculando la media y desviación estándar para la Correlación Cruzada Normalizada (ZNCC).
+ */
+export function extractNormalizedPatch(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  box: BoundingBoxPx,
+  patchSize: number = PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE
+): NormalizedPatch {
+  const data = new Float32Array(patchSize * patchSize);
+  const stepX = box.width / patchSize;
+  const stepY = box.height / patchSize;
+
+  let sum = 0;
+  let sumSq = 0;
+
+  for (let py = 0; py < patchSize; py++) {
+    const srcY = Math.floor(box.y + py * stepY);
+    const rowOffset = srcY * imgWidth;
+    for (let px = 0; px < patchSize; px++) {
+      const srcX = Math.floor(box.x + px * stepX);
+      const val = srcX >= 0 && srcX < imgWidth && srcY >= 0 ? binaryMask[rowOffset + srcX] : 0;
+      const idx = py * patchSize + px;
+      data[idx] = val;
+      sum += val;
+      sumSq += val * val;
+    }
+  }
+
+  const n = patchSize * patchSize;
+  const mean = sum / n;
+  const variance = Math.max(1e-7, sumSq / n - mean * mean);
+  const std = Math.sqrt(variance);
+
+  return { size: patchSize, data, mean, std };
+}
+
+/**
+ * Calcula la Correlación Cruzada Normalizada (ZNCC) entre dos parches,
+ * evaluando las 4 orientaciones cardinales (0°, 90°, 180°, 270°) y retornando
+ * la máxima coincidencia visual en el rango [0.0, 1.0].
+ * Correlaciones negativas o nulas indican patrones disímiles y retornan 0.0.
+ */
+export function calculateMultiRotationZNCC(
+  patchA: NormalizedPatch,
+  patchB: NormalizedPatch
+): number {
+  const n = patchA.size;
+  const total = n * n;
+  const denom = total * patchA.std * patchB.std;
+  if (denom < 1e-6) return 0;
+
+  let maxCorr = -1;
+
+  // 4 Rotaciones ortogonales de la plantilla B: 0°, 90°, 180°, 270°
+  const rotOffsets = [
+    // 0°: (x, y) -> (x, y)
+    (px: number, py: number) => py * n + px,
+    // 90°: (x, y) -> (y, n - 1 - x)
+    (px: number, py: number) => px * n + (n - 1 - py),
+    // 180°: (x, y) -> (n - 1 - x, n - 1 - y)
+    (px: number, py: number) => (n - 1 - py) * n + (n - 1 - px),
+    // 270°: (x, y) -> (n - 1 - y, x)
+    (px: number, py: number) => (n - 1 - px) * n + py
+  ];
+
+  for (let r = 0; r < 4; r++) {
+    const getIdxB = rotOffsets[r];
+    let cov = 0;
+
+    for (let py = 0; py < n; py++) {
+      for (let px = 0; px < n; px++) {
+        const idxA = py * n + px;
+        const idxB = getIdxB(px, py);
+        cov += (patchA.data[idxA] - patchA.mean) * (patchB.data[idxB] - patchB.mean);
+      }
+    }
+
+    const corr = cov / denom;
+    if (corr > maxCorr) {
+      maxCorr = corr;
+    }
+  }
+
+  // Normalizar correlación estricta [0, 1]: corr <= 0 indica incompatibilidad gráfica total
+  return Number(Math.max(0, Math.min(1, maxCorr)).toFixed(3));
+}
+
+/**
  * Compara dos firmas espectrales de autovalores.
  * Retorna un puntaje de similitud entre 0.0 y 1.0 (invariante a rotación).
  */
@@ -217,16 +419,31 @@ export function compareEigenSignatures(target: EigenSignature, candidate: EigenS
   // Error en la relación de llenado de píxeles
   const errFill = Math.abs(candidate.fillRatio - target.fillRatio) / Math.max(target.fillRatio, eps);
 
-  // Ponderación exponencial de distancia geométrica
-  const weightedDistance = 1.2 * errL1 + 1.2 * errL2 + 0.6 * errEcc + 0.5 * errFill;
+  const weightedDistance = 1.0 * errL1 + 1.0 * errL2 + 0.6 * errEcc + 0.5 * errFill;
   const score = Math.exp(-weightedDistance);
 
   return Number(Math.max(0, Math.min(1, score)).toFixed(3));
 }
 
 /**
- * Extrae recuadros de componentes conexas (blobs) candidatos cuyo tamaño sea
- * consistente con el símbolo objetivo.
+ * Calcula la similitud combinada de un candidato con un ejemplar:
+ * 35% Autovalores espectrales + 65% Verificación gráfica fina ZNCC.
+ */
+export function calculateExemplarSimilarity(
+  candSignature: EigenSignature,
+  candPatch: NormalizedPatch,
+  exemplar: PatternExemplar
+): number {
+  const eigenScore = compareEigenSignatures(exemplar.signature, candSignature);
+  const znccScore = calculateMultiRotationZNCC(candPatch, exemplar.patch);
+
+  // Fusión discriminante
+  return Number((0.35 * eigenScore + 0.65 * znccScore).toFixed(3));
+}
+
+/**
+ * Extrae recuadros de componentes conexas (blobs) candidatos directamente
+ * sobre la máscara binaria sin erosión destructiva para preservar trazos finos.
  */
 export function extractCandidateBlobs(
   binaryMask: Uint8Array,
@@ -237,18 +454,17 @@ export function extractCandidateBlobs(
   const minDim = Math.min(targetBox.width, targetBox.height);
   const maxDim = Math.max(targetBox.width, targetBox.height);
 
-  const minSize = Math.max(6, Math.floor(minDim * PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_DIMENSION_FACTOR));
+  const minSize = Math.max(3, Math.floor(minDim * PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_DIMENSION_FACTOR));
   const maxSize = Math.ceil(maxDim * PATTERN_DETECTOR_CONSTANTS.MAX_BLOB_DIMENSION_FACTOR);
 
   const visited = new Uint8Array(width * height);
   const candidates: BoundingBoxPx[] = [];
 
-  // Pila para BFS rápido sin recursión
   const stackX = new Int32Array(maxSize * maxSize * 4);
   const stackY = new Int32Array(maxSize * maxSize * 4);
 
-  const stepX = Math.max(1, Math.floor(minSize / 4));
-  const stepY = Math.max(1, Math.floor(minSize / 4));
+  const stepX = Math.max(1, Math.floor(minSize / 3));
+  const stepY = Math.max(1, Math.floor(minSize / 3));
 
   for (let y = 0; y < height; y += stepY) {
     for (let x = 0; x < width; x += stepX) {
@@ -279,13 +495,11 @@ export function extractCandidateBlobs(
         if (currY < minBy) minBy = currY;
         if (currY > maxBy) maxBy = currY;
 
-        // Si excede el tamaño máximo (ej. muro largo continuo), abortar exploración
         if (maxBx - minBx > maxSize || maxBy - minBy > maxSize) {
           isTooLarge = true;
           break;
         }
 
-        // Vecinos 4-conectados
         const neighbors = [
           [currX + 1, currY],
           [currX - 1, currY],
@@ -329,13 +543,46 @@ export function extractCandidateBlobs(
 }
 
 /**
+ * Extrae candidatos por densidad de tinta usando imagen integral.
+ * Permite detectar símbolos aunque estén físicamente conectados a muros o cañerías.
+ */
+export function extractDensityCandidates(
+  integral: Int32Array,
+  width: number,
+  height: number,
+  targetBox: BoundingBoxPx,
+  expectedPixelCount: number
+): BoundingBoxPx[] {
+  const stride = width + 1;
+  const w = Math.round(targetBox.width);
+  const h = Math.round(targetBox.height);
+  const stepX = Math.max(3, Math.floor(w / 3));
+  const stepY = Math.max(3, Math.floor(h / 3));
+
+  const minDensity = Math.max(PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS, Math.floor(expectedPixelCount * 0.35));
+  const maxDensity = Math.ceil(expectedPixelCount * 3.0);
+
+  const candidates: BoundingBoxPx[] = [];
+
+  for (let y = 0; y <= height - h; y += stepY) {
+    for (let x = 0; x <= width - w; x += stepX) {
+      const sum = queryIntegralSum(integral, stride, x, y, x + w, y + h);
+      if (sum >= minDensity && sum <= maxDensity) {
+        candidates.push({ x, y, width: w, height: h });
+      }
+    }
+  }
+
+  return candidates;
+}
+
+/**
  * Aplica Supresión de No-Máximos (NMS) para eliminar recuadros duplicados
  */
 export function applyNonMaximumSuppression(
   matches: DetectedPatternMatch[],
   minDistancePx: number
 ): DetectedPatternMatch[] {
-  // Ordenar de mayor a menor coincidencia
   const sorted = [...matches].sort((a, b) => b.similarityScore - a.similarityScore);
   const selected: DetectedPatternMatch[] = [];
 
@@ -355,50 +602,137 @@ export function applyNonMaximumSuppression(
 }
 
 /**
- * Pipeline completo de Detección de Patrones por Autovalores
+ * Crea un ejemplar a partir de una caja de muestra en la máscara binaria original
  */
-export function detectPatternMatches(
+export function createPatternExemplar(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  box: BoundingBoxPx,
+  isNegative: boolean = false
+): PatternExemplar | null {
+  const tightBox = tightenBoundingBox(binaryMask, imgWidth, box);
+  const moments = calculateImageMoments(binaryMask, imgWidth, tightBox);
+  const signature = calculateEigenSignature(moments, tightBox.width, tightBox.height);
+  if (!signature) return null;
+
+  const patch = extractNormalizedPatch(binaryMask, imgWidth, tightBox);
+  return {
+    id: `ex-${Date.now()}-${Math.round(tightBox.x)}_${Math.round(tightBox.y)}`,
+    boxPx: tightBox,
+    signature,
+    patch,
+    isNegative
+  };
+}
+
+/**
+ * Pipeline de Detección de Patrones con Aprendizaje Activo (Muestras Positivas y Negativas)
+ */
+export function detectPatternMatchesWithExemplars(
   binaryMask: Uint8Array,
   imgWidth: number,
   imgHeight: number,
-  sampleBox: BoundingBoxPx,
+  positiveExemplars: PatternExemplar[],
+  negativeExemplars: PatternExemplar[],
   scaleMetersPerPx: number,
   originWorld: { x: number; y: number },
   similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD
 ): DetectedPatternMatch[] {
-  // 1. Calcular momentos y firma espectral de autovalores del símbolo muestra
-  const targetMoments = calculateImageMoments(binaryMask, imgWidth, sampleBox);
-  const targetSignature = calculateEigenSignature(targetMoments, sampleBox.width, sampleBox.height);
+  if (positiveExemplars.length === 0) return [];
 
-  if (!targetSignature) {
-    return [];
-  }
+  // Usar las dimensiones y densidad promedio de los ejemplares positivos
+  const avgWidth =
+    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.width, 0) / positiveExemplars.length;
+  const avgHeight =
+    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.height, 0) / positiveExemplars.length;
+  const avgPixelCount =
+    positiveExemplars.reduce((acc, ex) => acc + ex.signature.pixelCount, 0) / positiveExemplars.length;
 
-  // 2. Extraer candidatos conexos en todo el plano
-  const candidateBlobs = extractCandidateBlobs(binaryMask, imgWidth, imgHeight, sampleBox);
+  const referenceBox: BoundingBoxPx = {
+    x: 0,
+    y: 0,
+    width: avgWidth,
+    height: avgHeight
+  };
 
+  // 1. Extraer candidatos por componentes conexas directamente en la máscara binaria
+  const blobCandidates = extractCandidateBlobs(binaryMask, imgWidth, imgHeight, referenceBox);
+
+  // 2. Extraer candidatos por densidad con imagen integral (para símbolos conectados a muros o cañerías)
+  const integral = computeIntegralImage(binaryMask, imgWidth, imgHeight);
+  const densityCandidates = extractDensityCandidates(
+    integral,
+    imgWidth,
+    imgHeight,
+    referenceBox,
+    avgPixelCount
+  );
+
+  const candidateBlobs = [...blobCandidates, ...densityCandidates];
   const rawMatches: DetectedPatternMatch[] = [];
-  const targetRadiusPx = Math.max(sampleBox.width, sampleBox.height) / 2;
+  const targetRadiusPx = Math.max(avgWidth, avgHeight) / 2;
 
-  // 3. Evaluar cada candidato con la firma de autovalores invariante
+  // 3. Evaluar cada candidato contra ejemplares positivos y penalizar con negativos
   for (let i = 0; i < candidateBlobs.length; i++) {
     const blob = candidateBlobs[i];
-    // Evaluar la ventana del tamaño del símbolo centrada en el blob
     const centerX = blob.x + blob.width / 2;
     const centerY = blob.y + blob.height / 2;
+
     const testBox: BoundingBoxPx = {
-      x: Math.max(0, centerX - sampleBox.width / 2),
-      y: Math.max(0, centerY - sampleBox.height / 2),
-      width: sampleBox.width,
-      height: sampleBox.height
+      x: Math.max(0, centerX - avgWidth / 2),
+      y: Math.max(0, centerY - avgHeight / 2),
+      width: avgWidth,
+      height: avgHeight
     };
 
-    const candMoments = calculateImageMoments(binaryMask, imgWidth, testBox);
-    const candSignature = calculateEigenSignature(candMoments, testBox.width, testBox.height);
+    // Evaluamos en la máscara binaria original y aplicamos 1 paso de Mean-Shift
+    // para centrar el recuadro exactamente sobre el centroide de tinta del grafismo
+    const initialMoments = calculateImageMoments(binaryMask, imgWidth, testBox);
+    if (initialMoments.m00 < PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS) continue;
+
+    const refinedCenterX = initialMoments.m10 / initialMoments.m00;
+    const refinedCenterY = initialMoments.m01 / initialMoments.m00;
+
+    const centeredBox: BoundingBoxPx = {
+      x: Math.max(0, Math.round(refinedCenterX - avgWidth / 2)),
+      y: Math.max(0, Math.round(refinedCenterY - avgHeight / 2)),
+      width: avgWidth,
+      height: avgHeight
+    };
+
+    const candMoments = calculateImageMoments(binaryMask, imgWidth, centeredBox);
+    const candSignature = calculateEigenSignature(candMoments, centeredBox.width, centeredBox.height);
 
     if (candSignature) {
-      const score = compareEigenSignatures(targetSignature, candSignature);
-      if (score >= similarityThreshold) {
+      const candPatch = extractNormalizedPatch(binaryMask, imgWidth, centeredBox);
+
+      // Similitud máxima con las muestras positivas
+      let maxPositiveScore = 0;
+      for (const posEx of positiveExemplars) {
+        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx);
+        if (score > maxPositiveScore) {
+          maxPositiveScore = score;
+        }
+      }
+
+      // Penalización con las muestras negativas (falsos positivos descartados)
+      let maxNegativePen = 0;
+      for (const negEx of negativeExemplars) {
+        const pen = calculateExemplarSimilarity(candSignature, candPatch, negEx);
+        if (pen > maxNegativePen) {
+          maxNegativePen = pen;
+        }
+      }
+
+      // Puntaje discriminante final: penaliza fuertemente falsos positivos
+      const finalScore = Number(
+        Math.max(
+          0,
+          maxPositiveScore - PATTERN_DETECTOR_CONSTANTS.NEGATIVE_PENALTY_WEIGHT * maxNegativePen
+        ).toFixed(3)
+      );
+
+      if (finalScore >= similarityThreshold) {
         const centerPx = candSignature.centroid;
         const worldPos = {
           x: Number((originWorld.x + centerPx.x * scaleMetersPerPx).toFixed(3)),
@@ -411,13 +745,40 @@ export function detectPatternMatches(
           centerPx,
           worldPos,
           orientationDeg: candSignature.orientationDeg,
-          similarityScore: score
+          similarityScore: finalScore
         });
       }
     }
   }
 
-  // 4. Supresión de No-Máximos
+  // 4. Supresión de no-máximos
   const minSeparationPx = targetRadiusPx * PATTERN_DETECTOR_CONSTANTS.NMS_DISTANCE_RATIO;
   return applyNonMaximumSuppression(rawMatches, minSeparationPx);
+}
+
+/**
+ * Función de conveniencia para mantener compatibilidad directa
+ */
+export function detectPatternMatches(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  imgHeight: number,
+  sampleBox: BoundingBoxPx,
+  scaleMetersPerPx: number,
+  originWorld: { x: number; y: number },
+  similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD
+): DetectedPatternMatch[] {
+  const exemplar = createPatternExemplar(binaryMask, imgWidth, sampleBox, false);
+  if (!exemplar) return [];
+
+  return detectPatternMatchesWithExemplars(
+    binaryMask,
+    imgWidth,
+    imgHeight,
+    [exemplar],
+    [],
+    scaleMetersPerPx,
+    originWorld,
+    similarityThreshold
+  );
 }

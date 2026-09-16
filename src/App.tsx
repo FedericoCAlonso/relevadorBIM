@@ -90,8 +90,13 @@ export function App() {
 
   const {
     isSamplingPattern,
+    isAddingSample,
     isDetecting: isDetectingPatterns,
+    positiveExemplars,
+    negativeExemplars,
     activeMatches: detectedPatternMatches,
+    similarityThreshold,
+    setSimilarityThreshold,
     startSamplingPattern,
     cancelSamplingPattern,
     executeDetectionFromWorldBox,
@@ -392,47 +397,107 @@ export function App() {
             onCanvasClick={handleCanvasClick}
           />
 
+          {/* Indicador de muestreo de símbolo activo */}
+          {isSamplingPattern && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/60 flex items-center gap-3 text-xs animate-in fade-in slide-in-from-top-2 pointer-events-auto">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+              <span className="font-semibold text-cyan-200">
+                {isAddingSample
+                  ? 'Dibujá un recuadro sobre otro símbolo para sumar como muestra...'
+                  : 'Dibujá un recuadro sobre el símbolo a buscar en el plano...'}
+              </span>
+              <button
+                type="button"
+                onClick={cancelSamplingPattern}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-[11px] cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
           {/* Indicador de procesamiento de autovalores en mapa de bits */}
           {isDetectingPatterns && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-pulse pointer-events-none">
               <span className="text-cyan-400">⏳</span>
-              <span>Buscando patrones y autovalores geométricos...</span>
+              <span>Buscando patrones, autovalores y correlación gráfica...</span>
             </div>
           )}
 
-          {/* Barra de acción cuando se detectan patrones en la lámina de fondo */}
-          {detectedPatternMatches.length > 0 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto">
+          {/* Barra interactiva de control cuando hay muestras o patrones activos */}
+          {positiveExemplars.length > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center justify-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto max-w-[95vw]">
+              {/* Badge de cantidad detectada y ejemplares */}
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                <span className="font-bold text-cyan-200">
-                  {detectedPatternMatches.length} {detectedPatternMatches.length === 1 ? 'símbolo detectado' : 'símbolos detectados'}
+                <span className={`w-2.5 h-2.5 rounded-full ${detectedPatternMatches.length > 0 ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}`} />
+                <span className="font-bold text-cyan-200 whitespace-nowrap">
+                  {detectedPatternMatches.length} {detectedPatternMatches.length === 1 ? 'detectado' : 'detectados'}
                 </span>
+                {(positiveExemplars.length > 1 || negativeExemplars.length > 0) && (
+                  <span className="text-[10px] text-slate-400 bg-slate-800/90 px-1.5 py-0.5 rounded-md border border-slate-700">
+                    {positiveExemplars.length} {positiveExemplars.length === 1 ? 'muestra' : 'muestras'}
+                    {negativeExemplars.length > 0 ? ` · ${negativeExemplars.length} desc.` : ''}
+                  </span>
+                )}
               </div>
 
-              {selectedSymbolId ? (
+              {/* Control deslizante interactivo de Sensibilidad */}
+              <div className="flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/80">
+                <span className="text-[11px] text-slate-300 font-medium whitespace-nowrap">
+                  Sensibilidad: <strong className="text-cyan-300">{Math.round(similarityThreshold * 100)}%</strong>
+                </span>
+                <input
+                  type="range"
+                  min={40}
+                  max={90}
+                  step={5}
+                  value={Math.round(similarityThreshold * 100)}
+                  onChange={(e) => setSimilarityThreshold(Number(e.target.value) / 100)}
+                  className="w-16 sm:w-24 accent-cyan-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+                  title={`Sensibilidad de detección: ${Math.round(similarityThreshold * 100)}%`}
+                />
+              </div>
+
+              {/* Botón para agregar otra muestra (aprendizaje activo) */}
+              <button
+                type="button"
+                onClick={() => startSamplingPattern(true)}
+                className={`px-2.5 py-1 rounded-xl border transition-all flex items-center gap-1 text-[11px] font-semibold cursor-pointer ${
+                  isSamplingPattern && isAddingSample
+                    ? 'bg-cyan-700 text-white border-cyan-400 shadow-md ring-1 ring-cyan-400'
+                    : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white border-cyan-500/40'
+                }`}
+                title="Seleccionar otra muestra para ampliar el reconocimiento"
+              >
+                <span>＋ Otra muestra</span>
+              </button>
+
+              {/* Botón de emplazamiento masivo */}
+              {detectedPatternMatches.length > 0 && selectedSymbolId && (
                 <button
                   type="button"
                   onClick={() => {
                     const assignedCircuit = project.circuits[0]?.id || null;
                     convertMatchesToElectricalElements(selectedSymbolId, assignedCircuit);
                   }}
-                  className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
-                  <span>⚡ Emplazar {detectedPatternMatches.length} bocas en sus centros</span>
+                  <span>⚡ Emplazar {detectedPatternMatches.length} bocas</span>
                 </button>
-              ) : (
-                <span className="text-slate-400 text-[11px] hidden sm:inline">
-                  (Elegí un símbolo en la paleta para emplazarlos todos juntos)
+              )}
+
+              {detectedPatternMatches.length > 0 && !selectedSymbolId && (
+                <span className="text-slate-400 text-[11px] hidden lg:inline">
+                  (Elegí un símbolo en la paleta para emplazar)
                 </span>
               )}
 
               <button
                 type="button"
                 onClick={clearPatternMatches}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-colors text-[11px] cursor-pointer"
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-colors text-[11px] cursor-pointer whitespace-nowrap"
               >
-                ✕ Limpiar marcas
+                ✕ Limpiar
               </button>
             </div>
           )}

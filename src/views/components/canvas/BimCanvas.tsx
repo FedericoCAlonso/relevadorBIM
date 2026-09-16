@@ -1386,18 +1386,63 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                     <line x1={cx - 5} y1={cy} x2={cx + 5} y2={cy} stroke="#0891b2" strokeWidth={1} />
                     <line x1={cx} y1={cy - 5} x2={cx} y2={cy + 5} stroke="#0891b2" strokeWidth={1} />
 
-                    {/* Botón descartar falso positivo */}
+                    {/* Porcentaje de similitud */}
+                    <text
+                      x={boxX + boxW / 2}
+                      y={boxY + boxH + 9}
+                      textAnchor="middle"
+                      fontSize={7.5}
+                      fontWeight="bold"
+                      fill="#06b6d4"
+                      className="select-none font-mono drop-shadow pointer-events-none"
+                    >
+                      {Math.round(m.similarityScore * 100)}%
+                    </text>
+
+                    {/* Botón descartar falso positivo con amplia zona de impacto táctil */}
                     <g
                       transform={`translate(${boxX + boxW}, ${boxY})`}
-                      onClick={(e) => {
+                      onPointerDown={(e) => {
                         e.stopPropagation();
+                        e.preventDefault();
                         onDismissPatternMatch?.(m.id);
                       }}
-                      className="cursor-pointer hover:scale-125 transition-transform"
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onDismissPatternMatch?.(m.id);
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onDismissPatternMatch?.(m.id);
+                      }}
+                      className="cursor-pointer group/dismiss"
                     >
-                      <title>Descartar este resultado</title>
-                      <circle r={6.5} fill="#ef4444" stroke="#ffffff" strokeWidth={1} />
-                      <text x="0" y="2" textAnchor="middle" fontSize={7} fontWeight="bold" fill="#ffffff" className="select-none font-sans">
+                      <title>Descartar falso positivo y aprender del rechazo</title>
+                      {/* Zona invisible amplia de impacto para mouse y dedos táctiles (34px de diámetro) */}
+                      <circle r={17} fill="transparent" />
+                      {/* Círculo visual rojo de cierre */}
+                      <circle
+                        r={7.5}
+                        fill="#ef4444"
+                        stroke="#ffffff"
+                        strokeWidth={1.5}
+                        className="transition-transform group-hover/dismiss:scale-125 group-active/dismiss:scale-95"
+                      />
+                      <text
+                        x="0"
+                        y="2.5"
+                        textAnchor="middle"
+                        fontSize={8}
+                        fontWeight="bold"
+                        fill="#ffffff"
+                        className="select-none font-sans pointer-events-none"
+                      >
                         ✕
                       </text>
                     </g>
