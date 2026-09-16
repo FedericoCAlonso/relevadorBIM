@@ -117,7 +117,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 text-slate-800">
               <div>
                 <div className="font-bold text-xs">
-                  Factor de Ocupación: {conduitOccupancy.occupancyPercent}% (Ref. AEA: {conduitOccupancy.maxAllowedPercent}%)
+                  Factor de Ocupación: {conduitOccupancy.occupancyPercent}% (Capacidad máx: {conduitOccupancy.maxAllowedPercent}%)
                 </div>
                 <div className="text-[11px] text-slate-500">
                   {conduit.conductors.length} {conduit.conductors.length === 1 ? 'conductor alojado' : 'conductores alojados'}.
@@ -286,7 +286,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               <label className="block font-bold text-slate-700 mb-1">Longitud del Tramo:</label>
               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5">
                 <span className="text-slate-500 font-medium">
-                  {conduit.manualLengthM ? 'Manual:' : 'Auto 3D AEA:'}
+                  {conduit.manualLengthM ? 'Manual:' : 'Calculado 3D:'}
                 </span>
                 <input
                   type="number"
@@ -314,12 +314,12 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           </div>
 
-          {/* Circuitos en tránsito / compartidos por el conducto (Multi-circuito AEA) */}
+          {/* Circuitos en tránsito / compartidos por el conducto */}
           {circuits.length > 0 && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-xs text-slate-800">
-                  Circuitos en este Conducto (Multi-circuito AEA 771):
+                  Circuitos en este Conducto:
                 </span>
                 <span className="text-[10px] text-slate-500">
                   {(conduit.circuitIds?.length || (conduit.circuitId ? 1 : 0))} seleccionado(s)
@@ -344,19 +344,14 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                   );
                 })}
               </div>
-              {(conduit.circuitIds?.length || 0) > 3 && (
-                <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 p-2 rounded-xl border border-amber-200">
-                  ⚠️ AEA 90364-771.12.3: La reglamentación limita a un máximo de 3 circuitos terminales en la misma cañería.
-                </div>
-              )}
             </div>
           )}
 
-          {/* Desglose Métrico Reglamentario (Planta Ortogonal + Desnivel Z) */}
+          {/* Desglose Métrico (Planta Ortogonal + Desnivel Z) */}
           {conduitBreakdown && (
             <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-blue-950">
-                <span>Desglose Métrico Reglamentario (Norma AEA 90364-771):</span>
+                <span>Desglose Métrico de Cañería:</span>
                 <span className="font-mono text-blue-800">{conduitBreakdown.totalLengthM.toFixed(2)} m</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px] font-mono">
@@ -379,16 +374,16 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                   <strong className="text-slate-900">
                     {(conduitBreakdown.totalLengthM - (conduitBreakdown.distPlantaOrthogonal + conduitBreakdown.dzLocal + conduitBreakdown.dzNiveles)).toFixed(2)} m
                   </strong>
-                  <span className="text-[9px] text-slate-400 block font-sans">+10% reglamentario AEA</span>
+                  <span className="text-[9px] text-slate-400 block font-sans">+10% curvas y holgura</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 6. Presets Rápidos de Conductores (Desde Catálogo del Modelo) */}
+          {/* 6. Presets Rápidos de Conductores */}
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
             <div className="flex items-center justify-between mb-2">
-              <label className="font-bold text-slate-700">Llenado Rápido Reglamentario (Presets AEA):</label>
+              <label className="font-bold text-slate-700">Llenado Rápido (Presets):</label>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {catalogs.conductorPresets.map((preset) => (

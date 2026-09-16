@@ -116,7 +116,7 @@ export const computeProjectSurvey = generarComputoCotizador;
 export function exportComputoToCsv(computo: ComputoMetricoExport): string {
   const rows: string[] = [];
 
-  rows.push(`CÓMPUTO MÉTRICO DE INSTALACIÓN ELÉCTRICA (Norma AEA 90364-771)`);
+  rows.push(`CÓMPUTO MÉTRICO DE INSTALACIÓN ELÉCTRICA`);
   rows.push(`Proyecto:;"${computo.proyectoNombre}"`);
   rows.push(`Fecha:;${new Date(computo.timestamp).toLocaleString('es-AR')}`);
   rows.push(`Superficie Cubierta Relevada:;${computo.superficieTotalM2} m²`);

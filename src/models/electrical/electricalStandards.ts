@@ -97,7 +97,7 @@ export const CONDUIT_MATERIALS_CATALOG: readonly ConduitMaterialOption[] = [
   {
     id: 'hierro_semipesado_rs',
     label: '1. Caño Hierro Semipesado RS',
-    description: 'Acero semipesado según IRAM-IAS U 500-2604 (Norma AEA losas y embutido)',
+    description: 'Acero semipesado según IRAM-IAS U 500-2604 (losas y embutido)',
     standardReference: 'IRAM-IAS U 500-2604',
     allowedInSlab: true
   },
@@ -118,7 +118,7 @@ export const CONDUIT_MATERIALS_CATALOG: readonly ConduitMaterialOption[] = [
   {
     id: 'corrugado_blanco_pvc',
     label: '4. Corrugado Blanco PVC',
-    description: '⚠️ Liviano económico. No apto para losas bajo AEA 90364',
+    description: 'Termoplástico corrugado liviano',
     standardReference: 'IRAM 62386-22 (Liviano)',
     allowedInSlab: false
   },
@@ -126,7 +126,7 @@ export const CONDUIT_MATERIALS_CATALOG: readonly ConduitMaterialOption[] = [
     id: 'bandeja_perforada_20',
     label: '5. Bandeja Perforada de 20',
     description: 'Chapa de acero perforada ancho 200 mm para instalaciones a la vista',
-    standardReference: 'AEA 90364-771.12.5',
+    standardReference: 'IRAM / Bandeja 20',
     allowedInSlab: false
   }
 ] as const;

@@ -138,7 +138,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                       Circuitos en Tránsito / De Paso por esta Caja:
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      AEA 771.12: Cables que atraviesan la caja sin alimentar este artefacto
+                      Cables que atraviesan la caja sin alimentar este artefacto
                     </span>
                   </div>
                   <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-lg border border-slate-200">

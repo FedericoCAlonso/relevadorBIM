@@ -173,7 +173,7 @@ describe('Servicios de Exportación y Respaldo Técnico', () => {
       const computo = generarComputoCotizador(project);
       const csv = exportComputoToCsv(computo);
 
-      expect(csv).toContain('CÓMPUTO MÉTRICO DE INSTALACIÓN ELÉCTRICA (Norma AEA 90364-771)');
+      expect(csv).toContain('CÓMPUTO MÉTRICO DE INSTALACIÓN ELÉCTRICA');
       expect(csv).toContain('"Obra Test AEA"');
       expect(csv).toContain('1. BOCAS ELÉCTRICAS');
       expect(csv).toContain('2. CAÑERÍAS Y CANALIZACIONES');

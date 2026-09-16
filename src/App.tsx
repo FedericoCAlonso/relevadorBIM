@@ -315,7 +315,7 @@ export function App() {
         onOpenComputo={() => setShowComputoModal(true)}
       />
 
-      {/* Modal de Configuración General de Obra y Parámetros AEA */}
+      {/* Modal de Configuración General de Obra y Catálogo */}
       <ProjectSettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}

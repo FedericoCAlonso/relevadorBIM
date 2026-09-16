@@ -38,29 +38,23 @@ Este documento establece las directivas técnicas, arquitectónicas, normativas 
 
 ---
 
-## 3. Reglamentación Eléctrica Argentina (AEA 90364-771 e IRAM)
+## 3. Relevamiento Electromecánico de Campo (Instalaciones Existentes y Nuevas)
 
-1. **Prioridad y Catálogo de Canalizaciones:**
-   El orden de presentación y selección en todo el sistema debe respetar estrictamente:
-   1. **Caño Hierro Semipesado RS (IRAM-IAS U 500-2604)** — *Opción por defecto en toda cañería nueva*.
-   2. **Hierro Liviano RL (IRAM-IAS U 500-2005)**.
-   3. **Caño PVC Rígido Métrico (IRAM 62386-21)**.
-   4. **Corrugado Blanco PVC (IRAM 62386-22)**.
-   5. **Bandeja Perforada de 20 (IRAM / AEA 771.12.5)**.
-2. **Medidas Específicas según Material de Conducto:**
-   - Cada material posee su propia lista de calibres normalizados (`CONDUIT_SIZES_BY_MATERIAL`).
-   - Los caños cilíndricos utilizan diámetros nominales (RS 16 a RS 51, métricos Ø16 a Ø63 mm).
-   - Las **bandejas perforadas** utilizan dimensiones rectangulares reales ($Ancho \times Ala 20\text{ mm}$, ej: 50×20, 100×20, 200×20 mm) y su sección útil para cálculo de llenado es su área rectangular ($W \times H$).
+1. **Enfoque Objetivo de Relevamiento (Cero Juicio Normativo):**
+   - El sistema es una herramienta de **relevamiento físico objetivo**.
+   - **Prohibido:** Mostrar semáforos verde/rojo de cumplimiento, banners de advertencia sobrepasada de normas o textos punitivos ("No reglamentario", etc.).
+   - No forzar ni exigir selectores de tensión nominal de red ni normas específicas; la ocupación de conductos se presenta como dato técnico informativo y neutral.
+2. **Catálogo Abierto en 3 Categorías Físicas Rígidas:**
+   - **Canalizaciones:** Caños metálicos, plásticos, mangueras y bandejas perforadas. Permite agregar y quitar tipos personalizados.
+   - **Conductores:** Unipolares, sintenax, taller, tela/goma y alambres. Abierto a nuevos tipos.
+   - **Cajas y Gabinetes:** Rectangulares, octogonales, cuadradas de paso, mignon y gabinetes de tablero.
 3. **Cálculo de Trayectorias Ortogonales:**
-   - Las longitudes de cañería deben medirse siguiendo trayectorias ortogonales estrictas:
+   - Las longitudes de cañería se miden siguiendo trayectorias ortogonales en escuadra:
      $$L = (|dx| + |dy| + \Delta Z_{\text{local}} + \Delta Z_{\text{losas}}) \times 1.10$$
-   - Contempla el recorrido en escuadra por pared/losa, los desniveles de montaje de las bocas y el factor reglamentario del 10% por curvas y desperdicios.
-4. **Factor de Ocupación Reglamentario:**
-   - Límite máximo admisible del **35%** de la sección interna útil de la cañería (AEA 90364-771.12.3.4).
-5. **Circuitos Múltiples y Cajas de Paso:**
-   - **En Cañerías:** Soporte de multi-circuito con advertencia preventiva si se superan los 3 circuitos terminales monofásicos del mismo tablero (AEA 771.12.3).
-   - **En Bocas:** Distinción explícita entre el **circuito asignado de alimentación** (energiza el artefacto local) y los **circuitos en tránsito / paso** (conductores que atraviesan la caja física).
-   - **Metadatos Técnicos Libres:** Las bocas deben soportar un arreglo clave-valor `attributes: Array<{ key: string; value: string }>` (modelo TRAZA), inicializado en `[]` por defecto, con capacidad completa de alta, baja y modificación.
+   - Contempla el recorrido por pared/losa, los desniveles de montaje de las bocas y el factor del 10% por curvas y holgura.
+4. **Cajas de Paso y Circuitos en Tránsito:**
+   - **En Bocas:** Distinción explícita entre el circuito asignado de alimentación y los circuitos en tránsito / paso que solo atraviesan la caja física.
+   - **Metadatos Técnicos y Mediciones Libres:** Las bocas cuentan con un arreglo clave-valor `attributes: Array<{ key: string; value: string }>` para registrar mediciones de campo (PAT en $\Omega$, tensiones $V_{fn}$, $V_{ft}$, $V_{nt}$, aislación en $\text{M}\Omega$, corriente, tiempos de disparo, etc.).
 
 ---
 

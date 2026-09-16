@@ -9,9 +9,6 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import {
-  CONDUIT_MATERIALS_CATALOG,
-  CABLE_STANDARDS_CATALOG,
-  AEA_CALCULATION_CONSTANTS,
   BOX_CATEGORIES_CATALOG,
   BOX_MATERIALS_CATALOG,
   DEFAULT_CABLE_SECTIONS,
@@ -23,7 +20,7 @@ import type {
   BoxCategory,
   BoxMaterialBase
 } from '../../../models/electrical/ElectricalModel';
-import { X, Building2, Sliders, Check, Package, Plus, Trash2 } from 'lucide-react';
+import { X, Building2, Sliders, Package, Plus, Trash2 } from 'lucide-react';
 
 interface ProjectSettingsModalProps {
   isOpen: boolean;
@@ -42,7 +39,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
     removeBoxType
   } = useProjectStore();
 
-  const [activeTab, setActiveTab] = useState<'obra' | 'instalacion' | 'catalogo'>('obra');
+  const [activeTab, setActiveTab] = useState<'obra' | 'catalogo'>('obra');
   const [catalogCategory, setCatalogCategory] = useState<'conduits' | 'cables' | 'boxes'>('conduits');
 
   // Formularios de alta
@@ -137,7 +134,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                 Configuración del Relevamiento
               </h3>
               <p className="text-[11px] text-slate-500">
-                Parámetros de obra, normas AEA y catálogo de materiales
+                Parámetros de la obra y catálogo de materiales
               </p>
             </div>
           </div>
@@ -151,42 +148,30 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
         </div>
 
         {/* Selector de Solapas Principales */}
-        <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5 text-xs font-bold overflow-x-auto">
+        <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5 text-xs font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('obra')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all whitespace-nowrap ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
               activeTab === 'obra'
                 ? 'bg-white text-blue-700 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-200/60'
             }`}
           >
             <Building2 size={15} />
-            <span>Datos Obra</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('instalacion')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all whitespace-nowrap ${
-              activeTab === 'instalacion'
-                ? 'bg-white text-blue-700 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-200/60'
-            }`}
-          >
-            <Sliders size={15} />
-            <span>Normas AEA</span>
+            <span>Datos de la Obra</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('catalogo')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all whitespace-nowrap ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
               activeTab === 'catalogo'
                 ? 'bg-white text-blue-700 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-200/60'
             }`}
           >
             <Package size={15} />
-            <span>Catálogo Materiales</span>
+            <span>Catálogo de Materiales</span>
           </button>
         </div>
 
@@ -228,98 +213,14 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Técnico / Instalador Matriculado:</label>
+                <label className="block font-bold text-slate-700 mb-1">Técnico / Relevador:</label>
                 <input
                   type="text"
                   value={project.meta.electricianName || ''}
                   onChange={(e) => updateProjectMeta({ electricianName: e.target.value })}
-                  placeholder="Ej: Ing. / Téc. Electricista"
+                  placeholder="Ej: Ing. / Téc. Relevador"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
                 />
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'instalacion' && (
-            <div className="space-y-3.5">
-              {/* Material por defecto */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Material de Cañería por Defecto para nuevos tramos:
-                </label>
-                <div className="space-y-1.5">
-                  {CONDUIT_MATERIALS_CATALOG.map((mat) => {
-                    const isSelected =
-                      (project.meta.defaultConduitMaterial || CONDUIT_MATERIALS_CATALOG[0].id) === mat.id;
-                    return (
-                      <button
-                        key={mat.id}
-                        type="button"
-                        onClick={() => updateProjectMeta({ defaultConduitMaterial: mat.id as ConduitMaterial })}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'bg-blue-50/90 border-blue-500 shadow-xs'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div>
-                          <div className={`font-bold text-xs ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
-                            {mat.label}
-                          </div>
-                          <div className="text-[10px] text-slate-500">{mat.description}</div>
-                        </div>
-                        {isSelected && <Check size={16} className="text-blue-600 font-bold" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Conductor por defecto */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Norma de Cable por Defecto:</label>
-                <select
-                  value={project.meta.defaultCableStandard || CABLE_STANDARDS_CATALOG[0].id}
-                  onChange={(e) =>
-                    updateProjectMeta({ defaultCableStandard: e.target.value as CableStandard })
-                  }
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
-                >
-                  {CABLE_STANDARDS_CATALOG.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label} ({c.description})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Tensión nominal */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Tensión Nominal del Suministro:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => updateProjectMeta({ defaultVoltageV: AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V })}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all ${
-                      (project.meta.defaultVoltageV || 220) === 220
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    220 V (Monofásico)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateProjectMeta({ defaultVoltageV: AEA_CALCULATION_CONSTANTS.VOLTAGE_THREE_PHASE_V })}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all ${
-                      project.meta.defaultVoltageV === 380
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    380 V (Trifásico)
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -365,10 +266,29 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
 
               {/* Categoría 1: Canalizaciones */}
               {catalogCategory === 'conduits' && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-2.5">
+                  {/* Selector de material de cañería por defecto */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl gap-2">
+                    <div>
+                      <span className="font-bold text-xs text-slate-800 block">Canalización por Defecto:</span>
+                      <span className="text-[10px] text-slate-500">Para nuevos tramos trazados</span>
+                    </div>
+                    <select
+                      value={project.meta.defaultConduitMaterial || 'hierro_semipesado_rs'}
+                      onChange={(e) => updateProjectMeta({ defaultConduitMaterial: e.target.value as ConduitMaterial })}
+                      className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-blue-500 max-w-[200px] truncate"
+                    >
+                      {catalog.conduitTypes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
                     <span className="text-slate-600 font-semibold text-[11px]">
-                      Tipos de Caños, Conductos y Bandejas disponibles:
+                      Tipos de Caños, Conductos y Bandejas registrados:
                     </span>
                     <button
                       type="button"
@@ -398,7 +318,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                           type="text"
                           value={newConduitDesc}
                           onChange={(e) => setNewConduitDesc(e.target.value)}
-                          placeholder="Descripción / Norma"
+                          placeholder="Descripción (opcional)"
                           className="px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <div className="flex items-center gap-1.5">
@@ -467,10 +387,29 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
 
               {/* Categoría 2: Conductores */}
               {catalogCategory === 'cables' && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-2.5">
+                  {/* Selector de conductor por defecto */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl gap-2">
+                    <div>
+                      <span className="font-bold text-xs text-slate-800 block">Conductor por Defecto:</span>
+                      <span className="text-[10px] text-slate-500">Para nuevos conductores asignados</span>
+                    </div>
+                    <select
+                      value={project.meta.defaultCableStandard || 'IRAM_NM_247_3'}
+                      onChange={(e) => updateProjectMeta({ defaultCableStandard: e.target.value as CableStandard })}
+                      className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-blue-500 max-w-[200px] truncate"
+                    >
+                      {catalog.cableTypes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
                     <span className="text-slate-600 font-semibold text-[11px]">
-                      Normas y Tipos de Conductores disponibles:
+                      Tipos y Normas de Conductores registrados:
                     </span>
                     <button
                       type="button"
@@ -500,7 +439,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                           type="text"
                           value={newCableDesc}
                           onChange={(e) => setNewCableDesc(e.target.value)}
-                          placeholder="Descripción técnica"
+                          placeholder="Descripción (opcional)"
                           className="px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <div className="flex items-center gap-1.5">
@@ -573,7 +512,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600 font-semibold text-[11px]">
-                      Tipos de Cajas y Gabinetes de Tableros:
+                      Tipos de Cajas y Gabinetes registrados:
                     </span>
                     <button
                       type="button"

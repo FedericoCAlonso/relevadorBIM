@@ -32,8 +32,6 @@ import {
   ArrowUpDown,
   Undo2,
   MapPin,
-  CheckCircle2,
-  AlertTriangle,
   Cable,
   Layers,
   SlidersHorizontal
@@ -1106,7 +1104,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
-                    Circuitos AEA 90364-771
+                    Circuitos Eléctricos
                   </span>
                   <button
                     type="button"
@@ -1296,12 +1294,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           <span>
                             Termomagnética: <strong>{circ.breakerAmperageA || 16}A</strong> · Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
                           </span>
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                             isOverloaded
                               ? 'bg-red-100 text-red-700'
                               : 'bg-slate-100 text-slate-700'
                           }`}>
-                            {bocasCount} bocas {isOverloaded ? '(>15 AEA)' : ''}
+                            {bocasCount} bocas
                           </span>
                         </div>
                       </div>
@@ -1337,7 +1335,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               Cañería: {elFrom?.label || 'Boca 1'} ➔ {elTo?.label || 'Boca 2'}
                             </span>
                             <span className="text-[10px] font-mono text-amber-800">
-                              Largo: {effectiveLengthM.toFixed(2)} m {selectedConduit.manualLengthM ? '(Manual)' : '(3D AEA)'}
+                              Largo: {effectiveLengthM.toFixed(2)} m {selectedConduit.manualLengthM ? '(Manual)' : '(3D)'}
                             </span>
                           </div>
                         </div>
@@ -1396,7 +1394,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => updateConduit(selectedConduit.id, { material: e.target.value as ConduitMaterial })}
                           className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-semibold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
-                          <option value="hierro_semipesado_rs">1. Caño Hierro Semipesado RS (Norma AEA)</option>
+                          <option value="hierro_semipesado_rs">1. Caño Hierro Semipesado RS</option>
                           <option value="hierro_liviano_rl">2. Hierro Liviano RL</option>
                           <option value="pvc_rigido_metrico">3. Caño PVC Rígido (métrico)</option>
                           <option value="corrugado_blanco_pvc">4. Corrugado Blanco PVC</option>
@@ -1404,34 +1402,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </select>
                       </div>
 
-                      {/* Factor de Ocupación AEA 90364-771 (Máx 35%) */}
+                      {/* Factor de Ocupación */}
                       <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-700 flex items-center gap-1">
-                            {occupancy.isCompliant ? (
-                              <CheckCircle2 size={14} className="text-emerald-600" />
-                            ) : (
-                              <AlertTriangle size={14} className="text-red-600" />
-                            )}
-                            Ocupación AEA:
+                          <span className="font-bold text-slate-700">
+                            Ocupación de cañería:
                           </span>
-                          <span className={`font-mono font-bold ${occupancy.isCompliant ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {occupancy.occupancyPercent}% / 35.0%
+                          <span className="font-mono font-bold text-slate-700">
+                            {occupancy.occupancyPercent}% (Capacidad máx: 35.0%)
                           </span>
                         </div>
                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
                           <div
-                            className={`h-full transition-all duration-300 ${
-                              occupancy.isCompliant ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
-                            }`}
+                            className="h-full bg-blue-500 transition-all duration-300"
                             style={{ width: `${Math.min(100, (occupancy.occupancyPercent / 35) * 100)}%` }}
                           />
                         </div>
-                        {!occupancy.isCompliant && (
-                          <p className="text-[10px] font-bold text-red-600">
-                            ⚠️ Cañería saturada según Norma AEA 90364-771. Aumentar a Ø{selectedConduit.diameterMM < 22 ? '22' : '25'}mm.
-                          </p>
-                        )}
                       </div>
 
                       {/* Asignación de Circuitos que pasan por este tramo */}

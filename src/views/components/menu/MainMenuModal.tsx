@@ -18,7 +18,6 @@ import {
   X,
   Building2,
   Zap,
-  Info,
   ChevronRight
 } from 'lucide-react';
 
@@ -221,7 +220,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
           {/* 3. SECCIÓN CONFIGURACIÓN */}
           <div className="space-y-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
-              ⚙️ Ajustes y Normas
+              ⚙️ Configuración y Catálogo
             </span>
 
             <button
@@ -238,19 +237,11 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
                 <div>
                   <div className="font-bold text-slate-800">Configuración de la Obra</div>
-                  <div className="text-[11px] text-slate-500">Datos de obra y parámetros AEA por defecto</div>
+                  <div className="text-[11px] text-slate-500">Datos de la obra y catálogo de materiales</div>
                 </div>
               </div>
               <ChevronRight size={16} className="text-slate-400" />
             </button>
-          </div>
-
-          {/* 4. PIE NORMATIVO */}
-          <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-start gap-2.5">
-            <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-[11px] text-blue-900 leading-relaxed">
-              <strong>Reglamentación AEA 90364-771:</strong> Cañería por defecto en Hierro RS, ocupación máx 35%, medición ortogonal con 10% de holgura.
-            </div>
           </div>
         </div>
       </div>
