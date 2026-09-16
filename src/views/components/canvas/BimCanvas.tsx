@@ -14,8 +14,9 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff } from 'lucide-react';
+import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass } from 'lucide-react';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
+import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 
 export interface WallPlacementSnap {
   wallId: string;
@@ -39,6 +40,11 @@ interface BimCanvasProps {
   onToggleUnderlayVisibility?: () => void;
   onCycleUnderlayOpacity?: () => void;
   onStartUnderlayCalibration?: () => void;
+  isAddingDimension?: boolean;
+  dimensionP1?: { x: number; y: number } | null;
+  onToggleAddingDimension?: () => void;
+  onDimensionCanvasClick?: (worldX: number, worldY: number) => void;
+  onCancelAddingDimension?: () => void;
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -62,6 +68,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onToggleUnderlayVisibility,
   onCycleUnderlayOpacity,
   onStartUnderlayCalibration,
+  isAddingDimension = false,
+  dimensionP1 = null,
+  onToggleAddingDimension,
+  onDimensionCanvasClick,
+  onCancelAddingDimension,
   onWallClick,
   onOpeningClick,
   onSpaceClick,
@@ -77,7 +88,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     activeAnchorVertexId,
     setActiveAnchorVertexId,
     showDimensions,
-    toggleDimensions
+    toggleDimensions,
+    deleteDimensionLine
   } = useProjectStore();
 
   // Escala y transformación de vista (Pan y Zoom)
@@ -340,6 +352,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (isAddingDimension) {
+      onDimensionCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
+    }
+
     if (!onCanvasClick) return;
     let snapInfo: WallPlacementSnap | null = null;
 
@@ -428,7 +445,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={space.id}
             onClick={(e) => {
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
               }
@@ -483,6 +500,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     selectedSymbolId,
     isConnectingConduit,
     isCalibratingUnderlay,
+    isAddingDimension,
     onSpaceClick,
     onElectricalElementClick
   ]);
@@ -510,7 +528,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseEnter={() => setHoveredWallId(wall.id)}
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
                 // Modo inserción de elemento eléctrico o conexión de cañerías
                 triggerPlacement(e.clientX, e.clientY);
                 return;
@@ -621,6 +639,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     selectedSymbolId,
     isConnectingConduit,
     isCalibratingUnderlay,
+    isAddingDimension,
     showDimensions,
     onWallClick,
     onElectricalElementClick
@@ -649,7 +668,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={opening.id}
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
-            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
+            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -758,7 +777,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, onOpeningClick]);
+  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onOpeningClick]);
 
   // 4. Vértices y Puntos de Anclaje (Snaps)
   const renderedVertices = useMemo(() => {
@@ -772,7 +791,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={v.id}
           transform={`translate(${pxX}, ${pxY})`}
           onClick={(e) => {
-            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
+            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -802,7 +821,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, setActiveAnchorVertexId]);
+  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, setActiveAnchorVertexId]);
 
   // 5. Previsualización del rayo láser proyectado desde el anclaje activo
   const renderedPreviewRay = useMemo(() => {
@@ -885,7 +904,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <g
           key={conduit.id}
           onClick={(e) => {
-            if (isConnectingConduit || isCalibratingUnderlay) {
+            if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -920,7 +939,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, isCalibratingUnderlay, setSelectedEntity]);
+  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, setSelectedEntity]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
   const renderedElements = useMemo(() => {
@@ -939,7 +958,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
             onClick={(e) => {
-              if (isCalibratingUnderlay) {
+              if (isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
               }
@@ -947,7 +966,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               onElectricalElementClick?.(element.id);
             }}
             onDoubleClick={(e) => {
-              if (isCalibratingUnderlay) {
+              if (isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
               }
@@ -1058,9 +1077,147 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     selectedEntity,
     isConnectingConduit,
     isCalibratingUnderlay,
+    isAddingDimension,
     pendingConduitStartId,
     onElectricalElementClick,
     onElectricalElementDoubleClick
+  ]);
+
+  // 8. Cotas Métricas Libres en el Plano CAD
+  const renderedDimensions = useMemo(() => {
+    if (!showDimensions || !project.dimensions) return null;
+
+    return project.dimensions
+      .filter((dim) => dim.levelId === project.activeLevelId)
+      .map((dim) => {
+        const x1 = dim.p1.x * zoom;
+        const y1 = dim.p1.y * zoom;
+        const x2 = dim.p2.x * zoom;
+        const y2 = dim.p2.y * zoom;
+        const dist = Math.hypot(dim.p2.x - dim.p1.x, dim.p2.y - dim.p1.y);
+        if (dist < 0.05) return null;
+
+        const isSelected = selectedEntity?.type === 'dimension' && selectedEntity.id === dim.id;
+        const strokeColor = isSelected ? DIMENSION_CONSTANTS.SELECTED_COLOR : DIMENSION_CONSTANTS.DEFAULT_COLOR;
+
+        const angleRad = Math.atan2(y2 - y1, x2 - x1);
+        const tickAngleRad = angleRad + Math.PI / 4;
+        const tickDx = Math.cos(tickAngleRad) * 5;
+        const tickDy = Math.sin(tickAngleRad) * 5;
+
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const normX = -(y2 - y1) / (dist * zoom);
+        const normY = (x2 - x1) / (dist * zoom);
+        const textX = midX + normX * 8;
+        const textY = midY + normY * 8;
+
+        let angleDeg = (angleRad * 180) / Math.PI;
+        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+
+        const labelText = formatDimensionText(dist, dim.label);
+
+        return (
+          <g
+            key={dim.id}
+            onClick={(e) => {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+                triggerPlacement(e.clientX, e.clientY);
+                return;
+              }
+              e.stopPropagation();
+              setSelectedEntity({ type: 'dimension', id: dim.id });
+            }}
+            className="cursor-pointer group"
+          >
+            {/* Hit area amplia */}
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
+
+            {/* Línea de cota */}
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2.5 : 1.5}
+            />
+
+            {/* Tics arquitectónicos a 45° */}
+            <line
+              x1={x1 - tickDx}
+              y1={y1 - tickDy}
+              x2={x1 + tickDx}
+              y2={y1 + tickDy}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2.5 : 2}
+            />
+            <line
+              x1={x2 - tickDx}
+              y1={y2 - tickDy}
+              x2={x2 + tickDx}
+              y2={y2 + tickDy}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 2.5 : 2}
+            />
+
+            {/* Etiqueta de cota */}
+            <g transform={`translate(${textX}, ${textY}) rotate(${angleDeg})`}>
+              <rect
+                x="-26"
+                y="-10"
+                width="52"
+                height="20"
+                rx="4"
+                fill="#ffffff"
+                stroke={isSelected ? strokeColor : '#cbd5e1'}
+                strokeWidth={1}
+                className="shadow-xs"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight="bold"
+                fill={strokeColor}
+                className="font-mono select-none pointer-events-none"
+              >
+                {labelText}
+              </text>
+            </g>
+
+            {/* Botón flotante para eliminar la cota si está seleccionada */}
+            {isSelected && (
+              <g
+                transform={`translate(${midX}, ${midY - 24})`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteDimensionLine(dim.id);
+                }}
+                className="cursor-pointer hover:scale-110 transition-transform"
+              >
+                <circle r={10} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} />
+                <text x="0" y="3.5" textAnchor="middle" fontSize={10} fontWeight="bold" fill="#ffffff" className="select-none font-sans">
+                  ✕
+                </text>
+              </g>
+            )}
+          </g>
+        );
+      });
+  }, [
+    project.dimensions,
+    project.activeLevelId,
+    showDimensions,
+    selectedEntity,
+    zoom,
+    selectedSymbolId,
+    isConnectingConduit,
+    isCalibratingUnderlay,
+    isAddingDimension,
+    setSelectedEntity,
+    deleteDimensionLine
   ]);
 
   return (
@@ -1114,6 +1271,50 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedConduits}
           {renderedVertices}
           {renderedElements}
+          {renderedDimensions}
+
+          {/* Línea elástica interactiva al trazar cotas métricas */}
+          {isAddingDimension && dimensionP1 && (
+            <g pointerEvents="none">
+              {hoverWorldPos && (
+                <>
+                  <line
+                    x1={dimensionP1.x * zoom}
+                    y1={dimensionP1.y * zoom}
+                    x2={hoverWorldPos.x * zoom}
+                    y2={hoverWorldPos.y * zoom}
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                  />
+                  <circle
+                    cx={hoverWorldPos.x * zoom}
+                    cy={hoverWorldPos.y * zoom}
+                    r={5}
+                    fill="#2563eb"
+                  />
+                  <text
+                    x={((dimensionP1.x + hoverWorldPos.x) / 2) * zoom}
+                    y={((dimensionP1.y + hoverWorldPos.y) / 2) * zoom - 8}
+                    textAnchor="middle"
+                    fontSize={11}
+                    className="font-mono font-bold fill-blue-700 bg-white"
+                  >
+                    {Math.hypot(hoverWorldPos.x - dimensionP1.x, hoverWorldPos.y - dimensionP1.y).toFixed(2)} m
+                  </text>
+                </>
+              )}
+              {/* Punto 1 marcado */}
+              <circle
+                cx={dimensionP1.x * zoom}
+                cy={dimensionP1.y * zoom}
+                r={6}
+                fill="#2563eb"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            </g>
+          )}
 
           {/* Línea elástica y marcas de calibración métrica del plano de fondo */}
           {isCalibratingUnderlay && calibrationP1 && (
@@ -1258,6 +1459,31 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </div>
       )}
 
+      {/* Banner / Píldora superior durante trazado de cota libre */}
+      {isAddingDimension && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-blue-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping" />
+          <span>
+            {dimensionP1
+              ? '📐 1° punto fijado · Hacé clic en el segundo punto de la cota'
+              : '📐 Trazar Cota: Hacé clic en el primer punto a medir'}
+          </span>
+          {onCancelAddingDimension && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelAddingDimension();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar trazado de cota"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Botonera flotante CAD (Zoom In / Out / Recentrar / Cotas / Lámina de Fondo) */}
       <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-10">
         <button
@@ -1295,6 +1521,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           title={showDimensions ? 'Ocultar cotas métricas' : 'Mostrar cotas métricas'}
         >
           <Ruler size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleAddingDimension}
+          className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+            isAddingDimension
+              ? 'bg-blue-600 text-white border-blue-700'
+              : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
+          }`}
+          title={isAddingDimension ? 'Cancelar trazado de cota' : 'Trazar cota métrica libre (2 clics)'}
+        >
+          <DraftingCompass size={16} />
         </button>
 
         {/* Controles de Lámina de Fondo (solo si hay plano cargado) */}

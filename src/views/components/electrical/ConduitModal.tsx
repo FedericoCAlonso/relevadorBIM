@@ -263,7 +263,20 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
           {/* 5. Circuito Asignado y Multi-circuito */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Circuito Principal:</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-700">Circuito Principal:</label>
+                {(() => {
+                  const currCirc = circuits.find((c) => c.id === conduit.circuitId);
+                  if (!currCirc) return null;
+                  return (
+                    <span
+                      className="w-3.5 h-3.5 rounded-full inline-block shrink-0 shadow-xs border border-white ring-1 ring-slate-300"
+                      style={{ backgroundColor: currCirc.color || '#2563eb' }}
+                      title={`Color del circuito en plano: ${currCirc.color || '#2563eb'}`}
+                    />
+                  );
+                })()}
+              </div>
               <select
                 value={conduit.circuitId || ''}
                 onChange={(e) =>
@@ -333,12 +346,16 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                       key={c.id}
                       type="button"
                       onClick={() => toggleConduitCircuit(conduit.id, c.id)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
                         isAssigned
                           ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
                       }`}
                     >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full inline-block shrink-0 border border-white"
+                        style={{ backgroundColor: c.color || '#2563eb' }}
+                      />
                       {isAssigned ? '✓ ' : '+ '} {c.name} ({c.type})
                     </button>
                   );

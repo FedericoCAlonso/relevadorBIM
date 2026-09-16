@@ -147,6 +147,30 @@ export function exportProjectToDxf(project: BuildingProject): string {
     add(1, `${circLabel ? `${circLabel} · ` : ''}Ø${conduit.diameterMM}mm`);
   }
 
+  // F. Exportar Cotas Métricas Libres en capa COTAS_METRICAS
+  for (const dim of project.dimensions || []) {
+    add(0, 'LINE');
+    add(8, 'COTAS_METRICAS');
+    add(10, dim.p1.x);
+    add(20, -dim.p1.y);
+    add(30, 0.0);
+    add(11, dim.p2.x);
+    add(21, -dim.p2.y);
+    add(31, 0.0);
+
+    const dist = Math.hypot(dim.p2.x - dim.p1.x, dim.p2.y - dim.p1.y);
+    const midX = (dim.p1.x + dim.p2.x) / 2;
+    const midY = (dim.p1.y + dim.p2.y) / 2;
+
+    add(0, 'TEXT');
+    add(8, 'COTAS_METRICAS');
+    add(10, midX);
+    add(20, -midY + 0.15);
+    add(30, 0.0);
+    add(40, 0.15);
+    add(1, dim.label || `${dist.toFixed(2)} m`);
+  }
+
   add(0, 'ENDSEC');
   add(0, 'EOF');
 

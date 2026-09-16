@@ -58,6 +58,19 @@ export const BOX_MATERIALS_CATALOG: readonly BoxMaterialOption[] = [
 
 export const DEFAULT_CABLE_SECTIONS: readonly number[] = [1.0, 1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0, 35.0, 50.0];
 
+/** Paleta Normalizada de Colores Técnicos para Circuitos en Plano CAD */
+export const CIRCUIT_COLOR_PALETTE = [
+  { hex: '#2563eb', label: 'Azul Eléctrico (IUG)' },
+  { hex: '#ea580c', label: 'Naranja Señal (TUG)' },
+  { hex: '#16a34a', label: 'Verde Esmeralda (TUE)' },
+  { hex: '#8b5cf6', label: 'Violeta / Púrpura' },
+  { hex: '#dc2626', label: 'Rojo Bermellón' },
+  { hex: '#0891b2', label: 'Cyan / Celeste' },
+  { hex: '#d97706', label: 'Ámbar / Dorado' },
+  { hex: '#e11d48', label: 'Fucsia / Rosa' },
+  { hex: '#475569', label: 'Grafito Neutro' }
+] as const;
+
 /** Constantes de Cálculo y Seguridad según Reglamentación AEA */
 export const AEA_CALCULATION_CONSTANTS = {
   /** Factor máximo admisible de ocupación en cañerías (AEA 90364-771.12.3.4) */

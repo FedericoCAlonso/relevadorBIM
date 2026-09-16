@@ -40,7 +40,9 @@ export function App() {
     undoLastWall,
     deleteWall,
     deleteOpening,
-    deleteElectricalElement
+    deleteElectricalElement,
+    deleteConduit,
+    deleteDimensionLine
   } = useProjectStore();
 
   const {
@@ -58,7 +60,12 @@ export function App() {
     pendingConduitStartId,
     cancelConduitConnection,
     commitWall,
-    handleElectricalElementClick
+    handleElectricalElementClick,
+    isAddingDimension,
+    dimensionP1,
+    startAddingDimension,
+    cancelAddingDimension,
+    handleDimensionCanvasClick
   } = useSurveyViewModel();
 
   const {
@@ -122,6 +129,10 @@ export function App() {
           cancelUnderlayCalibration();
           return;
         }
+        if (isAddingDimension) {
+          cancelAddingDimension();
+          return;
+        }
         setSelectedEntity(null);
         setSelectedSymbolId(null);
         return;
@@ -133,6 +144,8 @@ export function App() {
           if (selectedEntity.type === 'wall') deleteWall(selectedEntity.id);
           else if (selectedEntity.type === 'opening') deleteOpening(selectedEntity.id);
           else if (selectedEntity.type === 'electrical_element') deleteElectricalElement(selectedEntity.id);
+          else if (selectedEntity.type === 'conduit') deleteConduit(selectedEntity.id);
+          else if (selectedEntity.type === 'dimension') deleteDimensionLine(selectedEntity.id);
           setSelectedEntity(null);
         }
       }
@@ -140,7 +153,23 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEntity, undoLastWall, deleteWall, deleteOpening, deleteElectricalElement, setSelectedEntity, setSelectedSymbolId]);
+  }, [
+    selectedEntity,
+    isConnectingConduit,
+    isCalibratingUnderlay,
+    isAddingDimension,
+    undoLastWall,
+    deleteWall,
+    deleteOpening,
+    deleteElectricalElement,
+    deleteConduit,
+    deleteDimensionLine,
+    cancelConduitConnection,
+    cancelUnderlayCalibration,
+    cancelAddingDimension,
+    setSelectedEntity,
+    setSelectedSymbolId
+  ]);
 
   // Escuchar eventos de apertura de modales de acción contextual
   useEffect(() => {
@@ -302,6 +331,14 @@ export function App() {
             onToggleUnderlayVisibility={toggleUnderlayVisibility}
             onCycleUnderlayOpacity={cycleUnderlayOpacity}
             onStartUnderlayCalibration={startUnderlayCalibration}
+            isAddingDimension={isAddingDimension}
+            dimensionP1={dimensionP1}
+            onToggleAddingDimension={() => {
+              if (isAddingDimension) cancelAddingDimension();
+              else startAddingDimension();
+            }}
+            onDimensionCanvasClick={handleDimensionCanvasClick}
+            onCancelAddingDimension={cancelAddingDimension}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {

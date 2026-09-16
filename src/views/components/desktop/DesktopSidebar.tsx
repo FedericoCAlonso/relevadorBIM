@@ -14,6 +14,7 @@ import { getWallLength } from '../../../models/architecture/Wall';
 import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
+import { CircuitColorPicker } from '../electrical/CircuitColorPicker';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
 import { calculateConduitRealLength, calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
 import type { CircuitType, ConduitMaterial, ConductorRole } from '../../../models/electrical/ElectricalModel';
@@ -86,6 +87,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     updateConduit,
     deleteConduit,
     addCircuit,
+    updateCircuit,
     deleteCircuit,
     ensureDefaultCircuits
   } = useProjectStore();
@@ -96,6 +98,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // Sub-pestaña para gestión eléctrica: "Red y Bocas" o "Circuitos y Tableros"
   const [electricalSubTab, setElectricalSubTab] = useState<'network' | 'circuits'>('network');
   const [isCreatingCircuit, setIsCreatingCircuit] = useState(false);
+  const [editingCircuitColorId, setEditingCircuitColorId] = useState<string | null>(null);
   const [newCircuitName, setNewCircuitName] = useState('');
   const [newCircuitType, setNewCircuitType] = useState<CircuitType>('IUG');
   const [newCircuitWire, setNewCircuitWire] = useState(1.5);
@@ -1210,21 +1213,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </select>
                       </div>
 
-                      <div>
+                      <div className="col-span-2">
                         <label className="text-[10px] font-bold text-slate-500 block mb-1">COLOR EN PLANO</label>
-                        <div className="flex gap-1 items-center h-8">
-                          {['#2563eb', '#ea580c', '#16a34a', '#8b5cf6', '#dc2626', '#0891b2'].map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => setNewCircuitColor(c)}
-                              className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                                newCircuitColor === c ? 'scale-110 border-slate-900 ring-2 ring-blue-300' : 'border-white hover:scale-105'
-                              }`}
-                              style={{ backgroundColor: c }}
-                            />
-                          ))}
-                        </div>
+                        <CircuitColorPicker
+                          selectedColor={newCircuitColor}
+                          onChangeColor={setNewCircuitColor}
+                          size="sm"
+                        />
                       </div>
                     </div>
 
@@ -1232,7 +1227,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsCreatingCircuit(false)}
-                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                       >
                         Cancelar
                       </button>
@@ -1253,7 +1248,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           setIsCreatingCircuit(false);
                           setNewCircuitName('');
                         }}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs"
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
                       >
                         Guardar Circuito
                       </button>
@@ -1274,21 +1269,46 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span
-                              className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+                            <button
+                              type="button"
+                              onClick={() => setEditingCircuitColorId(editingCircuitColorId === circ.id ? null : circ.id)}
+                              className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white hover:scale-110 transition-transform cursor-pointer ring-1 ring-slate-300"
                               style={{ backgroundColor: circ.color || '#2563eb' }}
+                              title="Cambiar color del circuito en plano"
                             />
                             <span className="font-bold text-xs text-slate-900">{circ.name}</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => deleteCircuit(circ.id)}
-                            className="text-slate-400 hover:text-red-600 p-1 rounded-lg transition-colors"
+                            className="text-slate-400 hover:text-red-600 p-1 rounded-lg transition-colors cursor-pointer"
                             title="Eliminar circuito"
                           >
                             <Trash2 size={13} />
                           </button>
                         </div>
+
+                        {editingCircuitColorId === circ.id && (
+                          <div className="p-2 bg-slate-50 border border-slate-200 rounded-xl space-y-1 animate-in fade-in duration-100">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-500">Color del circuito en plano:</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingCircuitColorId(null)}
+                                className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <CircuitColorPicker
+                              selectedColor={circ.color || '#2563eb'}
+                              onChangeColor={(color) => {
+                                updateCircuit(circ.id, { color });
+                              }}
+                              size="sm"
+                            />
+                          </div>
+                        )}
 
                         <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono">
                           <span>

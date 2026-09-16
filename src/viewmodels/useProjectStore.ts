@@ -25,6 +25,7 @@ import type {
 } from '../models/electrical/ElectricalModel';
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
+import type { DimensionLine } from '../models/architecture/DimensionLine';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -33,7 +34,7 @@ export function generateUniqueId(prefix = 'id'): string {
 }
 
 export interface SelectedEntity {
-  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit';
+  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit' | 'dimension';
   id: string;
 }
 
@@ -128,6 +129,11 @@ interface ProjectStoreState {
   setUnderlaySheet: (levelId: string, sheet: UnderlaySheet) => void;
   updateUnderlaySheet: (levelId: string, updates: Partial<UnderlaySheet>) => void;
   removeUnderlaySheet: (levelId: string) => void;
+
+  // Cotas Métricas Libres
+  addDimensionLine: (dimension: DimensionLine) => void;
+  updateDimensionLine: (dimensionId: string, updates: Partial<DimensionLine>) => void;
+  deleteDimensionLine: (dimensionId: string) => void;
 
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
@@ -920,12 +926,44 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       };
     }),
 
+  addDimensionLine: (dimension) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        dimensions: [...(state.project.dimensions || []), dimension],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: { type: 'dimension', id: dimension.id }
+    })),
+
+  updateDimensionLine: (dimensionId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        dimensions: (state.project.dimensions || []).map((d) =>
+          d.id === dimensionId ? { ...d, ...updates } : d
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  deleteDimensionLine: (dimensionId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        dimensions: (state.project.dimensions || []).filter((d) => d.id !== dimensionId),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: state.selectedEntity?.id === dimensionId ? null : state.selectedEntity
+    })),
+
   loadProject: (project) =>
     set({
       project: {
         ...project,
         materialCatalog: project.materialCatalog || createDefaultMaterialCatalog(),
-        underlaySheets: project.underlaySheets || {}
+        underlaySheets: project.underlaySheets || {},
+        dimensions: project.dimensions || []
       },
       selectedEntity: null,
       activeAnchorVertexId: null

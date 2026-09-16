@@ -23,6 +23,7 @@ import type {
 import { createDefaultMaterialCatalog } from '../electrical/electricalStandards';
 
 import { type UnderlaySheet } from '../underlay/UnderlaySheet';
+import { type DimensionLine } from './DimensionLine';
 
 export interface ProjectMetadata {
   id: string;
@@ -53,6 +54,7 @@ export interface BuildingProject {
   panels: Panel[];
   materialCatalog?: ProjectMaterialCatalog; // Catálogo abierto de materiales de este proyecto
   underlaySheets?: Record<string, UnderlaySheet>; // Láminas de fondo por nivel (levelId -> UnderlaySheet)
+  dimensions?: DimensionLine[]; // Cotas métricas libres en el plano
 }
 
 /**
@@ -136,6 +138,7 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
     circuits: defaultCircuits,
     panels: defaultPanels,
     materialCatalog: createDefaultMaterialCatalog(),
-    underlaySheets: {}
+    underlaySheets: {},
+    dimensions: []
   };
 }

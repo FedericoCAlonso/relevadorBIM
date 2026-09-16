@@ -41,7 +41,9 @@ export function useSurveyViewModel() {
     addWallFromAnchor,
     addBranchWallFromOffset,
     addOpeningReferenced,
-    addConduit
+    addConduit,
+    addDimensionLine,
+    setShowDimensions
   } = useProjectStore();
 
   const verticesMap = useMemo(() => {
@@ -154,6 +156,9 @@ export function useSurveyViewModel() {
       const next = typeof connecting === 'function' ? connecting(prev) : connecting;
       if (!next) {
         setPendingConduitStartId(null);
+      } else {
+        setIsAddingDimension(false);
+        setDimensionP1(null);
       }
       return next;
     });
@@ -163,6 +168,49 @@ export function useSurveyViewModel() {
     setIsConnectingConduit(false);
     setPendingConduitStartId(null);
   }, []);
+
+  // ─── ESTADO DE ACOTACIÓN MÉTRICA LIBRE ───
+  const [isAddingDimension, setIsAddingDimension] = useState(false);
+  const [dimensionP1, setDimensionP1] = useState<{ x: number; y: number } | null>(null);
+
+  const startAddingDimension = useCallback(() => {
+    setIsAddingDimension(true);
+    setDimensionP1(null);
+    setShowDimensions(true);
+    setIsConnectingConduit(false);
+    setPendingConduitStartId(null);
+    setSelectedSymbolId(null);
+  }, [setShowDimensions]);
+
+  const cancelAddingDimension = useCallback(() => {
+    setIsAddingDimension(false);
+    setDimensionP1(null);
+  }, []);
+
+  const handleDimensionCanvasClick = useCallback(
+    (worldX: number, worldY: number) => {
+      if (!isAddingDimension) return;
+
+      if (!dimensionP1) {
+        setDimensionP1({ x: worldX, y: worldY });
+      } else {
+        const dist = Math.hypot(worldX - dimensionP1.x, worldY - dimensionP1.y);
+        if (dist >= 0.05) {
+          const newDimId = `dim-${Date.now()}`;
+          addDimensionLine({
+            id: newDimId,
+            p1: dimensionP1,
+            p2: { x: worldX, y: worldY },
+            levelId: project.activeLevelId
+          });
+          setSelectedEntity({ type: 'dimension', id: newDimId });
+        }
+        setIsAddingDimension(false);
+        setDimensionP1(null);
+      }
+    },
+    [isAddingDimension, dimensionP1, project.activeLevelId, addDimensionLine, setSelectedEntity]
+  );
 
   /**
    * Conexión de cañerías entre bocas eléctricas y tableros.
@@ -242,6 +290,13 @@ export function useSurveyViewModel() {
     commitBranchWall,
     commitReferencedOpening,
     handleElectricalElementClick,
-    setActiveAnchorVertexId
+    setActiveAnchorVertexId,
+    isAddingDimension,
+    setIsAddingDimension,
+    dimensionP1,
+    setDimensionP1,
+    startAddingDimension,
+    cancelAddingDimension,
+    handleDimensionCanvasClick
   };
 }
