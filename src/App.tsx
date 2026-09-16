@@ -24,6 +24,7 @@ import { ExportModal } from './views/components/menu/ExportModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
+import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
@@ -87,6 +88,18 @@ export function App() {
     removeSheet: removeUnderlaySheet
   } = useUnderlaySheetViewModel();
 
+  const {
+    isSamplingPattern,
+    isDetecting: isDetectingPatterns,
+    activeMatches: detectedPatternMatches,
+    startSamplingPattern,
+    cancelSamplingPattern,
+    executeDetectionFromWorldBox,
+    dismissMatch: dismissPatternMatch,
+    clearMatches: clearPatternMatches,
+    convertMatchesToElectricalElements
+  } = usePatternDetectorViewModel();
+
   const [showComputoModal, setShowComputoModal] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -131,6 +144,14 @@ export function App() {
         }
         if (isAddingDimension) {
           cancelAddingDimension();
+          return;
+        }
+        if (isSamplingPattern) {
+          cancelSamplingPattern();
+          return;
+        }
+        if (detectedPatternMatches.length > 0) {
+          clearPatternMatches();
           return;
         }
         setSelectedEntity(null);
@@ -339,6 +360,12 @@ export function App() {
             }}
             onDimensionCanvasClick={handleDimensionCanvasClick}
             onCancelAddingDimension={cancelAddingDimension}
+            isSamplingPattern={isSamplingPattern}
+            onStartPatternSampling={startSamplingPattern}
+            onCancelSamplingPattern={cancelSamplingPattern}
+            onPatternSampleBoxCompleted={(p1, p2) => executeDetectionFromWorldBox(p1, p2)}
+            detectedPatternMatches={detectedPatternMatches}
+            onDismissPatternMatch={dismissPatternMatch}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {
@@ -364,6 +391,51 @@ export function App() {
             }}
             onCanvasClick={handleCanvasClick}
           />
+
+          {/* Indicador de procesamiento de autovalores en mapa de bits */}
+          {isDetectingPatterns && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-pulse pointer-events-none">
+              <span className="text-cyan-400">⏳</span>
+              <span>Buscando patrones y autovalores geométricos...</span>
+            </div>
+          )}
+
+          {/* Barra de acción cuando se detectan patrones en la lámina de fondo */}
+          {detectedPatternMatches.length > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                <span className="font-bold text-cyan-200">
+                  {detectedPatternMatches.length} {detectedPatternMatches.length === 1 ? 'símbolo detectado' : 'símbolos detectados'}
+                </span>
+              </div>
+
+              {selectedSymbolId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const assignedCircuit = project.circuits[0]?.id || null;
+                    convertMatchesToElectricalElements(selectedSymbolId, assignedCircuit);
+                  }}
+                  className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>⚡ Emplazar {detectedPatternMatches.length} bocas en sus centros</span>
+                </button>
+              ) : (
+                <span className="text-slate-400 text-[11px] hidden sm:inline">
+                  (Elegí un símbolo en la paleta para emplazarlos todos juntos)
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={clearPatternMatches}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-colors text-[11px] cursor-pointer"
+              >
+                ✕ Limpiar marcas
+              </button>
+            </div>
+          )}
         </main>
       </div>
 

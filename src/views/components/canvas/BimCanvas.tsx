@@ -14,9 +14,10 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass } from 'lucide-react';
+import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch } from 'lucide-react';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
+import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
 
 export interface WallPlacementSnap {
   wallId: string;
@@ -45,6 +46,12 @@ interface BimCanvasProps {
   onToggleAddingDimension?: () => void;
   onDimensionCanvasClick?: (worldX: number, worldY: number) => void;
   onCancelAddingDimension?: () => void;
+  isSamplingPattern?: boolean;
+  onStartPatternSampling?: () => void;
+  onCancelSamplingPattern?: () => void;
+  onPatternSampleBoxCompleted?: (p1: { x: number; y: number }, p2: { x: number; y: number }) => void;
+  detectedPatternMatches?: DetectedPatternMatch[];
+  onDismissPatternMatch?: (matchId: string) => void;
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -73,6 +80,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onToggleAddingDimension,
   onDimensionCanvasClick,
   onCancelAddingDimension,
+  isSamplingPattern = false,
+  onStartPatternSampling,
+  onCancelSamplingPattern,
+  onPatternSampleBoxCompleted,
+  detectedPatternMatches = [],
+  onDismissPatternMatch,
   onWallClick,
   onOpeningClick,
   onSpaceClick,
@@ -130,6 +143,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [hoverRotationDeg, setHoverRotationDeg] = useState<number>(0);
   const [activeSnapInfo, setActiveSnapInfo] = useState<WallPlacementSnap | null>(null);
   const [isSnappedToCenter, setIsSnappedToCenter] = useState(false);
+  const [isSnappedToPatternMatch, setIsSnappedToPatternMatch] = useState(false);
+  const [samplingStartWorldPos, setSamplingStartWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
 
   // Recentrar y encuadrar todo el plano
@@ -172,12 +187,32 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     let rot = 0;
     let snapInfo: WallPlacementSnap | null = null;
     let snappedCenter = false;
+    let snappedPattern = false;
 
     if (selectedSymbolId) {
+      // 0. Prioridad Máxima: Snap magnético al centroide de un símbolo detectado en el plano de fondo
+      if (detectedPatternMatches && detectedPatternMatches.length > 0) {
+        let bestMatch: DetectedPatternMatch | null = null;
+        let minD = 0.50; // 50 cm de tolerancia de atracción magnética
+        for (const m of detectedPatternMatches) {
+          const d = Math.hypot(m.worldPos.x - wx, m.worldPos.y - wy);
+          if (d < minD) {
+            minD = d;
+            bestMatch = m;
+          }
+        }
+        if (bestMatch) {
+          wx = bestMatch.worldPos.x;
+          wy = bestMatch.worldPos.y;
+          rot = bestMatch.orientationDeg;
+          snappedPattern = true;
+        }
+      }
+
       const isCeilingSymbol = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
 
-      // 1. Si no es exclusivamente de techo, acoplar magnéticamente a la pared más cercana
-      if (!isCeilingSymbol) {
+      // 1. Si no es exclusivamente de techo ni se acopló a símbolo detectado, acoplar a pared
+      if (!isCeilingSymbol && !snappedPattern) {
         const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
         const wallSnap = calculateWallSnap({ x: wx, y: wy }, wallsInLevel, verticesMap, 0.45);
         if (wallSnap) {
@@ -193,8 +228,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         }
       }
 
-      // 2. Si no se acopló a pared, chequear snap al centroide de habitación
-      if (!snapInfo) {
+      // 2. Si no se acopló a pared ni a símbolo detectado, chequear snap al centroide de habitación
+      if (!snapInfo && !snappedPattern) {
         for (const space of project.spaces.filter((s) => s.levelId === project.activeLevelId)) {
           const poly = resolveSpacePolygon(space, verticesMap);
           if (poly.length >= 3) {
@@ -214,10 +249,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     setHoverRotationDeg(rot);
     setActiveSnapInfo(snapInfo);
     setIsSnappedToCenter(snappedCenter);
+    setIsSnappedToPatternMatch(snappedPattern);
   };
 
   // Manejo de Pan y Zoom con Mouse
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isSamplingPattern && e.button === 0 && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - pan.x) / zoom;
+      const wy = (e.clientY - rect.top - pan.y) / zoom;
+      setSamplingStartWorldPos({ x: wx, y: wy });
+      return;
+    }
+
     if (e.button === 1 || e.button === 0) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -238,6 +282,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
+      const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
+      if (dist >= 0.10) {
+        onPatternSampleBoxCompleted?.(samplingStartWorldPos, hoverWorldPos);
+      }
+      setSamplingStartWorldPos(null);
+      return;
+    }
     setIsDragging(false);
   };
 
@@ -261,6 +313,24 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   // Manejo Táctil Móvil: Paneo con 1 dedo y Pellizco (Pinch-to-zoom) con 2 dedos
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isSamplingPattern && e.touches.length === 1 && containerRef.current) {
+      const t = e.touches[0];
+      const rect = containerRef.current.getBoundingClientRect();
+      const wx = (t.clientX - rect.left - pan.x) / zoom;
+      const wy = (t.clientY - rect.top - pan.y) / zoom;
+      setSamplingStartWorldPos({ x: wx, y: wy });
+      touchStateRef.current = {
+        type: 'single',
+        startX: t.clientX,
+        startY: t.clientY,
+        panX: pan.x,
+        panY: pan.y,
+        moved: true
+      };
+      updateHoverCoordinates(t.clientX, t.clientY);
+      return;
+    }
+
     if (e.touches.length === 1) {
       const t = e.touches[0];
       touchStateRef.current = {
@@ -301,7 +371,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       if (Math.hypot(dx, dy) > 6) {
         touchStateRef.current.moved = true;
       }
-      if (touchStateRef.current.moved) {
+      if (touchStateRef.current.moved && !isSamplingPattern) {
         setPan({
           x: touchStateRef.current.panX + dx,
           y: touchStateRef.current.panY + dy
@@ -334,6 +404,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleTouchEnd = () => {
+    if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
+      const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
+      if (dist >= 0.10) {
+        onPatternSampleBoxCompleted?.(samplingStartWorldPos, hoverWorldPos);
+      }
+      setSamplingStartWorldPos(null);
+      touchStateRef.current = null;
+      return;
+    }
+
     if (touchStateRef.current && touchStateRef.current.type === 'single' && !touchStateRef.current.moved) {
       // Tap limpio sin arrastre en móvil: emplazar o seleccionar
       triggerPlacement(touchStateRef.current.startX, touchStateRef.current.startY);
@@ -343,6 +423,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   const triggerPlacement = (clientX: number, clientY: number) => {
     if (isDragging || !containerRef.current) return;
+    if (isSamplingPattern) return;
+
     const rect = containerRef.current.getBoundingClientRect();
     let wx = (clientX - rect.left - pan.x) / zoom;
     let wy = (clientY - rect.top - pan.y) / zoom;
@@ -1273,6 +1355,86 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedElements}
           {renderedDimensions}
 
+          {/* Símbolos detectados por autovalores sobre el mapa de bits */}
+          {detectedPatternMatches && detectedPatternMatches.length > 0 && underlaySheet && (
+            <g>
+              {detectedPatternMatches.map((m) => {
+                const boxX = (underlaySheet.originWorldX + m.boxPx.x * underlaySheet.scaleMetersPerPx) * zoom;
+                const boxY = (underlaySheet.originWorldY + m.boxPx.y * underlaySheet.scaleMetersPerPx) * zoom;
+                const boxW = m.boxPx.width * underlaySheet.scaleMetersPerPx * zoom;
+                const boxH = m.boxPx.height * underlaySheet.scaleMetersPerPx * zoom;
+                const cx = m.worldPos.x * zoom;
+                const cy = m.worldPos.y * zoom;
+
+                return (
+                  <g key={m.id} className="group">
+                    {/* Recuadro de coincidencia */}
+                    <rect
+                      x={boxX}
+                      y={boxY}
+                      width={boxW}
+                      height={boxH}
+                      fill="rgba(6, 182, 212, 0.12)"
+                      stroke="#06b6d4"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 2"
+                      rx={3}
+                      className="transition-colors group-hover:fill-cyan-500/25 group-hover:stroke-cyan-600"
+                    />
+                    {/* Centroide magnético con mira */}
+                    <circle cx={cx} cy={cy} r={3.5} fill="#0891b2" stroke="#ffffff" strokeWidth={1} />
+                    <line x1={cx - 5} y1={cy} x2={cx + 5} y2={cy} stroke="#0891b2" strokeWidth={1} />
+                    <line x1={cx} y1={cy - 5} x2={cx} y2={cy + 5} stroke="#0891b2" strokeWidth={1} />
+
+                    {/* Botón descartar falso positivo */}
+                    <g
+                      transform={`translate(${boxX + boxW}, ${boxY})`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDismissPatternMatch?.(m.id);
+                      }}
+                      className="cursor-pointer hover:scale-125 transition-transform"
+                    >
+                      <title>Descartar este resultado</title>
+                      <circle r={6.5} fill="#ef4444" stroke="#ffffff" strokeWidth={1} />
+                      <text x="0" y="2" textAnchor="middle" fontSize={7} fontWeight="bold" fill="#ffffff" className="select-none font-sans">
+                        ✕
+                      </text>
+                    </g>
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
+          {/* Recuadro elástico de selección de patrón (Marquesina) */}
+          {isSamplingPattern && samplingStartWorldPos && hoverWorldPos && (
+            <g pointerEvents="none">
+              <rect
+                x={Math.min(samplingStartWorldPos.x, hoverWorldPos.x) * zoom}
+                y={Math.min(samplingStartWorldPos.y, hoverWorldPos.y) * zoom}
+                width={Math.abs(hoverWorldPos.x - samplingStartWorldPos.x) * zoom}
+                height={Math.abs(hoverWorldPos.y - samplingStartWorldPos.y) * zoom}
+                fill="rgba(6, 182, 212, 0.20)"
+                stroke="#0891b2"
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                rx={2}
+              />
+              <text
+                x={((samplingStartWorldPos.x + hoverWorldPos.x) / 2) * zoom}
+                y={(Math.min(samplingStartWorldPos.y, hoverWorldPos.y) - 0.15) * zoom}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight="bold"
+                fill="#0891b2"
+                className="font-mono bg-white select-none"
+              >
+                🎯 Enmarcar símbolo
+              </text>
+            </g>
+          )}
+
           {/* Línea elástica interactiva al trazar cotas métricas */}
           {isAddingDimension && dimensionP1 && (
             <g pointerEvents="none">
@@ -1385,7 +1547,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             );
           })()}
 
-          {/* Previsualización del elemento eléctrico que sigue al cursor (Ghost preview con snap al centro o a pared) */}
+          {/* Previsualización del elemento eléctrico que sigue al cursor (Ghost preview con snap al centro, a pared o a símbolo detectado) */}
           {selectedSymbolId && hoverWorldPos && (
             <g
               transform={`translate(${hoverWorldPos.x * zoom}, ${hoverWorldPos.y * zoom})`}
@@ -1395,13 +1557,24 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 symbolId={selectedSymbolId}
                 zoom={zoom}
                 isSelected={true}
-                elementLabel={activeSnapInfo ? 'Pared' : isSnappedToCenter ? 'Centro' : undefined}
+                elementLabel={
+                  isSnappedToPatternMatch
+                    ? 'Símbolo 🎯'
+                    : activeSnapInfo
+                    ? 'Pared'
+                    : isSnappedToCenter
+                    ? 'Centro'
+                    : undefined
+                }
                 rotationDeg={hoverRotationDeg}
               />
-              {activeSnapInfo && (
+              {isSnappedToPatternMatch && (
+                <circle r={22} fill="none" stroke="#06b6d4" strokeWidth={2.5} strokeDasharray="4 2" className="animate-pulse" />
+              )}
+              {activeSnapInfo && !isSnappedToPatternMatch && (
                 <circle r={18} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="3 3" />
               )}
-              {isSnappedToCenter && (
+              {isSnappedToCenter && !isSnappedToPatternMatch && (
                 <circle r={26} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="4 3" />
               )}
             </g>
@@ -1477,6 +1650,27 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               }}
               className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
               title="Cancelar trazado de cota"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Banner / Píldora superior durante selección con recuadro para detectar símbolos */}
+      {isSamplingPattern && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+          <span>🎯 Arrastrá un recuadro sobre el símbolo del plano para detectarlo en toda la planta</span>
+          {onCancelSamplingPattern && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelSamplingPattern();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar detección"
             >
               ✕
             </button>
@@ -1570,6 +1764,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               title="Recalibrar escala métrica (2 clics)"
             >
               📏
+            </button>
+            <button
+              type="button"
+              onClick={onStartPatternSampling}
+              className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+                isSamplingPattern
+                  ? 'bg-cyan-600 text-white border-cyan-700'
+                  : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
+              }`}
+              title="Detectar símbolos similares en plano con autovectores (selección con recuadro)"
+            >
+              <ScanSearch size={16} />
             </button>
           </>
         )}
