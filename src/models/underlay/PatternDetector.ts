@@ -426,19 +426,316 @@ export function compareEigenSignatures(target: EigenSignature, candidate: EigenS
 }
 
 /**
- * Calcula la similitud combinada de un candidato con un ejemplar:
- * 35% Autovalores espectrales + 65% Verificación gráfica fina ZNCC.
+ * Rota los datos de un parche cuadrado a uno de los 4 ángulos cardinales:
+ * 0: 0°, 1: 90°, 2: 180°, 3: 270°
+ */
+export function getRotatedPatchData(
+  srcData: Float32Array,
+  n: number,
+  rotationIndex: number
+): Float32Array {
+  if (rotationIndex === 0) return srcData;
+  const out = new Float32Array(n * n);
+  for (let py = 0; py < n; py++) {
+    for (let px = 0; px < n; px++) {
+      let srcIdx = 0;
+      if (rotationIndex === 1) {
+        // 90°: (x, y) -> (y, n - 1 - x)
+        srcIdx = px * n + (n - 1 - py);
+      } else if (rotationIndex === 2) {
+        // 180°: (x, y) -> (n - 1 - x, n - 1 - y)
+        srcIdx = (n - 1 - py) * n + (n - 1 - px);
+      } else if (rotationIndex === 3) {
+        // 270°: (x, y) -> (n - 1 - y, x)
+        srcIdx = (n - 1 - px) * n + py;
+      }
+      out[py * n + px] = srcData[srcIdx];
+    }
+  }
+  return out;
+}
+
+/**
+ * Prototipo morfológico afinado a partir del acuerdo entre múltiples muestras positivas.
+ * Aísla los trazos intrínsecos del símbolo eliminando paredes y cañerías que no se repiten.
+ */
+export interface MorphologicalPrototype {
+  size: number;
+  coreMask: Uint8Array; // 1 donde hay acuerdo morfológico del símbolo, 0 en fondo/ruido
+  weights: Float32Array; // Ponderación de atención [0.0 - 1.0] para cada celda
+  consensusPatch: NormalizedPatch;
+  expectedCorePixels: number;
+  avgWidth: number;
+  avgHeight: number;
+}
+
+/**
+ * Construye el prototipo morfológico consensuado a partir de 1 o más muestras positivas.
+ * Cuando hay 2 o más muestras, alinea sus orientaciones e intersecta los trazos,
+ * anulando por completo las paredes o cañerías accidentales que no coinciden.
+ */
+export function buildMorphologicalPrototype(
+  positiveExemplars: PatternExemplar[]
+): MorphologicalPrototype | null {
+  if (positiveExemplars.length === 0) return null;
+
+  const n = PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE;
+  const total = n * n;
+  const avgWidth =
+    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.width, 0) / positiveExemplars.length;
+  const avgHeight =
+    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.height, 0) / positiveExemplars.length;
+
+  if (positiveExemplars.length === 1) {
+    const ex = positiveExemplars[0];
+    const coreMask = new Uint8Array(total);
+    const weights = new Float32Array(total);
+    let expectedCount = 0;
+
+    for (let i = 0; i < total; i++) {
+      const active = ex.patch.data[i] >= 0.35 ? 1 : 0;
+      coreMask[i] = active;
+      weights[i] = active ? 1.0 : 0.0;
+      if (active) expectedCount++;
+    }
+
+    return {
+      size: n,
+      coreMask,
+      weights,
+      consensusPatch: ex.patch,
+      expectedCorePixels: Math.max(PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS, expectedCount),
+      avgWidth,
+      avgHeight
+    };
+  }
+
+  // 2 o más ejemplares: alinear todos a la orientación del 1er ejemplar
+  const basePatch = positiveExemplars[0].patch;
+  const alignedPatches: Float32Array[] = [basePatch.data];
+
+  for (let k = 1; k < positiveExemplars.length; k++) {
+    const cand = positiveExemplars[k].patch;
+    let bestRot = 0;
+    let bestOverlap = -1;
+
+    for (let r = 0; r < 4; r++) {
+      const rotData = getRotatedPatchData(cand.data, n, r);
+      let overlap = 0;
+      for (let i = 0; i < total; i++) {
+        if (basePatch.data[i] >= 0.35 && rotData[i] >= 0.35) {
+          overlap++;
+        }
+      }
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestRot = r;
+      }
+    }
+
+    alignedPatches.push(getRotatedPatchData(cand.data, n, bestRot));
+  }
+
+  // Intersección y cálculo de varianza/acuerdo entre muestras
+  const numEx = alignedPatches.length;
+  const coreMask = new Uint8Array(total);
+  const weights = new Float32Array(total);
+  const consensusData = new Float32Array(total);
+  let expectedCount = 0;
+
+  for (let py = 0; py < n; py++) {
+    for (let px = 0; px < n; px++) {
+      const idx = py * n + px;
+      let activeCount = 0;
+      let sumVal = 0;
+
+      for (let k = 0; k < numEx; k++) {
+        const val = alignedPatches[k][idx];
+        sumVal += val;
+
+        // Comprobación con tolerancia de 1px a vecinos para amortiguar anti-aliasing y leves desfasajes
+        let hasLocalInk = val >= 0.35;
+        if (!hasLocalInk) {
+          for (let dy = -1; dy <= 1 && !hasLocalInk; dy++) {
+            for (let dx = -1; dx <= 1 && !hasLocalInk; dx++) {
+              const ny = py + dy;
+              const nx = px + dx;
+              if (nx >= 0 && nx < n && ny >= 0 && ny < n) {
+                if (alignedPatches[k][ny * n + nx] >= 0.45) {
+                  hasLocalInk = true;
+                }
+              }
+            }
+          }
+        }
+        if (hasLocalInk) activeCount++;
+      }
+
+      const meanVal = sumVal / numEx;
+      consensusData[idx] = meanVal;
+      const agreement = activeCount / numEx;
+
+      // Umbral de consenso morfológico:
+      // Si está presente en la mayoría de las muestras (>= 50%),
+      // se confirma como trazo intrínseco del símbolo.
+      // Las paredes y cañerías pasantes que solo existían en una muestra quedan en agreement = 0.5 (o 1/3)
+      // y se anulan al potenciar fuertemente los coincidentes.
+      if (numEx === 2) {
+        if (agreement === 1.0) {
+          coreMask[idx] = 1;
+          weights[idx] = 1.0;
+          expectedCount++;
+        } else {
+          // Trazo exclusivo de una sola muestra (pared/cañería accidental): anulado
+          coreMask[idx] = 0;
+          weights[idx] = 0.0;
+        }
+      } else {
+        // 3 o más muestras: consenso por mayoría calificada (>= 60%)
+        if (agreement >= 0.60) {
+          coreMask[idx] = 1;
+          weights[idx] = Math.pow(agreement, 2);
+          expectedCount++;
+        } else {
+          coreMask[idx] = 0;
+          weights[idx] = 0.0;
+        }
+      }
+    }
+  }
+
+  // Recalcular media y desviación estándar del parche consenso para ZNCC
+  let sum = 0;
+  let sumSq = 0;
+  for (let i = 0; i < total; i++) {
+    const v = consensusData[i];
+    sum += v;
+    sumSq += v * v;
+  }
+  const mean = sum / total;
+  const variance = Math.max(1e-7, sumSq / total - mean * mean);
+  const std = Math.sqrt(variance);
+
+  return {
+    size: n,
+    coreMask,
+    weights,
+    consensusPatch: { size: n, data: consensusData, mean, std },
+    expectedCorePixels: Math.max(PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS, expectedCount),
+    avgWidth,
+    avgHeight
+  };
+}
+
+/**
+ * Calcula el puntaje de cobertura asimétrica morfológica (One-Way Recall).
+ * Comprueba si la forma pura del símbolo está presente en el candidato,
+ * sin penalizar la existencia de líneas pasantes (muros o cañerías que lo atraviesan).
+ */
+export function calculateMorphologicalAsymmetricScore(
+  candPatch: NormalizedPatch,
+  prototype: MorphologicalPrototype
+): number {
+  const n = prototype.size;
+  const total = n * n;
+  let maxScore = 0;
+
+  for (let r = 0; r < 4; r++) {
+    const candRotData = getRotatedPatchData(candPatch.data, n, r);
+    let totalWeight = 0;
+    let matchedWeight = 0;
+    let candActive = 0;
+
+    for (let i = 0; i < total; i++) {
+      const cVal = candRotData[i];
+      if (cVal >= 0.35) candActive++;
+
+      const w = prototype.weights[i];
+      if (w > 0) {
+        totalWeight += w;
+        if (cVal >= 0.30) {
+          matchedWeight += w;
+        }
+      }
+    }
+
+    if (totalWeight === 0) continue;
+
+    const recall = matchedWeight / totalWeight;
+
+    // Penalización únicamente si la región es un bloque de tinta masivo (ej. cruce de muros macizos)
+    let densityPenalty = 0;
+    if (candActive > 2.0 * prototype.expectedCorePixels) {
+      densityPenalty = Math.min(
+        0.40,
+        (candActive - 2.0 * prototype.expectedCorePixels) / (2.5 * prototype.expectedCorePixels)
+      );
+    }
+
+    const rotScore = recall * (1 - densityPenalty);
+    if (rotScore > maxScore) {
+      maxScore = rotScore;
+    }
+  }
+
+  return Number(Math.max(0, Math.min(1, maxScore)).toFixed(3));
+}
+
+/**
+ * Calcula la similitud combinada de un candidato con un ejemplar y su prototipo morfológico:
+ * Fusión de Autovalores (invarianza global), ZNCC (textura) y Cobertura Asimétrica (inmunidad a líneas pasantes).
  */
 export function calculateExemplarSimilarity(
   candSignature: EigenSignature,
   candPatch: NormalizedPatch,
-  exemplar: PatternExemplar
+  exemplar: PatternExemplar,
+  prototype?: MorphologicalPrototype | null
 ): number {
   const eigenScore = compareEigenSignatures(exemplar.signature, candSignature);
   const znccScore = calculateMultiRotationZNCC(candPatch, exemplar.patch);
 
-  // Fusión discriminante
-  return Number((0.35 * eigenScore + 0.65 * znccScore).toFixed(3));
+  // Score asimétrico de cobertura morfológica (inmune a paredes y cañerías pasantes)
+  let asymScore = 0;
+  if (prototype) {
+    asymScore = calculateMorphologicalAsymmetricScore(candPatch, prototype);
+  } else {
+    // Prototipo mono-muestra construido al vuelo
+    const n = exemplar.patch.size;
+    const total = n * n;
+    const weights = new Float32Array(total);
+    const coreMask = new Uint8Array(total);
+    let expectedCorePixels = 0;
+    for (let i = 0; i < total; i++) {
+      if (exemplar.patch.data[i] >= 0.35) {
+        weights[i] = 1.0;
+        coreMask[i] = 1;
+        expectedCorePixels++;
+      }
+    }
+    const singleProto: MorphologicalPrototype = {
+      size: n,
+      coreMask,
+      weights,
+      consensusPatch: exemplar.patch,
+      expectedCorePixels: Math.max(PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS, expectedCorePixels),
+      avgWidth: exemplar.boxPx.width,
+      avgHeight: exemplar.boxPx.height
+    };
+    asymScore = calculateMorphologicalAsymmetricScore(candPatch, singleProto);
+  }
+
+  // Fusión discriminante:
+  // 1. Si el símbolo está aislado, eigenScore y znccScore tienen alta coincidencia.
+  // 2. Si el símbolo está cruzado por cañerías o muros, asymScore captura la presencia
+  //    del núcleo geométrico sin penalizar el tráfico de líneas pasantes.
+  const classicScore = 0.35 * eigenScore + 0.65 * znccScore;
+  const robustScore = Math.max(
+    classicScore,
+    0.20 * eigenScore + 0.80 * asymScore,
+    asymScore * 0.92
+  );
+
+  return Number(Math.max(0, Math.min(1, robustScore)).toFixed(3));
 }
 
 /**
@@ -560,7 +857,7 @@ export function extractDensityCandidates(
   const stepY = Math.max(3, Math.floor(h / 3));
 
   const minDensity = Math.max(PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS, Math.floor(expectedPixelCount * 0.35));
-  const maxDensity = Math.ceil(expectedPixelCount * 3.0);
+  const maxDensity = Math.max(Math.ceil(expectedPixelCount * 5.0), Math.floor(w * h * 0.90));
 
   const candidates: BoundingBoxPx[] = [];
 
@@ -640,11 +937,15 @@ export function detectPatternMatchesWithExemplars(
 ): DetectedPatternMatch[] {
   if (positiveExemplars.length === 0) return [];
 
-  // Usar las dimensiones y densidad promedio de los ejemplares positivos
-  const avgWidth =
-    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.width, 0) / positiveExemplars.length;
-  const avgHeight =
-    positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.height, 0) / positiveExemplars.length;
+  // Construir el prototipo morfológico de consenso a partir de las muestras positivas
+  const prototype = buildMorphologicalPrototype(positiveExemplars);
+
+  const avgWidth = prototype
+    ? prototype.avgWidth
+    : positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.width, 0) / positiveExemplars.length;
+  const avgHeight = prototype
+    ? prototype.avgHeight
+    : positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.height, 0) / positiveExemplars.length;
   const avgPixelCount =
     positiveExemplars.reduce((acc, ex) => acc + ex.signature.pixelCount, 0) / positiveExemplars.length;
 
@@ -712,8 +1013,8 @@ export function detectPatternMatchesWithExemplars(
       height: avgHeight
     };
 
-    // Evaluamos en la máscara binaria original y aplicamos 1 paso de Mean-Shift
-    // para centrar el recuadro exactamente sobre el centroide de tinta del grafismo
+    // Evaluamos tanto la caja centrada por Mean-Shift como la caja original de cuadrícula.
+    // Esto previene que símbolos en muros queden descentrados porque la masa del muro atrajo el centroide.
     const initialMoments = calculateImageMoments(binaryMask, imgWidth, testBox);
     if (initialMoments.m00 < PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS) continue;
 
@@ -727,56 +1028,66 @@ export function detectPatternMatchesWithExemplars(
       height: avgHeight
     };
 
-    const candMoments = calculateImageMoments(binaryMask, imgWidth, centeredBox);
-    const candSignature = calculateEigenSignature(candMoments, centeredBox.width, centeredBox.height);
+    const boxesToEvaluate = [centeredBox];
+    const shiftDist = Math.hypot(refinedCenterX - centerX, refinedCenterY - centerY);
+    if (shiftDist > 1.5 && shiftDist < avgWidth * 0.6) {
+      boxesToEvaluate.push(testBox);
+    }
 
-    if (candSignature) {
-      const candPatch = extractNormalizedPatch(binaryMask, imgWidth, centeredBox);
+    for (const boxToEval of boxesToEvaluate) {
+      const candMoments = calculateImageMoments(binaryMask, imgWidth, boxToEval);
+      const candSignature = calculateEigenSignature(candMoments, boxToEval.width, boxToEval.height);
 
-      // Similitud máxima con las muestras positivas
-      let maxPositiveScore = 0;
-      for (const posEx of positiveExemplars) {
-        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx);
-        if (score > maxPositiveScore) {
-          maxPositiveScore = score;
+      if (candSignature) {
+        const candPatch = extractNormalizedPatch(binaryMask, imgWidth, boxToEval);
+
+        // Similitud máxima con las muestras positivas (usando prototipo morfológico de consenso)
+        let maxPositiveScore = 0;
+        for (const posEx of positiveExemplars) {
+          const score = calculateExemplarSimilarity(candSignature, candPatch, posEx, prototype);
+          if (score > maxPositiveScore) {
+            maxPositiveScore = score;
+          }
         }
-      }
 
-      // Penalización con las muestras negativas (falsos positivos descartados)
-      let maxNegativePen = 0;
-      for (const negEx of negativeExemplars) {
-        const pen = calculateExemplarSimilarity(candSignature, candPatch, negEx);
-        if (pen > maxNegativePen) {
-          maxNegativePen = pen;
+        // Penalización con las muestras negativas (falsos positivos descartados)
+        let maxNegativePen = 0;
+        for (const negEx of negativeExemplars) {
+          const pen = calculateExemplarSimilarity(candSignature, candPatch, negEx, null);
+          if (pen > maxNegativePen) {
+            maxNegativePen = pen;
+          }
         }
-      }
 
-      // Puntaje discriminante final: penaliza fuertemente falsos positivos
-      const finalScore = Number(
-        Math.max(
-          0,
-          maxPositiveScore - PATTERN_DETECTOR_CONSTANTS.NEGATIVE_PENALTY_WEIGHT * maxNegativePen
-        ).toFixed(3)
-      );
+        // Puntaje discriminante final: penaliza fuertemente falsos positivos
+        const finalScore = Number(
+          Math.max(
+            0,
+            maxPositiveScore - PATTERN_DETECTOR_CONSTANTS.NEGATIVE_PENALTY_WEIGHT * maxNegativePen
+          ).toFixed(3)
+        );
 
-      if (finalScore >= similarityThreshold) {
-        const centerPx = candSignature.centroid;
-        const worldPos = {
-          x: Number((originWorld.x + centerPx.x * scaleMetersPerPx).toFixed(3)),
-          y: Number((originWorld.y + centerPx.y * scaleMetersPerPx).toFixed(3))
-        };
 
-        rawMatches.push({
-          id: `match-${Math.round(centerPx.x)}_${Math.round(centerPx.y)}`,
-          boxPx: centeredBox,
-          centerPx,
-          worldPos,
-          orientationDeg: candSignature.orientationDeg,
-          similarityScore: finalScore
-        });
+        if (finalScore >= similarityThreshold) {
+          const centerPx = candSignature.centroid;
+          const worldPos = {
+            x: Number((originWorld.x + centerPx.x * scaleMetersPerPx).toFixed(3)),
+            y: Number((originWorld.y + centerPx.y * scaleMetersPerPx).toFixed(3))
+          };
+
+          rawMatches.push({
+            id: `match-${Math.round(centerPx.x)}_${Math.round(centerPx.y)}`,
+            boxPx: boxToEval,
+            centerPx,
+            worldPos,
+            orientationDeg: candSignature.orientationDeg,
+            similarityScore: finalScore
+          });
+        }
       }
     }
   }
+
 
   // 4. Supresión de no-máximos
   const minSeparationPx = targetRadiusPx * PATTERN_DETECTOR_CONSTANTS.NMS_DISTANCE_RATIO;
