@@ -207,6 +207,44 @@ export function usePatternDetectorViewModel() {
   }, []);
 
   /**
+   * Deshace / elimina la última muestra positiva agregada (útil si el usuario se equivocó)
+   */
+  const undoLastPositiveExemplar = useCallback(async () => {
+    if (positiveExemplars.length <= 1) {
+      clearMatches();
+      return;
+    }
+
+    const nextPositives = positiveExemplars.slice(0, -1);
+    setPositiveExemplars(nextPositives);
+
+    if (activeUnderlay) {
+      setIsDetecting(true);
+      try {
+        const { width, height, mask } = await getUnderlayBinaryMask(
+          activeUnderlay.id,
+          activeUnderlay.imageUrl
+        );
+        const updatedMatches = detectPatternMatchesWithExemplars(
+          mask,
+          width,
+          height,
+          nextPositives,
+          negativeExemplars,
+          activeUnderlay.scaleMetersPerPx,
+          { x: activeUnderlay.originWorldX, y: activeUnderlay.originWorldY },
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+        );
+        setDetectedMatches(updatedMatches);
+      } catch (err) {
+        console.error('Error al deshacer última muestra:', err);
+      } finally {
+        setIsDetecting(false);
+      }
+    }
+  }, [positiveExemplars, negativeExemplars, activeUnderlay, clearMatches]);
+
+  /**
    * Emplaza masivamente bocas eléctricas en todos los centros detectados
    */
   const convertMatchesToElectricalElements = useCallback(
@@ -295,6 +333,7 @@ export function usePatternDetectorViewModel() {
     executeDetectionFromWorldBox,
     dismissMatch,
     clearMatches,
+    undoLastPositiveExemplar,
     convertMatchesToElectricalElements,
     getClosestSnapMatch
   };

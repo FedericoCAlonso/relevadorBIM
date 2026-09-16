@@ -14,7 +14,7 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch } from 'lucide-react';
+import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
@@ -58,6 +58,8 @@ interface BimCanvasProps {
   onElectricalElementClick?: (elementId: string) => void;
   onElectricalElementDoubleClick?: (elementId: string) => void;
   onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap) => void;
+  isArchitectureLocked?: boolean;
+  onToggleLockArchitecture?: () => void;
 }
 
 export const BimCanvas: React.FC<BimCanvasProps> = ({
@@ -91,7 +93,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onSpaceClick,
   onElectricalElementClick,
   onElectricalElementDoubleClick,
-  onCanvasClick
+  onCanvasClick,
+  isArchitectureLocked = false,
+  onToggleLockArchitecture
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -146,6 +150,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isSnappedToPatternMatch, setIsSnappedToPatternMatch] = useState(false);
   const [samplingStartWorldPos, setSamplingStartWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
+  const justCompletedSamplingRef = useRef(false);
 
   // Recentrar y encuadrar todo el plano
   const handleRecenter = () => {
@@ -285,7 +290,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
+        justCompletedSamplingRef.current = true;
         onPatternSampleBoxCompleted?.(samplingStartWorldPos, hoverWorldPos);
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
       }
       setSamplingStartWorldPos(null);
       return;
@@ -407,7 +416,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
+        justCompletedSamplingRef.current = true;
         onPatternSampleBoxCompleted?.(samplingStartWorldPos, hoverWorldPos);
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
       }
       setSamplingStartWorldPos(null);
       touchStateRef.current = null;
@@ -423,7 +436,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   const triggerPlacement = (clientX: number, clientY: number) => {
     if (isDragging || !containerRef.current) return;
-    if (isSamplingPattern) return;
+    if (isSamplingPattern || justCompletedSamplingRef.current) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     let wx = (clientX - rect.left - pan.x) / zoom;
@@ -436,6 +449,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
     if (isAddingDimension) {
       onDimensionCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
+    }
+
+    // Si la arquitectura está bloqueada y no se está emplazando una boca, ignorar clics de fondo
+    if (isArchitectureLocked && !selectedSymbolId) {
       return;
     }
 
@@ -502,6 +520,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (justCompletedSamplingRef.current) {
+      justCompletedSamplingRef.current = false;
+      return;
+    }
     if (mouseDragRef.current?.moved) {
       mouseDragRef.current = null;
       return;
@@ -1273,14 +1295,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             {isSelected && (
               <g
                 transform={`translate(${midX}, ${midY - 24})`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   deleteDimensionLine(dim.id);
                 }}
-                className="cursor-pointer hover:scale-110 transition-transform"
+                className="cursor-pointer group/dimdel"
               >
-                <circle r={10} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} />
-                <text x="0" y="3.5" textAnchor="middle" fontSize={10} fontWeight="bold" fill="#ffffff" className="select-none font-sans">
+                <circle r={10} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} className="transition-colors group-hover/dimdel:fill-red-600 drop-shadow" />
+                <text x="0" y="3.5" textAnchor="middle" fontSize={10} fontWeight="bold" fill="#ffffff" className="select-none font-sans pointer-events-none">
                   ✕
                 </text>
               </g>
@@ -1402,37 +1426,28 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                     {/* Botón descartar falso positivo con amplia zona de impacto táctil */}
                     <g
                       transform={`translate(${boxX + boxW}, ${boxY})`}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onDismissPatternMatch?.(m.id);
-                      }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
-                        e.preventDefault();
                       }}
                       onTouchStart={(e) => {
                         e.stopPropagation();
-                        e.preventDefault();
-                        onDismissPatternMatch?.(m.id);
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        e.preventDefault();
                         onDismissPatternMatch?.(m.id);
                       }}
                       className="cursor-pointer group/dismiss"
                     >
                       <title>Descartar falso positivo y aprender del rechazo</title>
-                      {/* Zona invisible amplia de impacto para mouse y dedos táctiles (34px de diámetro) */}
-                      <circle r={17} fill="transparent" />
-                      {/* Círculo visual rojo de cierre */}
+                      {/* Zona invisible amplia de impacto para mouse y dedos táctiles (36px de diámetro) */}
+                      <circle r={18} fill="transparent" />
+                      {/* Círculo visual rojo de cierre inmóvil bajo el cursor */}
                       <circle
-                        r={7.5}
+                        r={8}
                         fill="#ef4444"
                         stroke="#ffffff"
                         strokeWidth={1.5}
-                        className="transition-transform group-hover/dismiss:scale-125 group-active/dismiss:scale-95"
+                        className="transition-colors group-hover/dismiss:fill-red-600 drop-shadow"
                       />
                       <text
                         x="0"
@@ -1773,6 +1788,25 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           <DraftingCompass size={16} />
         </button>
+
+        {onToggleLockArchitecture && (
+          <button
+            type="button"
+            onClick={onToggleLockArchitecture}
+            className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+              isArchitectureLocked
+                ? 'bg-amber-600 text-white border-amber-700 shadow-amber-200 ring-2 ring-amber-400'
+                : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
+            }`}
+            title={
+              isArchitectureLocked
+                ? 'Arquitectura bloqueada (clic para desbloquear muros)'
+                : 'Bloquear arquitectura (inmunizar muros contra toques accidentales)'
+            }
+          >
+            {isArchitectureLocked ? <Lock size={16} /> : <Unlock size={16} />}
+          </button>
+        )}
 
         {/* Controles de Lámina de Fondo (solo si hay plano cargado) */}
         {underlaySheet && (

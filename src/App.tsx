@@ -102,9 +102,11 @@ export function App() {
     executeDetectionFromWorldBox,
     dismissMatch: dismissPatternMatch,
     clearMatches: clearPatternMatches,
+    undoLastPositiveExemplar,
     convertMatchesToElectricalElements
   } = usePatternDetectorViewModel();
 
+  const [isArchitectureLocked, setIsArchitectureLocked] = useState(false);
   const [showComputoModal, setShowComputoModal] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -307,11 +309,7 @@ export function App() {
       return;
     }
 
-    if (project.vertices.length === 0) {
-      commitWall();
-    } else {
-      setSelectedEntity(null);
-    }
+    setSelectedEntity(null);
   };
 
   const previewDist = parseFloat(currentDistanceInput) || 3.50;
@@ -395,6 +393,8 @@ export function App() {
               }
             }}
             onCanvasClick={handleCanvasClick}
+            isArchitectureLocked={isArchitectureLocked}
+            onToggleLockArchitecture={() => setIsArchitectureLocked((prev) => !prev)}
           />
 
           {/* Indicador de muestreo de símbolo activo */}
@@ -471,6 +471,18 @@ export function App() {
               >
                 <span>＋ Otra muestra</span>
               </button>
+
+              {/* Botón para deshacer última muestra si se tomó por error */}
+              {positiveExemplars.length > 1 && (
+                <button
+                  type="button"
+                  onClick={undoLastPositiveExemplar}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white rounded-xl border border-amber-500/40 transition-colors text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                  title="Descartar la última muestra agregada y volver a la muestra anterior"
+                >
+                  <span>↶ Deshacer muestra</span>
+                </button>
+              )}
 
               {/* Botón de emplazamiento masivo */}
               {detectedPatternMatches.length > 0 && selectedSymbolId && (

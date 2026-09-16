@@ -740,8 +740,8 @@ export function detectPatternMatchesWithExemplars(
         };
 
         rawMatches.push({
-          id: `match-${rawMatches.length + 1}-${Math.round(centerPx.x)}_${Math.round(centerPx.y)}`,
-          boxPx: testBox,
+          id: `match-${Math.round(centerPx.x)}_${Math.round(centerPx.y)}`,
+          boxPx: centeredBox,
           centerPx,
           worldPos,
           orientationDeg: candSignature.orientationDeg,
