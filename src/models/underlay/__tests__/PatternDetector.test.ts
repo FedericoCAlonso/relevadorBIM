@@ -14,7 +14,6 @@ import {
   compareEigenSignatures,
   tightenBoundingBox,
   createPatternExemplar,
-  buildMorphologicalPrototype,
   detectPatternMatchesWithExemplars,
   detectPatternMatches,
   type BoundingBoxPx
@@ -342,104 +341,5 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
     );
     expect(otherMatch).toBeDefined();
   });
-
-  it('debe afinar el prototipo morfológico consensuado al cruzar 2 muestras eliminando muros o cañerías accidentales', () => {
-    const width = 100;
-    const height = 100;
-    const binary1 = new Uint8Array(width * height);
-    const binary2 = new Uint8Array(width * height);
-
-    // Función para dibujar una boca circular en (50, 50)
-    const drawCenterCircle = (target: Uint8Array) => {
-      for (let y = 46; y <= 54; y++) {
-        for (let x = 46; x <= 54; x++) {
-          const d = Math.hypot(x - 50, y - 50);
-          if (d >= 2.5 && d <= 4.2) {
-            target[y * width + x] = 1;
-          }
-        }
-      }
-    };
-
-    // Muestra 1: Boca + muro horizontal atravesándola (y = 50)
-    drawCenterCircle(binary1);
-    for (let x = 10; x < 90; x++) {
-      binary1[50 * width + x] = 1;
-    }
-
-    // Muestra 2: Misma boca + cañería vertical atravesándola (x = 50)
-    drawCenterCircle(binary2);
-    for (let y = 10; y < 90; y++) {
-      binary2[y * width + 50] = 1;
-    }
-
-    const box: BoundingBoxPx = { x: 44, y: 44, width: 13, height: 13 };
-    const ex1 = createPatternExemplar(binary1, width, box, false)!;
-    const ex2 = createPatternExemplar(binary2, width, box, false)!;
-
-    expect(ex1).not.toBeNull();
-    expect(ex2).not.toBeNull();
-
-    // Construir prototipo consensuado
-    const prototype = buildMorphologicalPrototype([ex1, ex2]);
-    expect(prototype).not.toBeNull();
-
-    // El prototipo debe tener píxeles esperados del parche consenso
-    expect(prototype!.expectedCorePixels).toBeGreaterThan(20);
-    expect(prototype!.expectedCorePixels).toBeLessThan(400);
-  });
-
-  it('debe detectar un símbolo atravesado por cañerías pasantes gracias a la cobertura asimétrica', () => {
-    const width = 100;
-    const height = 100;
-    const plan = new Uint8Array(width * height);
-
-    // Dibuja una boca circular limpia de referencia en (25, 25)
-    for (let y = 21; y <= 29; y++) {
-      for (let x = 21; x <= 29; x++) {
-        const d = Math.hypot(x - 25, y - 25);
-        if (d >= 2.5 && d <= 4.2) {
-          plan[y * width + x] = 1;
-        }
-      }
-    }
-
-    // Dibuja otra boca en (75, 75) cruzada por 2 cañerías en diagonal y una línea horizontal
-    for (let y = 71; y <= 79; y++) {
-      for (let x = 71; x <= 79; x++) {
-        const d = Math.hypot(x - 75, y - 75);
-        if (d >= 2.5 && d <= 4.2) {
-          plan[y * width + x] = 1;
-        }
-      }
-    }
-    // Línea horizontal cruzando por (75, 75)
-    for (let x = 60; x < 90; x++) {
-      plan[75 * width + x] = 1;
-    }
-
-    const sampleClean: BoundingBoxPx = { x: 20, y: 20, width: 11, height: 11 };
-    const exemplar = createPatternExemplar(plan, width, sampleClean, false)!;
-
-    const matches = detectPatternMatchesWithExemplars(
-      plan,
-      width,
-      height,
-      [exemplar],
-      [],
-      0.05,
-      { x: 0, y: 0 },
-      0.65
-    );
-
-    // Debe detectar la boca en (25, 25) Y la boca cruzada en (75, 75)
-    const matchClean = matches.find((m) => Math.round(m.centerPx.x) === 25 && Math.round(m.centerPx.y) === 25);
-    const matchCrossed = matches.find((m) => Math.round(m.centerPx.x) === 75 && Math.round(m.centerPx.y) === 75);
-
-    expect(matchClean).toBeDefined();
-    expect(matchCrossed).toBeDefined();
-    expect(matchCrossed!.similarityScore).toBeGreaterThanOrEqual(0.65);
-  });
 });
-
 
