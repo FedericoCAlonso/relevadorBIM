@@ -121,6 +121,15 @@ export function usePatternDetectorViewModel() {
         if (!isAddingSample) {
           setNegativeExemplars([]);
           setDismissedMatchIds(new Set());
+        } else {
+          // Si este nuevo ejemplar estaba previamente en la lista de descartados, rehabilitarlo
+          const newMatchId = `match-${Math.round(newExemplar.signature.centroid.x)}_${Math.round(newExemplar.signature.centroid.y)}`;
+          setDismissedMatchIds((prev) => {
+            if (!prev.has(newMatchId)) return prev;
+            const next = new Set(prev);
+            next.delete(newMatchId);
+            return next;
+          });
         }
 
         const matches = detectPatternMatchesWithExemplars(
@@ -146,6 +155,18 @@ export function usePatternDetectorViewModel() {
   );
 
   /**
+   * Limpia todas las coincidencias y ejemplares aprendidos
+   */
+  const clearMatches = useCallback(() => {
+    setDetectedMatches([]);
+    setSampleBoxPx(null);
+    setPositiveExemplars([]);
+    setNegativeExemplars([]);
+    setDismissedMatchIds(new Set());
+    setIsAddingSample(false);
+  }, []);
+
+  /**
    * Descarta un falso positivo individual con un clic, aprendiendo del rechazo
    * como ejemplar negativo para penalizar y eliminar patrones similares en todo el plano.
    */
@@ -162,6 +183,24 @@ export function usePatternDetectorViewModel() {
       const targetMatch = detectedMatches.find((m) => m.id === matchId);
       if (!targetMatch || !activeUnderlay) return;
 
+      // Si el match descartado coincide con la ubicación de un ejemplar positivo, removerlo de los positivos
+      const nextPositives = positiveExemplars.filter(
+        (pos) =>
+          Math.hypot(
+            pos.signature.centroid.x - targetMatch.centerPx.x,
+            pos.signature.centroid.y - targetMatch.centerPx.y
+          ) >= 5
+      );
+
+      if (nextPositives.length === 0 && positiveExemplars.length > 0) {
+        clearMatches();
+        return;
+      }
+
+      if (nextPositives.length !== positiveExemplars.length) {
+        setPositiveExemplars(nextPositives);
+      }
+
       try {
         const { width, height, mask } = await getUnderlayBinaryMask(
           activeUnderlay.id,
@@ -173,12 +212,12 @@ export function usePatternDetectorViewModel() {
           const nextNegatives = [...negativeExemplars, negExemplar];
           setNegativeExemplars(nextNegatives);
 
-          if (positiveExemplars.length > 0) {
+          if (nextPositives.length > 0) {
             const updatedMatches = detectPatternMatchesWithExemplars(
               mask,
               width,
               height,
-              positiveExemplars,
+              nextPositives,
               nextNegatives,
               activeUnderlay.scaleMetersPerPx,
               { x: activeUnderlay.originWorldX, y: activeUnderlay.originWorldY },
@@ -191,20 +230,8 @@ export function usePatternDetectorViewModel() {
         console.error('Error al registrar ejemplar negativo:', err);
       }
     },
-    [detectedMatches, activeUnderlay, negativeExemplars, positiveExemplars]
+    [detectedMatches, activeUnderlay, negativeExemplars, positiveExemplars, clearMatches]
   );
-
-  /**
-   * Limpia todas las coincidencias y ejemplares aprendidos
-   */
-  const clearMatches = useCallback(() => {
-    setDetectedMatches([]);
-    setSampleBoxPx(null);
-    setPositiveExemplars([]);
-    setNegativeExemplars([]);
-    setDismissedMatchIds(new Set());
-    setIsAddingSample(false);
-  }, []);
 
   /**
    * Deshace / elimina la última muestra positiva agregada (útil si el usuario se equivocó)

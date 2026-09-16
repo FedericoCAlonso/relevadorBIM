@@ -672,7 +672,34 @@ export function detectPatternMatchesWithExemplars(
   const rawMatches: DetectedPatternMatch[] = [];
   const targetRadiusPx = Math.max(avgWidth, avgHeight) / 2;
 
-  // 3. Evaluar cada candidato contra ejemplares positivos y penalizar con negativos
+  // 3. Inyectar ejemplares positivos como candidatos semilla garantizados (Ground Truth)
+  // con similitud máxima (1.0). Al someterse a NMS con ordenamiento por score,
+  // prevalecen sobre cualquier candidato heurístico ruidoso o desplazado en esa misma ubicación.
+  for (const posEx of positiveExemplars) {
+    const centerPx = posEx.signature.centroid;
+    const worldPos = {
+      x: Number((originWorld.x + centerPx.x * scaleMetersPerPx).toFixed(3)),
+      y: Number((originWorld.y + centerPx.y * scaleMetersPerPx).toFixed(3))
+    };
+
+    const seedBox: BoundingBoxPx = {
+      x: Math.max(0, Math.round(centerPx.x - avgWidth / 2)),
+      y: Math.max(0, Math.round(centerPx.y - avgHeight / 2)),
+      width: avgWidth,
+      height: avgHeight
+    };
+
+    rawMatches.push({
+      id: `match-${Math.round(centerPx.x)}_${Math.round(centerPx.y)}`,
+      boxPx: seedBox,
+      centerPx,
+      worldPos,
+      orientationDeg: posEx.signature.orientationDeg,
+      similarityScore: 1.0
+    });
+  }
+
+  // 4. Evaluar cada candidato heurístico contra ejemplares positivos y penalizar con negativos
   for (let i = 0; i < candidateBlobs.length; i++) {
     const blob = candidateBlobs[i];
     const centerX = blob.x + blob.width / 2;

@@ -291,4 +291,55 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
     const m = matches.find((match) => Math.abs(match.centerPx.x - 30) <= 2 && Math.abs(match.centerPx.y - 30) <= 2);
     expect(m).toBeDefined();
   });
+
+  it('debe garantizar que toda muestra positiva seleccionada quede recuadrada como candidato semilla (Ground Truth) con score 1.0', () => {
+    const width = 120;
+    const height = 80;
+    const binary = new Uint8Array(width * height);
+
+    // Dibuja una boca de muestra en (40, 40)
+    for (let y = 37; y <= 43; y++) {
+      for (let x = 37; x <= 43; x++) {
+        binary[y * width + x] = 1;
+      }
+    }
+
+    // Y otra boca idéntica en (80, 40)
+    for (let y = 37; y <= 43; y++) {
+      for (let x = 77; x <= 83; x++) {
+        binary[y * width + x] = 1;
+      }
+    }
+
+    const sampleBox: BoundingBoxPx = { x: 35, y: 35, width: 11, height: 11 };
+    const exemplar = createPatternExemplar(binary, width, sampleBox, false)!;
+    expect(exemplar).not.toBeNull();
+
+    const matches = detectPatternMatchesWithExemplars(
+      binary,
+      width,
+      height,
+      [exemplar],
+      [],
+      0.05,
+      { x: 5, y: 10 },
+      0.70
+    );
+
+    // Debe contener la muestra original con score 1.0 exacto
+    const seedMatch = matches.find(
+      (m) => Math.round(m.centerPx.x) === 40 && Math.round(m.centerPx.y) === 40
+    );
+    expect(seedMatch).toBeDefined();
+    expect(seedMatch!.similarityScore).toBe(1.0);
+    expect(seedMatch!.worldPos.x).toBeCloseTo(5 + 40 * 0.05, 3);
+    expect(seedMatch!.worldPos.y).toBeCloseTo(10 + 40 * 0.05, 3);
+
+    // Y además debe encontrar la otra boca en x: 80
+    const otherMatch = matches.find(
+      (m) => Math.round(m.centerPx.x) === 80 && Math.round(m.centerPx.y) === 40
+    );
+    expect(otherMatch).toBeDefined();
+  });
 });
+
