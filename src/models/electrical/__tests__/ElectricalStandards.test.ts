@@ -184,4 +184,13 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
     expect(sizes[0].standardSize).toBe('11');
     expect(getDefaultSizeForConduitType('custom_bergman', catalog)).toBe(16);
   });
+
+  it('debe registrar el símbolo de Montante / Pasa-Losa para enlaces remotos y verticales', async () => {
+    const { getSymbolById } = await import('../symbolsLib');
+    const montante = getSymbolById('sym-planta-montante');
+    expect(montante).toBeDefined();
+    expect(montante?.label).toContain('Montante');
+    expect(montante?.categoria).toBe('cajas_pase');
+    expect(montante?.uso).toBe('planta');
+  });
 });

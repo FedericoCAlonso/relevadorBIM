@@ -23,6 +23,8 @@ import { ProjectSettingsModal } from './views/components/menu/ProjectSettingsMod
 import { ExportModal } from './views/components/menu/ExportModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
+import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
+import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
 import { AEA_CALCULATION_CONSTANTS } from './models/electrical/electricalStandards';
@@ -58,6 +60,25 @@ export function App() {
     commitWall,
     handleElectricalElementClick
   } = useSurveyViewModel();
+
+  const {
+    activeUnderlay,
+    isCalibrating: isCalibratingUnderlay,
+    calibrationP1,
+    showCalibrationModal,
+    measuredDistanceWorldM,
+    isLoadingFile: isLoadingUnderlayFile,
+    errorMessage: underlayErrorMessage,
+    setErrorMessage: setUnderlayErrorMessage,
+    handleLoadFile: handleLoadUnderlayFile,
+    startCalibration: startUnderlayCalibration,
+    cancelCalibration: cancelUnderlayCalibration,
+    handleCalibrationCanvasClick,
+    confirmCalibration: confirmUnderlayCalibration,
+    toggleVisibility: toggleUnderlayVisibility,
+    cycleOpacity: cycleUnderlayOpacity,
+    removeSheet: removeUnderlaySheet
+  } = useUnderlaySheetViewModel();
 
   const [showComputoModal, setShowComputoModal] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
@@ -95,6 +116,10 @@ export function App() {
       if (e.key === 'Escape') {
         if (isConnectingConduit) {
           cancelConduitConnection();
+          return;
+        }
+        if (isCalibratingUnderlay) {
+          cancelUnderlayCalibration();
           return;
         }
         setSelectedEntity(null);
@@ -269,6 +294,14 @@ export function App() {
             isConnectingConduit={isConnectingConduit}
             pendingConduitStartId={pendingConduitStartId}
             onCancelConnectingConduit={cancelConduitConnection}
+            underlaySheet={activeUnderlay}
+            isCalibratingUnderlay={isCalibratingUnderlay}
+            calibrationP1={calibrationP1}
+            onCalibrationCanvasClick={handleCalibrationCanvasClick}
+            onCancelCalibration={cancelUnderlayCalibration}
+            onToggleUnderlayVisibility={toggleUnderlayVisibility}
+            onCycleUnderlayOpacity={cycleUnderlayOpacity}
+            onStartUnderlayCalibration={startUnderlayCalibration}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {
@@ -341,7 +374,43 @@ export function App() {
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenExport={() => setShowExportModal(true)}
         onOpenComputo={() => setShowComputoModal(true)}
+        hasUnderlay={Boolean(activeUnderlay)}
+        onLoadUnderlay={handleLoadUnderlayFile}
+        onStartUnderlayCalibration={startUnderlayCalibration}
+        onRemoveUnderlay={removeUnderlaySheet}
       />
+
+      {/* Modal de Calibración Métrica de Escala del Plano de Fondo */}
+      <UnderlayCalibrationModal
+        isOpen={showCalibrationModal}
+        initialDistanceM={measuredDistanceWorldM}
+        onConfirm={confirmUnderlayCalibration}
+        onClose={cancelUnderlayCalibration}
+      />
+
+      {/* Overlay de carga al procesar PDF o Imagen */}
+      {isLoadingUnderlayFile && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 pointer-events-auto">
+          <div className="bg-white px-6 py-4 rounded-2xl shadow-xl border border-slate-200 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm font-semibold text-slate-800">Cargando y procesando plano de fondo...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Notificación de error de plano de fondo */}
+      {underlayErrorMessage && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-4 py-2 rounded-xl shadow-lg text-xs font-semibold flex items-center gap-3">
+          <span>{underlayErrorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setUnderlayErrorMessage(null)}
+            className="text-white hover:text-red-200 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Modal de Configuración General de Obra y Catálogo */}
       <ProjectSettingsModal

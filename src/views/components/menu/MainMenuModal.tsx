@@ -18,7 +18,10 @@ import {
   X,
   Building2,
   Zap,
-  ChevronRight
+  ChevronRight,
+  FileImage,
+  Ruler,
+  Trash2
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -27,6 +30,10 @@ interface MainMenuModalProps {
   onOpenSettings: () => void;
   onOpenExport: () => void;
   onOpenComputo: () => void;
+  hasUnderlay?: boolean;
+  onLoadUnderlay?: (file: File) => void;
+  onStartUnderlayCalibration?: () => void;
+  onRemoveUnderlay?: () => void;
 }
 
 export const MainMenuModal: React.FC<MainMenuModalProps> = ({
@@ -34,10 +41,15 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onClose,
   onOpenSettings,
   onOpenExport,
-  onOpenComputo
+  onOpenComputo,
+  hasUnderlay = false,
+  onLoadUnderlay,
+  onStartUnderlayCalibration,
+  onRemoveUnderlay
 }) => {
   const { project, resetProject, loadProject } = useProjectStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const underlayFileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
 
@@ -168,6 +180,77 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               </div>
               <ChevronRight size={16} className="text-slate-400" />
             </button>
+
+            {/* Input oculto para cargar lámina de plano (PNG, JPG, PDF) */}
+            <input
+              ref={underlayFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onLoadUnderlay) {
+                  onLoadUnderlay(file);
+                  onClose();
+                }
+                e.target.value = '';
+              }}
+            />
+
+            {/* Cargar / Cambiar Plano de Fondo */}
+            <button
+              type="button"
+              onClick={() => underlayFileInputRef.current?.click()}
+              className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 transition-all text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white text-sky-600 rounded-xl border border-slate-200 shadow-xs">
+                  <FileImage size={16} />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800">
+                    {hasUnderlay ? 'Cambiar Plano de Fondo' : 'Cargar Plano de Fondo'}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Imagen (PNG, JPG) o PDF para relevar
+                  </div>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-slate-400" />
+            </button>
+
+            {hasUnderlay && (
+              <div className="flex gap-2 pt-1">
+                {onStartUnderlayCalibration && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onStartUnderlayCalibration();
+                    }}
+                    className="flex-1 py-2 px-3 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold rounded-xl text-[11px] border border-sky-200 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Ruler size={13} />
+                    Calibrar Escala (2 clics)
+                  </button>
+                )}
+                {onRemoveUnderlay && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('¿Deseas quitar el plano de fondo de este nivel?')) {
+                        onRemoveUnderlay();
+                        onClose();
+                      }
+                    }}
+                    className="py-2 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-[11px] border border-red-200 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 size={13} />
+                    Quitar Plano
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 2. SECCIÓN EXPORTACIONES */}

@@ -17,6 +17,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/web-bluetooth": "^0.0.21",
     "lucide-react": "^1.46.0",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3",

@@ -14,7 +14,8 @@ import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../model
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { Plus, Minus, Maximize2, Ruler } from 'lucide-react';
+import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff } from 'lucide-react';
+import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 
 export interface WallPlacementSnap {
   wallId: string;
@@ -30,6 +31,14 @@ interface BimCanvasProps {
   isConnectingConduit?: boolean;
   pendingConduitStartId?: string | null;
   onCancelConnectingConduit?: () => void;
+  underlaySheet?: UnderlaySheet | null;
+  isCalibratingUnderlay?: boolean;
+  calibrationP1?: { x: number; y: number } | null;
+  onCalibrationCanvasClick?: (worldX: number, worldY: number) => void;
+  onCancelCalibration?: () => void;
+  onToggleUnderlayVisibility?: () => void;
+  onCycleUnderlayOpacity?: () => void;
+  onStartUnderlayCalibration?: () => void;
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -45,6 +54,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   isConnectingConduit = false,
   pendingConduitStartId = null,
   onCancelConnectingConduit,
+  underlaySheet = null,
+  isCalibratingUnderlay = false,
+  calibrationP1 = null,
+  onCalibrationCanvasClick,
+  onCancelCalibration,
+  onToggleUnderlayVisibility,
+  onCycleUnderlayOpacity,
+  onStartUnderlayCalibration,
   onWallClick,
   onOpeningClick,
   onSpaceClick,
@@ -313,10 +330,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const triggerPlacement = (clientX: number, clientY: number) => {
-    if (isDragging || !onCanvasClick || !containerRef.current) return;
+    if (isDragging || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     let wx = (clientX - rect.left - pan.x) / zoom;
     let wy = (clientY - rect.top - pan.y) / zoom;
+
+    if (isCalibratingUnderlay) {
+      onCalibrationCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
+    }
+
+    if (!onCanvasClick) return;
     let snapInfo: WallPlacementSnap | null = null;
 
     if (!selectedSymbolId) {
@@ -404,7 +428,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={space.id}
             onClick={(e) => {
-              if (selectedSymbolId || isConnectingConduit) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
               }
@@ -458,6 +482,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     pan,
     selectedSymbolId,
     isConnectingConduit,
+    isCalibratingUnderlay,
     onSpaceClick,
     onElectricalElementClick
   ]);
@@ -485,7 +510,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseEnter={() => setHoveredWallId(wall.id)}
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
-              if (selectedSymbolId || isConnectingConduit) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
                 // Modo inserción de elemento eléctrico o conexión de cañerías
                 triggerPlacement(e.clientX, e.clientY);
                 return;
@@ -595,6 +620,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     selectedEntity,
     selectedSymbolId,
     isConnectingConduit,
+    isCalibratingUnderlay,
     showDimensions,
     onWallClick,
     onElectricalElementClick
@@ -623,7 +649,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={opening.id}
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
-            if (selectedSymbolId || isConnectingConduit) {
+            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -732,7 +758,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, onOpeningClick]);
+  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, onOpeningClick]);
 
   // 4. Vértices y Puntos de Anclaje (Snaps)
   const renderedVertices = useMemo(() => {
@@ -746,7 +772,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={v.id}
           transform={`translate(${pxX}, ${pxY})`}
           onClick={(e) => {
-            if (selectedSymbolId || isConnectingConduit) {
+            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -776,7 +802,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, setActiveAnchorVertexId]);
+  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, setActiveAnchorVertexId]);
 
   // 5. Previsualización del rayo láser proyectado desde el anclaje activo
   const renderedPreviewRay = useMemo(() => {
@@ -859,7 +885,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <g
           key={conduit.id}
           onClick={(e) => {
-            if (isConnectingConduit) {
+            if (isConnectingConduit || isCalibratingUnderlay) {
               triggerPlacement(e.clientX, e.clientY);
               return;
             }
@@ -894,7 +920,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       );
     });
-  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, setSelectedEntity]);
+  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, isCalibratingUnderlay, setSelectedEntity]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
   const renderedElements = useMemo(() => {
@@ -913,10 +939,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
             onClick={(e) => {
+              if (isCalibratingUnderlay) {
+                triggerPlacement(e.clientX, e.clientY);
+                return;
+              }
               e.stopPropagation();
               onElectricalElementClick?.(element.id);
             }}
             onDoubleClick={(e) => {
+              if (isCalibratingUnderlay) {
+                triggerPlacement(e.clientX, e.clientY);
+                return;
+              }
               e.stopPropagation();
               onElectricalElementDoubleClick?.(element.id);
             }}
@@ -1023,6 +1057,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     zoom,
     selectedEntity,
     isConnectingConduit,
+    isCalibratingUnderlay,
     pendingConduitStartId,
     onElectricalElementClick,
     onElectricalElementDoubleClick
@@ -1058,6 +1093,20 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
         <g transform={`translate(${pan.x}, ${pan.y})`}>
+          {/* Lámina de plano de fondo (Underlay Sheet) */}
+          {underlaySheet && underlaySheet.visible && (
+            <image
+              href={underlaySheet.imageUrl}
+              x={underlaySheet.originWorldX * zoom}
+              y={underlaySheet.originWorldY * zoom}
+              width={underlaySheet.widthPx * underlaySheet.scaleMetersPerPx * zoom}
+              height={underlaySheet.heightPx * underlaySheet.scaleMetersPerPx * zoom}
+              opacity={underlaySheet.opacity}
+              preserveAspectRatio="none"
+              className="pointer-events-none select-none"
+            />
+          )}
+
           {renderedSpaces}
           {renderedWalls}
           {renderedOpenings}
@@ -1065,6 +1114,49 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedConduits}
           {renderedVertices}
           {renderedElements}
+
+          {/* Línea elástica y marcas de calibración métrica del plano de fondo */}
+          {isCalibratingUnderlay && calibrationP1 && (
+            <g pointerEvents="none">
+              {hoverWorldPos && (
+                <>
+                  <line
+                    x1={calibrationP1.x * zoom}
+                    y1={calibrationP1.y * zoom}
+                    x2={hoverWorldPos.x * zoom}
+                    y2={hoverWorldPos.y * zoom}
+                    stroke="#0284c7"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                  />
+                  <circle
+                    cx={hoverWorldPos.x * zoom}
+                    cy={hoverWorldPos.y * zoom}
+                    r={5}
+                    fill="#0284c7"
+                  />
+                  <text
+                    x={((calibrationP1.x + hoverWorldPos.x) / 2) * zoom}
+                    y={((calibrationP1.y + hoverWorldPos.y) / 2) * zoom - 8}
+                    textAnchor="middle"
+                    fontSize={11}
+                    className="font-mono font-bold fill-sky-700 bg-white"
+                  >
+                    {Math.hypot(hoverWorldPos.x - calibrationP1.x, hoverWorldPos.y - calibrationP1.y).toFixed(2)} m
+                  </text>
+                </>
+              )}
+              {/* Punto 1 marcado */}
+              <circle
+                cx={calibrationP1.x * zoom}
+                cy={calibrationP1.y * zoom}
+                r={6}
+                fill="#0284c7"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            </g>
+          )}
 
           {/* Línea elástica interactiva guiando al usuario hacia el segundo extremo */}
           {isConnectingConduit && pendingConduitStartId && hoverWorldPos && (() => {
@@ -1141,7 +1233,32 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </div>
       )}
 
-      {/* Botonera flotante CAD (Zoom In / Out / Recentrar) */}
+      {/* Banner / Píldora superior durante calibración de plano de fondo */}
+      {isCalibratingUnderlay && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-sky-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
+          <span>
+            {calibrationP1
+              ? '📏 1° punto fijado · Tocá el segundo punto de la cota conocida'
+              : '📏 Calibrar Escala: Tocá el primer punto de una cota conocida del plano'}
+          </span>
+          {onCancelCalibration && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelCalibration();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar calibración"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Botonera flotante CAD (Zoom In / Out / Recentrar / Cotas / Lámina de Fondo) */}
       <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-10">
         <button
           type="button"
@@ -1179,6 +1296,45 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           <Ruler size={16} />
         </button>
+
+        {/* Controles de Lámina de Fondo (solo si hay plano cargado) */}
+        {underlaySheet && (
+          <>
+            <div className="h-px bg-slate-200 my-0.5" />
+            <button
+              type="button"
+              onClick={onToggleUnderlayVisibility}
+              className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+                underlaySheet.visible
+                  ? 'bg-sky-600 text-white border-sky-700'
+                  : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-700'
+              }`}
+              title={underlaySheet.visible ? 'Ocultar plano de fondo' : 'Mostrar plano de fondo'}
+            >
+              {underlaySheet.visible ? <Eye size={16} /> : <EyeOff size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={onCycleUnderlayOpacity}
+              className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all text-[11px] font-mono font-bold"
+              title={`Opacidad del plano: ${Math.round(underlaySheet.opacity * 100)}% (clic para cambiar)`}
+            >
+              {Math.round(underlaySheet.opacity * 100)}%
+            </button>
+            <button
+              type="button"
+              onClick={onStartUnderlayCalibration}
+              className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+                isCalibratingUnderlay
+                  ? 'bg-amber-500 text-white border-amber-600'
+                  : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
+              }`}
+              title="Recalibrar escala métrica (2 clics)"
+            >
+              📏
+            </button>
+          </>
+        )}
       </div>
 
       {/* Aviso móvil superior al tener boca seleccionada */}

@@ -24,6 +24,7 @@ import type {
   BoxTypeDefinition
 } from '../models/electrical/ElectricalModel';
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
+import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -122,6 +123,11 @@ interface ProjectStoreState {
   removeCableType: (id: string) => void;
   addBoxType: (def: BoxTypeDefinition) => void;
   removeBoxType: (id: string) => void;
+
+  // Láminas de Fondo (Underlays / Planos PDF e Imágenes)
+  setUnderlaySheet: (levelId: string, sheet: UnderlaySheet) => void;
+  updateUnderlaySheet: (levelId: string, updates: Partial<UnderlaySheet>) => void;
+  removeUnderlaySheet: (levelId: string) => void;
 
   // Reset y Carga
   loadProject: (project: BuildingProject) => void;
@@ -873,11 +879,53 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     }));
   },
 
+  setUnderlaySheet: (levelId, sheet) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        underlaySheets: {
+          ...(state.project.underlaySheets || {}),
+          [levelId]: sheet
+        },
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  updateUnderlaySheet: (levelId, updates) =>
+    set((state) => {
+      const existing = state.project.underlaySheets?.[levelId];
+      if (!existing) return state;
+      return {
+        project: {
+          ...state.project,
+          underlaySheets: {
+            ...(state.project.underlaySheets || {}),
+            [levelId]: { ...existing, ...updates }
+          },
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
+
+  removeUnderlaySheet: (levelId) =>
+    set((state) => {
+      const current = { ...(state.project.underlaySheets || {}) };
+      delete current[levelId];
+      return {
+        project: {
+          ...state.project,
+          underlaySheets: current,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
+
   loadProject: (project) =>
     set({
       project: {
         ...project,
-        materialCatalog: project.materialCatalog || createDefaultMaterialCatalog()
+        materialCatalog: project.materialCatalog || createDefaultMaterialCatalog(),
+        underlaySheets: project.underlaySheets || {}
       },
       selectedEntity: null,
       activeAnchorVertexId: null
