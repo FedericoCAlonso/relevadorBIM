@@ -349,6 +349,7 @@ export function App() {
             }}
             isConnectingConduit={isConnectingConduit}
             onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
+            onOpenCircuits={() => setShowCircuitsModal(true)}
           />
         )}
 

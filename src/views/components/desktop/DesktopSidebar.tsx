@@ -35,7 +35,9 @@ import {
   MapPin,
   Cable,
   Layers,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Server,
+  Edit2
 } from 'lucide-react';
 
 interface DesktopSidebarProps {
@@ -50,6 +52,7 @@ interface DesktopSidebarProps {
   onSelectSymbol: (symbolId: string | null) => void;
   isConnectingConduit: boolean;
   onToggleConnectConduit: () => void;
+  onOpenCircuits?: () => void;
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
@@ -63,7 +66,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   selectedSymbolId,
   onSelectSymbol,
   isConnectingConduit,
-  onToggleConnectConduit
+  onToggleConnectConduit,
+  onOpenCircuits
 }) => {
   const {
     project,
@@ -89,14 +93,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     addCircuit,
     updateCircuit,
     deleteCircuit,
-    ensureDefaultCircuits
+    ensureDefaultCircuits,
+    addPanel,
+    updatePanel,
+    deletePanel
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<'survey' | 'spaces' | 'electrical'>('survey');
   const [activeCategory, setActiveCategory] = useState<string>('iluminacion');
 
-  // Sub-pestaña para gestión eléctrica: "Red y Bocas" o "Circuitos y Tableros"
-  const [electricalSubTab, setElectricalSubTab] = useState<'network' | 'circuits'>('network');
+  // Sub-pestaña para gestión eléctrica: "Bocas y Red", "Circuitos" o "Tableros"
+  const [electricalSubTab, setElectricalSubTab] = useState<'network' | 'circuits' | 'panels'>('network');
   const [isCreatingCircuit, setIsCreatingCircuit] = useState(false);
   const [editingCircuitColorId, setEditingCircuitColorId] = useState<string | null>(null);
   const [newCircuitName, setNewCircuitName] = useState('');
@@ -104,6 +111,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [newCircuitWire, setNewCircuitWire] = useState(1.5);
   const [newCircuitBreaker, setNewCircuitBreaker] = useState(10);
   const [newCircuitColor, setNewCircuitColor] = useState('#2563eb');
+  const [newCircuitPanelId, setNewCircuitPanelId] = useState('');
+  const [newCircuitTargetPanelId, setNewCircuitTargetPanelId] = useState('');
+
+  // Estado para gestión de tableros
+  const [isCreatingPanel, setIsCreatingPanel] = useState(false);
+  const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
+  const [panelName, setPanelName] = useState('');
+  const [panelType, setPanelType] = useState<'principal' | 'seccional' | 'auxiliar'>('seccional');
+  const [panelIsThreePhase, setPanelIsThreePhase] = useState(false);
+  const [panelBreakerA, setPanelBreakerA] = useState<number>(25);
+  const [panelDiffA, setPanelDiffA] = useState<number>(25);
 
   // Cambiar pestaña automáticamente cuando el usuario toca un elemento en el lienzo
   useEffect(() => {
@@ -1074,52 +1092,78 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {/* ════════════ PESTAÑA 3: RED ELÉCTRICA AEA (INSPIRADO EN TRAZA) ════════════ */}
         {activeTab === 'electrical' && (
           <div className="space-y-3.5">
-            {/* Selector de sub-pestaña: Red y Bocas vs Gestor de Circuitos */}
-            <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            {/* Selector de sub-pestaña: Red y Bocas vs Gestor de Circuitos vs Tableros */}
+            <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
                 type="button"
                 onClick={() => setElectricalSubTab('network')}
-                className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                   electricalSubTab === 'network'
                     ? 'bg-white text-blue-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Zap size={14} className="text-amber-500" />
-                <span>Bocas y Red</span>
+                <Zap size={13} className="text-amber-500" />
+                <span>Bocas</span>
               </button>
               <button
                 type="button"
                 onClick={() => setElectricalSubTab('circuits')}
-                className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                   electricalSubTab === 'circuits'
                     ? 'bg-white text-blue-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Layers size={14} className="text-blue-600" />
+                <Layers size={13} className="text-blue-600" />
                 <span>Circuitos ({project.circuits.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setElectricalSubTab('panels')}
+                className={`py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  electricalSubTab === 'panels'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Server size={13} className="text-blue-600" />
+                <span>Tableros ({project.panels.length})</span>
               </button>
             </div>
 
-            {/* ─── SUB-PESTAÑA 1: GESTOR DE CIRCUITOS Y TABLEROS ─── */}
+            {/* ─── SUB-PESTAÑA 1: GESTOR DE CIRCUITOS (AGRUPADOS POR TABLERO) ─── */}
             {electricalSubTab === 'circuits' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
-                    Circuitos Eléctricos
+                    Circuitos por Tablero
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreatingCircuit(true);
-                      setNewCircuitName(`C${project.circuits.length + 1} - `);
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs"
-                  >
-                    <Plus size={12} />
-                    <span>Nuevo Circuito</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {onOpenCircuits && (
+                      <button
+                        type="button"
+                        onClick={onOpenCircuits}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="Abrir ventana modal completa de Circuitos y Tableros"
+                      >
+                        ⛶ Extendido
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingCircuit(true);
+                        setNewCircuitName(`C${project.circuits.length + 1} - `);
+                        setNewCircuitPanelId(project.panels[0]?.id || 'pan-principal');
+                        setNewCircuitTargetPanelId('');
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      <span>Nuevo Circuito</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Si no hay circuitos, botón de inicialización rápida */}
@@ -1131,7 +1175,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     <button
                       type="button"
                       onClick={ensureDefaultCircuits}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                     >
                       Crear Circuitos Estándar (IUG, TUG, TUE)
                     </button>
@@ -1146,7 +1190,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsCreatingCircuit(false)}
-                        className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                        className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                       >
                         ✕
                       </button>
@@ -1165,7 +1209,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO</label>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO AEA</label>
                         <select
                           value={newCircuitType}
                           onChange={(e) => setNewCircuitType(e.target.value as CircuitType)}
@@ -1176,11 +1220,53 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           <option value="TUG">TUG (Tomas Uso Gral)</option>
                           <option value="TUE">TUE (Tomas Especiales)</option>
                           <option value="ACU">ACU (Alimentador / Aire)</option>
-                          <option value="FM">FM (Fuerza Motriz)</option>
+                          <option value="FM">FM (Fuerza Motriz / Bombas)</option>
+                          <option value="LP">LP (Línea Principal)</option>
+                          <option value="LS">LS (Línea Seccional)</option>
                           <option value="OTRO">OTRO</option>
                         </select>
                       </div>
 
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TABLERO CABECERA</label>
+                        <select
+                          value={newCircuitPanelId || project.panels[0]?.id || 'pan-principal'}
+                          onChange={(e) => setNewCircuitPanelId(e.target.value)}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                        >
+                          {project.panels.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.type})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Si es Línea Principal o Seccional: selector de tablero receptor alimentado */}
+                    {(newCircuitType === 'LP' || newCircuitType === 'LS') && (
+                      <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                        <label className="text-[10px] font-bold text-amber-900 block">
+                          TABLERO RECEPTOR ALIMENTADO
+                        </label>
+                        <select
+                          value={newCircuitTargetPanelId}
+                          onChange={(e) => setNewCircuitTargetPanelId(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-semibold text-amber-950"
+                        >
+                          <option value="">(Ninguno / Conexión exterior)</option>
+                          {project.panels
+                            .filter((p) => p.id !== (newCircuitPanelId || project.panels[0]?.id))
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                ↳ {p.name} ({p.type})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 block mb-1">SECCIÓN CABLE</label>
                         <select
@@ -1195,9 +1281,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           <option value={10.0}>10.0 mm²</option>
                         </select>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 block mb-1">TERMOMAGNÉTICA</label>
                         <select
@@ -1210,17 +1294,20 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           <option value={20}>20 A</option>
                           <option value={25}>25 A</option>
                           <option value={32}>32 A</option>
+                          <option value={40}>40 A</option>
+                          <option value={50}>50 A</option>
+                          <option value={63}>63 A</option>
                         </select>
                       </div>
+                    </div>
 
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">COLOR EN PLANO</label>
-                        <CircuitColorPicker
-                          selectedColor={newCircuitColor}
-                          onChangeColor={setNewCircuitColor}
-                          size="sm"
-                        />
-                      </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">COLOR EN PLANO</label>
+                      <CircuitColorPicker
+                        selectedColor={newCircuitColor}
+                        onChangeColor={setNewCircuitColor}
+                        size="sm"
+                      />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-1 border-t">
@@ -1235,9 +1322,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         type="button"
                         onClick={() => {
                           if (!newCircuitName.trim()) return;
+                          const assignedPanelId = newCircuitPanelId || project.panels[0]?.id || 'pan-principal';
                           addCircuit({
                             id: `circ-${Date.now()}`,
-                            panelId: project.panels[0]?.id || 'pan-principal',
+                            panelId: assignedPanelId,
+                            targetPanelId:
+                              (newCircuitType === 'LP' || newCircuitType === 'LS') && newCircuitTargetPanelId
+                                ? newCircuitTargetPanelId
+                                : null,
                             name: newCircuitName.trim(),
                             type: newCircuitType,
                             voltageV: 220,
@@ -1256,71 +1348,438 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   </div>
                 )}
 
-                {/* Lista de circuitos existentes */}
+                {/* Lista de Circuitos Agrupados por Tablero */}
+                <div className="space-y-3">
+                  {project.panels.map((panel) => {
+                    const panelCircuits = project.circuits.filter(
+                      (c) => (c.panelId || project.panels[0]?.id) === panel.id
+                    );
+
+                    return (
+                      <div key={panel.id} className="space-y-1.5">
+                        {/* Cabecera del Tablero */}
+                        <div className="flex items-center justify-between px-2 py-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-[11px] font-bold text-slate-800 truncate">
+                              🗄️ {panel.name}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-white text-slate-700 border border-slate-200 uppercase">
+                              {panel.type}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              ({panelCircuits.length})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingPanelId(panel.id);
+                                setPanelName(panel.name);
+                                setPanelType(panel.type);
+                                setPanelIsThreePhase(panel.isThreePhase);
+                                setPanelBreakerA(panel.mainBreakerAmperageA || 25);
+                                setPanelDiffA(panel.mainDifferentialAmperageA || 25);
+                                setIsCreatingPanel(false);
+                                setElectricalSubTab('panels');
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white rounded transition-colors cursor-pointer"
+                              title="Editar propiedades de este tablero"
+                            >
+                              ✎ Tablero
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewCircuitPanelId(panel.id);
+                                setNewCircuitName(`C${project.circuits.length + 1} - `);
+                                setIsCreatingCircuit(true);
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                              title="Agregar circuito a este tablero"
+                            >
+                              ＋ Circuito
+                            </button>
+                          </div>
+                        </div>
+
+                        {panelCircuits.length === 0 && (
+                          <p className="text-[11px] text-slate-400 italic px-2 py-0.5">
+                            Sin circuitos asignados.
+                          </p>
+                        )}
+
+                        {panelCircuits.map((circ) => {
+                          const bocasCount = project.electricalElements.filter((e) => e.circuitId === circ.id).length;
+                          const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
+                          const targetPanel = circ.targetPanelId
+                            ? project.panels.find((p) => p.id === circ.targetPanelId)
+                            : null;
+
+                          return (
+                            <div
+                              key={circ.id}
+                              className="p-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl space-y-1.5 shadow-xs transition-all"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 truncate">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCircuitColorId(editingCircuitColorId === circ.id ? null : circ.id)}
+                                    className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs border border-white hover:scale-110 transition-transform cursor-pointer ring-1 ring-slate-300"
+                                    style={{ backgroundColor: circ.color || '#2563eb' }}
+                                    title="Cambiar color del circuito en plano"
+                                  />
+                                  <span className="font-bold text-xs text-slate-900 truncate">{circ.name}</span>
+                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-700 shrink-0">
+                                    {circ.type}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteCircuit(circ.id)}
+                                  className="text-slate-400 hover:text-red-600 p-1 rounded-lg transition-colors cursor-pointer shrink-0"
+                                  title="Eliminar circuito"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+
+                              {targetPanel && (
+                                <p className="text-[10px] text-amber-700 font-medium">
+                                  ↳ Alimenta a: <strong>{targetPanel.name}</strong>
+                                </p>
+                              )}
+
+                              {editingCircuitColorId === circ.id && (
+                                <div className="p-2 bg-slate-50 border border-slate-200 rounded-xl space-y-1 animate-in fade-in duration-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-500">Color del circuito en plano:</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingCircuitColorId(null)}
+                                      className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  <CircuitColorPicker
+                                    selectedColor={circ.color || '#2563eb'}
+                                    onChangeColor={(color) => {
+                                      updateCircuit(circ.id, { color });
+                                    }}
+                                    size="sm"
+                                  />
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono">
+                                <span>
+                                  TM: <strong>{circ.breakerAmperageA || 16}A</strong> · Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
+                                </span>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                  isOverloaded
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {bocasCount} bocas {isOverloaded && '⚠️'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ─── SUB-PESTAÑA 2: GESTOR DE TABLEROS ELÉCTRICOS EN ESCRITORIO ─── */}
+            {electricalSubTab === 'panels' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                    Tableros Eléctricos ({project.panels.length})
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {onOpenCircuits && (
+                      <button
+                        type="button"
+                        onClick={onOpenCircuits}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="Abrir ventana modal completa de Circuitos y Tableros"
+                      >
+                        ⛶ Extendido
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextIdx = project.panels.length;
+                        setPanelName(`Tablero Seccional ${nextIdx} (TS${nextIdx})`);
+                        setPanelType('seccional');
+                        setPanelIsThreePhase(false);
+                        setPanelBreakerA(25);
+                        setPanelDiffA(25);
+                        setIsCreatingPanel(true);
+                        setEditingPanelId(null);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      <span>Nuevo Tablero</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Formulario Crear / Editar Tablero */}
+                {(isCreatingPanel || editingPanelId) && (
+                  <div className="p-3 bg-white border-2 border-blue-500 rounded-2xl space-y-2.5 shadow-md animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b pb-1.5">
+                      <span className="text-xs font-bold text-blue-950">
+                        {isCreatingPanel ? 'Nuevo Tablero' : 'Modificar Tablero'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingPanel(false);
+                          setEditingPanelId(null);
+                        }}
+                        className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">NOMBRE / DESIGNACIÓN</label>
+                      <input
+                        type="text"
+                        value={panelName}
+                        onChange={(e) => setPanelName(e.target.value)}
+                        placeholder="Ej: Tablero Seccional Planta Alta (TS-PA)"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO</label>
+                        <select
+                          value={panelType}
+                          onChange={(e) => setPanelType(e.target.value as any)}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                        >
+                          <option value="principal">Principal (Cabecera TP)</option>
+                          <option value="seccional">Seccional (Subtablero TS)</option>
+                          <option value="auxiliar">Auxiliar / Bombas</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">RED</label>
+                        <select
+                          value={panelIsThreePhase ? '380' : '220'}
+                          onChange={(e) => setPanelIsThreePhase(e.target.value === '380')}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                        >
+                          <option value="220">Monofásico (220V)</option>
+                          <option value="380">Trifásico (380V)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TERMOMAGNÉTICA</label>
+                        <select
+                          value={panelBreakerA}
+                          onChange={(e) => setPanelBreakerA(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
+                        >
+                          {[16, 20, 25, 32, 40, 50, 63].map((amp) => (
+                            <option key={amp} value={amp}>
+                              {amp} A
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">DISYUNTOR (30mA)</label>
+                        <select
+                          value={panelDiffA}
+                          onChange={(e) => setPanelDiffA(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
+                        >
+                          {[25, 40, 63].map((amp) => (
+                            <option key={amp} value={amp}>
+                              {amp} A
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1 border-t">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingPanel(false);
+                          setEditingPanelId(null);
+                        }}
+                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!panelName.trim()) return;
+                          if (isCreatingPanel) {
+                            addPanel({
+                              id: `pan-${Date.now()}`,
+                              name: panelName.trim(),
+                              type: panelType,
+                              levelId: project.activeLevelId || project.levels[0]?.id || 'level-1',
+                              spaceId: 'espacio-principal',
+                              elementId: '',
+                              isThreePhase: panelIsThreePhase,
+                              mainBreakerAmperageA: panelBreakerA,
+                              mainDifferentialAmperageA: panelDiffA
+                            });
+                          } else if (editingPanelId) {
+                            updatePanel(editingPanelId, {
+                              name: panelName.trim(),
+                              type: panelType,
+                              isThreePhase: panelIsThreePhase,
+                              mainBreakerAmperageA: panelBreakerA,
+                              mainDifferentialAmperageA: panelDiffA
+                            });
+                          }
+                          setIsCreatingPanel(false);
+                          setEditingPanelId(null);
+                          setPanelName('');
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+                      >
+                        {isCreatingPanel ? 'Guardar Tablero' : 'Actualizar'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de Tableros en Escritorio */}
                 <div className="space-y-2">
-                  {project.circuits.map((circ) => {
-                    const bocasCount = project.electricalElements.filter((e) => e.circuitId === circ.id).length;
-                    const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
+                  {project.panels.map((p) => {
+                    const circuitsFed = project.circuits.filter((c) => c.panelId === p.id);
+                    const totalBocas = project.electricalElements.filter((e) =>
+                      circuitsFed.some((c) => c.id === e.circuitId)
+                    ).length;
+                    const feederCircuit = project.circuits.find(
+                      (c) => c.targetPanelId === p.id && (c.type === 'LP' || c.type === 'LS')
+                    );
+                    const feederPanel = feederCircuit
+                      ? project.panels.find((parent) => parent.id === feederCircuit.panelId)
+                      : null;
 
                     return (
                       <div
-                        key={circ.id}
-                        className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl space-y-1.5 shadow-xs transition-all"
+                        key={p.id}
+                        className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl space-y-2 shadow-xs transition-all"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="space-y-0.5 truncate">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-slate-900">
+                                🗄️ {p.name}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                  p.type === 'principal'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : p.type === 'seccional'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}
+                              >
+                                {p.type}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium">
+                                {p.isThreePhase ? '380V' : '220V'}
+                              </span>
+                            </div>
+                            {feederCircuit && feederPanel && (
+                              <p className="text-[10px] text-amber-700">
+                                ↳ Alimentado por {feederCircuit.name} desde {feederPanel.name}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-0.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => setEditingCircuitColorId(editingCircuitColorId === circ.id ? null : circ.id)}
-                              className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white hover:scale-110 transition-transform cursor-pointer ring-1 ring-slate-300"
-                              style={{ backgroundColor: circ.color || '#2563eb' }}
-                              title="Cambiar color del circuito en plano"
-                            />
-                            <span className="font-bold text-xs text-slate-900">{circ.name}</span>
+                              onClick={() => {
+                                setEditingPanelId(p.id);
+                                setPanelName(p.name);
+                                setPanelType(p.type);
+                                setPanelIsThreePhase(p.isThreePhase);
+                                setPanelBreakerA(p.mainBreakerAmperageA || 25);
+                                setPanelDiffA(p.mainDifferentialAmperageA || 25);
+                                setIsCreatingPanel(false);
+                              }}
+                              className="p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
+                              title="Editar propiedades de este tablero"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={project.panels.length <= 1}
+                              onClick={() => {
+                                if (project.panels.length <= 1) {
+                                  alert('No se puede eliminar el único tablero principal del proyecto.');
+                                  return;
+                                }
+                                if (window.confirm(`¿Eliminar tablero "${p.name}"? Sus circuitos se reasignarán al tablero principal.`)) {
+                                  deletePanel(p.id);
+                                  if (editingPanelId === p.id) setEditingPanelId(null);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded cursor-pointer"
+                              title={
+                                project.panels.length <= 1
+                                  ? 'No se puede eliminar el único tablero'
+                                  : 'Eliminar tablero'
+                              }
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => deleteCircuit(circ.id)}
-                            className="text-slate-400 hover:text-red-600 p-1 rounded-lg transition-colors cursor-pointer"
-                            title="Eliminar circuito"
-                          >
-                            <Trash2 size={13} />
-                          </button>
                         </div>
 
-                        {editingCircuitColorId === circ.id && (
-                          <div className="p-2 bg-slate-50 border border-slate-200 rounded-xl space-y-1 animate-in fade-in duration-100">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-500">Color del circuito en plano:</span>
-                              <button
-                                type="button"
-                                onClick={() => setEditingCircuitColorId(null)}
-                                className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                            <CircuitColorPicker
-                              selectedColor={circ.color || '#2563eb'}
-                              onChangeColor={(color) => {
-                                updateCircuit(circ.id, { color });
-                              }}
-                              size="sm"
-                            />
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono">
+                        <div className="flex items-center justify-between text-[10px] text-slate-600 pt-1.5 border-t border-slate-100 font-mono">
                           <span>
-                            Termomagnética: <strong>{circ.breakerAmperageA || 16}A</strong> · Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
+                            TM: <strong>{p.mainBreakerAmperageA || 32}A</strong> · ID: <strong>{p.mainDifferentialAmperageA || 40}A</strong>
                           </span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            isOverloaded
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {bocasCount} bocas
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold">
+                              {circuitsFed.length} circ ({totalBocas} bocas)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewCircuitPanelId(p.id);
+                                setNewCircuitName(`C${project.circuits.length + 1} - `);
+                                setIsCreatingCircuit(true);
+                                setElectricalSubTab('circuits');
+                              }}
+                              className="font-bold text-blue-600 hover:underline cursor-pointer font-sans"
+                            >
+                              ＋ Circ
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
