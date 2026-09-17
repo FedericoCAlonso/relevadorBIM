@@ -7,7 +7,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
 import { getWallAngleDeg } from '../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
@@ -300,24 +300,11 @@ export function useSurveyViewModel() {
     [isAddingDimension, dimensionP1, project.activeLevelId, addDimensionLine, setSelectedEntity]
   );
 
-  const lastElementClickRef = useRef<{ id: string; time: number } | null>(null);
-
   /**
    * Conexión de cañerías entre bocas eléctricas y tableros.
    */
   const handleElectricalElementClick = useCallback(
     (elementId: string) => {
-      const now = Date.now();
-      // Filtrar eventos sintéticos del navegador o rebotes accidentales sobre el mismo elemento
-      if (
-        lastElementClickRef.current &&
-        lastElementClickRef.current.id === elementId &&
-        now - lastElementClickRef.current.time < 450
-      ) {
-        return;
-      }
-      lastElementClickRef.current = { id: elementId, time: now };
-
       if (isConnectingConduit) {
         if (!pendingConduitStartId) {
           setPendingConduitStartId(elementId);

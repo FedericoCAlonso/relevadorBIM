@@ -24,6 +24,7 @@ import {
   getConduitLengthBreakdown,
   calculateConduitOccupancyFactor
 } from '../calculations';
+import { getSymbolById } from '../symbolsLib';
 import type { ElectricalElement } from '../ElectricalModel';
 import type { Level } from '../../architecture/Level';
 
@@ -185,8 +186,7 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
     expect(getDefaultSizeForConduitType('custom_bergman', catalog)).toBe(16);
   });
 
-  it('debe registrar el símbolo de Montante / Pasa-Losa para enlaces remotos y verticales', async () => {
-    const { getSymbolById } = await import('../symbolsLib');
+  it('debe registrar el símbolo de Montante / Pasa-Losa para enlaces remotos y verticales', () => {
     const montante = getSymbolById('sym-planta-montante');
     expect(montante).toBeDefined();
     expect(montante?.label).toContain('Montante');
