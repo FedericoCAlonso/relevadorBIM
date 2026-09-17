@@ -14,7 +14,10 @@ import {
   X,
   Cable,
   Trash2,
-  Plus
+  Plus,
+  GitBranch,
+  Zap,
+  Check
 } from 'lucide-react';
 
 interface ConduitModalProps {
@@ -32,6 +35,8 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
     conduitAvailableSizes,
     circuits,
     catalogs,
+    selectedBranch,
+    propagateConduitPropertiesToBranch,
     setConduitProperties,
     applyConduitPreset,
     addConductorToConduit,
@@ -42,6 +47,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
     addConduitType
   } = useElectricalViewModel();
 
+  const [hasCopiedToBranch, setHasCopiedToBranch] = useState(false);
   const [showNewMaterialForm, setShowNewMaterialForm] = useState(false);
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialSizes, setNewMaterialSizes] = useState('');
@@ -112,6 +118,61 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
         {/* Cuerpo Scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+          {/* Rama Interconectada del Grafo Eléctrico */}
+          {selectedBranch && (
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-xl shadow-xs">
+                    <GitBranch size={16} />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-blue-950 block">
+                      Rama Interconectada:
+                    </span>
+                    <span className="text-[10px] text-blue-800">
+                      {selectedBranch.conduits.length} {selectedBranch.conduits.length === 1 ? 'cañería' : 'cañerías'} · {selectedBranch.elements.length} {selectedBranch.elements.length === 1 ? 'boca' : 'bocas'}
+                      {selectedBranch.primaryBoundaryPanel
+                        ? ` · Tablero: ${selectedBranch.primaryBoundaryPanel.label || 'Extremo'}`
+                        : ''}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('open-branch-edit-modal'));
+                  }}
+                  className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 rounded-xl shadow-2xs transition-colors flex items-center gap-1 shrink-0"
+                >
+                  <span>Configurar Rama...</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  propagateConduitPropertiesToBranch(conduit.id);
+                  setHasCopiedToBranch(true);
+                  setTimeout(() => setHasCopiedToBranch(false), 2000);
+                }}
+                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5"
+              >
+                {hasCopiedToBranch ? (
+                  <>
+                    <Check size={14} />
+                    <span>¡Propiedades aplicadas a los {selectedBranch.conduits.length} tramos!</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap size={14} />
+                    <span>Aplicar tipo de caño y cables a toda la rama</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* 1. Datos técnicos de ocupación del tramo (Sereno y neutral) */}
           {conduitOccupancy && (
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 text-slate-800">

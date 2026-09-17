@@ -15,7 +15,10 @@ import {
   X,
   Trash2,
   ArrowLeftRight,
-  Plus
+  Plus,
+  GitBranch,
+  Zap,
+  Check
 } from 'lucide-react';
 
 interface ElectricalElementModalProps {
@@ -33,6 +36,8 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
     elementWall,
     circuits,
     catalogs,
+    selectedBranch,
+    updateSelectedBranch,
     setElementProperties,
     invertElementWallSide,
     addElementAttribute,
@@ -42,6 +47,8 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
     toggleElementPassingCircuit,
     getFormattedElementLabel
   } = useElectricalViewModel();
+
+  const [appliedBranchCircuit, setAppliedBranchCircuit] = React.useState(false);
 
   if (!isOpen || !element) return null;
 
@@ -77,6 +84,63 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
 
         {/* Cuerpo Scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+          {/* Rama Interconectada del Grafo Eléctrico */}
+          {selectedBranch && (selectedBranch.conduits.length > 0 || selectedBranch.elements.length > 1) && (
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-xl shadow-xs">
+                    <GitBranch size={16} />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-blue-950 block">
+                      Rama Interconectada:
+                    </span>
+                    <span className="text-[10px] text-blue-800">
+                      {selectedBranch.elements.length} {selectedBranch.elements.length === 1 ? 'boca' : 'bocas'} · {selectedBranch.conduits.length} {selectedBranch.conduits.length === 1 ? 'cañería' : 'cañerías'}
+                      {selectedBranch.primaryBoundaryPanel
+                        ? ` · Tablero: ${selectedBranch.primaryBoundaryPanel.label || 'Extremo'}`
+                        : ''}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('open-branch-edit-modal'));
+                  }}
+                  className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 rounded-xl shadow-2xs transition-colors shrink-0"
+                >
+                  Modificar Rama...
+                </button>
+              </div>
+
+              {element.circuitId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateSelectedBranch({ circuitId: element.circuitId });
+                    setAppliedBranchCircuit(true);
+                    setTimeout(() => setAppliedBranchCircuit(false), 2000);
+                  }}
+                  className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5"
+                >
+                  {appliedBranchCircuit ? (
+                    <>
+                      <Check size={14} />
+                      <span>¡Circuito aplicado a toda la rama!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={14} />
+                      <span>Aplicar este circuito a toda la rama</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* 1. Rótulo y Circuito */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>

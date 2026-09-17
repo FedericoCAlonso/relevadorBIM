@@ -23,6 +23,7 @@ import { ProjectSettingsModal } from './views/components/menu/ProjectSettingsMod
 import { ExportModal } from './views/components/menu/ExportModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
+import { BranchEditModal } from './views/components/electrical/BranchEditModal';
 import { CircuitsModal } from './views/components/electrical/CircuitsModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
@@ -153,6 +154,7 @@ export function App() {
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [showElementModal, setShowElementModal] = useState(false);
   const [showConduitModal, setShowConduitModal] = useState(false);
+  const [showBranchModal, setShowBranchModal] = useState(false);
   const [showCircuitsModal, setShowCircuitsModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
@@ -276,17 +278,20 @@ export function App() {
     const handleOpenOpening = () => setShowOpeningModal(true);
     const handleOpenElement = () => setShowElementModal(true);
     const handleOpenConduit = () => setShowConduitModal(true);
+    const handleOpenBranch = () => setShowBranchModal(true);
 
     window.addEventListener('open-tee-modal', handleOpenTee);
     window.addEventListener('open-opening-modal', handleOpenOpening);
     window.addEventListener('open-element-edit-modal', handleOpenElement);
     window.addEventListener('open-conduit-edit-modal', handleOpenConduit);
+    window.addEventListener('open-branch-edit-modal', handleOpenBranch);
 
     return () => {
       window.removeEventListener('open-tee-modal', handleOpenTee);
       window.removeEventListener('open-opening-modal', handleOpenOpening);
       window.removeEventListener('open-element-edit-modal', handleOpenElement);
       window.removeEventListener('open-conduit-edit-modal', handleOpenConduit);
+      window.removeEventListener('open-branch-edit-modal', handleOpenBranch);
     };
   }, []);
 
@@ -915,7 +920,13 @@ export function App() {
         onClose={() => setShowConduitModal(false)}
       />
 
-      {/* 9. Modal de Gestión de Circuitos y Tableros (Móvil y Menú Global) */}
+      {/* 9. Modal de Modificación Integral de Rama Interconectada */}
+      <BranchEditModal
+        isOpen={showBranchModal}
+        onClose={() => setShowBranchModal(false)}
+      />
+
+      {/* 10. Modal de Gestión de Circuitos y Tableros (Móvil y Menú Global) */}
       <CircuitsModal
         isOpen={showCircuitsModal}
         onClose={() => setShowCircuitsModal(false)}

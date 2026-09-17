@@ -27,6 +27,8 @@ import type {
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 import type { DimensionLine } from '../models/architecture/DimensionLine';
+import type { ElectricalBranch, BranchUpdatePayload } from '../models/electrical/electricalBranch';
+import { applyBranchUpdates } from '../models/electrical/electricalBranch';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -113,6 +115,7 @@ interface ProjectStoreState {
   addCircuit: (circuit: Circuit) => void;
   updateCircuit: (circuitId: string, updates: Partial<Circuit>) => void;
   deleteCircuit: (circuitId: string) => void;
+  updateElectricalBranch: (branch: ElectricalBranch, updates: BranchUpdatePayload) => void;
   addPanel: (panel: Panel) => void;
   updatePanel: (panelId: string, updates: Partial<Panel>) => void;
   deletePanel: (panelId: string) => void;
@@ -796,6 +799,31 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         meta: { ...state.project.meta, updatedAt: Date.now() }
       }
     })),
+
+  updateElectricalBranch: (branch, updates) =>
+    set((state) => {
+      const { updatedElements, updatedConduits, updatedPanels, updatedCircuits } =
+        applyBranchUpdates({
+          branch,
+          updates,
+          allElements: state.project.electricalElements,
+          allConduits: state.project.conduits,
+          allPanels: state.project.panels,
+          allCircuits: state.project.circuits,
+          materialCatalog: state.project.materialCatalog
+        });
+
+      return {
+        project: {
+          ...state.project,
+          electricalElements: updatedElements,
+          conduits: updatedConduits,
+          panels: updatedPanels,
+          circuits: updatedCircuits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   addPanel: (panel) =>
     set((state) => ({

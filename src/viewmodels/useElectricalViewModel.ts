@@ -42,6 +42,11 @@ import {
   getConduitLengthBreakdown,
   type ConduitLengthBreakdown
 } from '../models/electrical/calculations';
+import {
+  findConnectedBranch,
+  type ElectricalBranch,
+  type BranchUpdatePayload
+} from '../models/electrical/electricalBranch';
 
 export interface ElectricalSequenceStoreState {
   sequencePrefix: string;
@@ -281,7 +286,8 @@ export function useElectricalViewModel() {
     setLabelDisplayMode,
     addPanel,
     updatePanel,
-    deletePanel
+    deletePanel,
+    updateElectricalBranch
   } = useProjectStore();
 
   const sequenceStore = useElectricalSequenceStore();
@@ -357,6 +363,78 @@ export function useElectricalViewModel() {
     if (!selectedElement?.wallId) return null;
     return project.walls.find((w) => w.id === selectedElement.wallId) || null;
   }, [selectedElement, project.walls]);
+
+  // Rama interconectada activa según la entidad seleccionada en el almacén
+  const selectedBranch = useMemo<ElectricalBranch | null>(() => {
+    if (!selectedEntity) return null;
+    if (selectedEntity.type !== 'electrical_element' && selectedEntity.type !== 'conduit') return null;
+    return findConnectedBranch({
+      startEntity: { type: selectedEntity.type, id: selectedEntity.id },
+      elements: project.electricalElements,
+      conduits: project.conduits,
+      panels: project.panels
+    });
+  }, [selectedEntity, project.electricalElements, project.conduits, project.panels]);
+
+  // ─── ACCIONES / COMANDOS DE RAMAS INTERCONECTADAS ───
+
+  const getBranchForEntity = useCallback(
+    (entity: { type: 'electrical_element' | 'conduit'; id: string }): ElectricalBranch | null => {
+      return findConnectedBranch({
+        startEntity: entity,
+        elements: project.electricalElements,
+        conduits: project.conduits,
+        panels: project.panels
+      });
+    },
+    [project.electricalElements, project.conduits, project.panels]
+  );
+
+  const updateSelectedBranch = useCallback(
+    (updates: BranchUpdatePayload) => {
+      if (!selectedBranch) return;
+      updateElectricalBranch(selectedBranch, updates);
+    },
+    [selectedBranch, updateElectricalBranch]
+  );
+
+  const updateBranchForEntity = useCallback(
+    (entity: { type: 'electrical_element' | 'conduit'; id: string }, updates: BranchUpdatePayload) => {
+      const branch = findConnectedBranch({
+        startEntity: entity,
+        elements: project.electricalElements,
+        conduits: project.conduits,
+        panels: project.panels
+      });
+      if (!branch) return;
+      updateElectricalBranch(branch, updates);
+    },
+    [project.electricalElements, project.conduits, project.panels, updateElectricalBranch]
+  );
+
+  const propagateConduitPropertiesToBranch = useCallback(
+    (conduitId: string) => {
+      const conduit = project.conduits.find((c) => c.id === conduitId);
+      if (!conduit) return;
+      const branch = findConnectedBranch({
+        startEntity: { type: 'conduit', id: conduitId },
+        elements: project.electricalElements,
+        conduits: project.conduits,
+        panels: project.panels
+      });
+      if (!branch) return;
+
+      updateElectricalBranch(branch, {
+        circuitId: conduit.circuitId,
+        conduitMaterial: conduit.material,
+        conduitDiameterMM: conduit.diameterMM,
+        cableStandard: conduit.defaultCableStandard,
+        conductors: conduit.conductors.map((c) => ({ ...c })),
+        routingPlane: conduit.routingPlane
+      });
+    },
+    [project.conduits, project.electricalElements, project.panels, updateElectricalBranch]
+  );
 
   // ─── ACCIONES / COMANDOS DE BOCAS ELÉCTRICAS ───
 
@@ -665,6 +743,13 @@ export function useElectricalViewModel() {
     labelDisplayMode,
     setLabelDisplayMode,
     getFormattedElementLabel,
+
+    // Rama del Grafo Eléctrico Conexa
+    selectedBranch,
+    getBranchForEntity,
+    updateSelectedBranch,
+    updateBranchForEntity,
+    propagateConduitPropertiesToBranch,
 
     // Secuencia de inserción continua y ruteo
     sequence: {
