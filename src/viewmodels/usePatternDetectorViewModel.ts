@@ -13,10 +13,12 @@ import {
   createPatternExemplar,
   calculateImageMoments,
   calculateEigenSignature,
+  extractNormalizedPatch,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
   type DetectedPatternMatch,
-  type PatternExemplar
+  type PatternExemplar,
+  type NormalizedPatch
 } from '../models/underlay/PatternDetector';
 import {
   computeGramSvdConsensus,
@@ -25,6 +27,13 @@ import {
 } from '../models/underlay/GramSvd';
 import { alignPatchEccEuclidean } from '../models/underlay/EccAlignment';
 import { getUnderlayBinaryMask, getCachedUnderlayBinaryMask } from '../services/imageProcessingService';
+
+export interface PlacingTemplate {
+  symbolId: string;
+  patch: NormalizedPatch;
+  boxSizePx: number;
+  worldSizeM: number;
+}
 
 export function usePatternDetectorViewModel() {
   const { project, addElectricalElement, setSelectedEntity } = useProjectStore();
@@ -48,6 +57,12 @@ export function usePatternDetectorViewModel() {
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stencilRotationDeg, setStencilRotationDeg] = useState<0 | 90 | 180 | 270>(0);
+
+  // Control global de Snap Magnético (ON / OFF)
+  const [isSnapEnabled, setIsSnapEnabled] = useState<boolean>(true);
+
+  // Plantilla de muestreo asistido al insertar el primer símbolo (Smart Assisted Placement)
+  const [activePlacingTemplate, setActivePlacingTemplate] = useState<PlacingTemplate | null>(null);
 
   // Estados para la fase de encuadre/ajuste interactivo fino de la Muestra #1
   const [isAdjustingSampleBox, setIsAdjustingSampleBox] = useState(false);
@@ -308,7 +323,7 @@ export function usePatternDetectorViewModel() {
           positiveExemplars[0].patch,
           stencilRotationDeg,
           Math.max(16, Math.round(PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS / scale)),
-          0.30
+          0.40
         );
         const coarseCenter = templateSnap.isSnapped ? templateSnap.snappedCenterPx : centerPx;
 
@@ -380,6 +395,7 @@ export function usePatternDetectorViewModel() {
     setDismissedMatchIds(new Set());
     setIsAddingSample(false);
     setStencilRotationDeg(0);
+    setActivePlacingTemplate(null);
   }, []);
 
   /**
@@ -560,6 +576,148 @@ export function usePatternDetectorViewModel() {
   );
 
   /**
+   * Alterna el estado del snap magnético (ON / OFF)
+   */
+  const toggleSnap = useCallback(() => {
+    setIsSnapEnabled((prev) => !prev);
+  }, []);
+
+  /**
+   * Resetea la plantilla de emplazamiento asistido
+   */
+  const resetPlacingTemplate = useCallback(() => {
+    setActivePlacingTemplate(null);
+  }, []);
+
+  /**
+   * Captura automáticamente una plantilla normalizada cuadrada alrededor del primer
+   * punto de emplazamiento de una boca eléctrica (Smart Assisted Placement).
+   */
+  const capturePlacingTemplate = useCallback(
+    async (symbolId: string, worldPos: { x: number; y: number }, sampleSizeM: number = 0.45) => {
+      if (!activeUnderlay) return;
+      try {
+        const { width, mask } = await getUnderlayBinaryMask(
+          activeUnderlay.id,
+          activeUnderlay.imageUrl
+        );
+        const scale = activeUnderlay.scaleMetersPerPx;
+        const originX = activeUnderlay.originWorldX;
+        const originY = activeUnderlay.originWorldY;
+
+        const sizeMeters = stencilSizeWorld?.width || sampleSizeM;
+        const boxSizePx = Math.max(16, Math.min(64, Math.round(sizeMeters / scale)));
+
+        const centerPx = {
+          x: Math.round((worldPos.x - originX) / scale),
+          y: Math.round((worldPos.y - originY) / scale)
+        };
+
+        const roughBox: BoundingBoxPx = {
+          x: Math.max(0, Math.round(centerPx.x - boxSizePx / 2)),
+          y: Math.max(0, Math.round(centerPx.y - boxSizePx / 2)),
+          width: boxSizePx,
+          height: boxSizePx
+        };
+
+        const moments = calculateImageMoments(mask, width, roughBox);
+        let finalBox = roughBox;
+        if (moments && moments.m00 >= 4) {
+          const cx = Math.round(moments.m10 / moments.m00);
+          const cy = Math.round(moments.m01 / moments.m00);
+          finalBox = {
+            x: Math.max(0, Math.round(cx - boxSizePx / 2)),
+            y: Math.max(0, Math.round(cy - boxSizePx / 2)),
+            width: boxSizePx,
+            height: boxSizePx
+          };
+        }
+
+        const patch = extractNormalizedPatch(mask, width, finalBox);
+        setActivePlacingTemplate({
+          symbolId,
+          patch,
+          boxSizePx,
+          worldSizeM: sizeMeters
+        });
+      } catch (err) {
+        console.warn('No se pudo auto-muestrear plantilla de inserción asistida:', err);
+      }
+    },
+    [activeUnderlay, stencilSizeWorld]
+  );
+
+  /**
+   * Calcula el acople magnético asistido en tiempo real guiado por la plantilla
+   * del primer símbolo emplazado (con soporte multi-rotación a 0°, 90°, 180°, 270°).
+   */
+  const getPlacingSnapPoint = useCallback(
+    (
+      worldPos: { x: number; y: number },
+      symbolId?: string,
+      isShiftBypassed: boolean = false
+    ): {
+      snappedPos: { x: number; y: number };
+      isSnapped: boolean;
+      rotationDeg: 0 | 90 | 180 | 270;
+      score: number;
+    } => {
+      if (!isSnapEnabled || isShiftBypassed || !activePlacingTemplate || !activeUnderlay) {
+        return { snappedPos: worldPos, isSnapped: false, rotationDeg: 0, score: 0 };
+      }
+
+      if (symbolId && symbolId !== activePlacingTemplate.symbolId) {
+        return { snappedPos: worldPos, isSnapped: false, rotationDeg: 0, score: 0 };
+      }
+
+      const cached = getCachedUnderlayBinaryMask(activeUnderlay.id);
+      if (!cached) {
+        return { snappedPos: worldPos, isSnapped: false, rotationDeg: 0, score: 0 };
+      }
+
+      const scale = activeUnderlay.scaleMetersPerPx;
+      const originX = activeUnderlay.originWorldX;
+      const originY = activeUnderlay.originWorldY;
+
+      const centerPx = {
+        x: Math.round((worldPos.x - originX) / scale),
+        y: Math.round((worldPos.y - originY) / scale)
+      };
+
+      const boxSizePx = activePlacingTemplate.boxSizePx;
+      const searchRadiusPx = Math.max(12, Math.min(32, Math.round(PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS / scale)));
+
+      const snap = findTemplateCorrelationSnap(
+        cached.mask,
+        cached.width,
+        cached.height,
+        centerPx,
+        { width: boxSizePx, height: boxSizePx },
+        activePlacingTemplate.patch,
+        0,
+        searchRadiusPx,
+        0.45,
+        true
+      );
+
+      if (snap.isSnapped) {
+        return {
+          snappedPos: {
+            x: Number((originX + snap.snappedCenterPx.x * scale).toFixed(3)),
+            y: Number((originY + snap.snappedCenterPx.y * scale).toFixed(3))
+          },
+          isSnapped: true,
+          rotationDeg: snap.snappedRotationDeg,
+          score: snap.score
+        };
+      }
+
+      return { snappedPos: worldPos, isSnapped: false, rotationDeg: 0, score: snap.score };
+    },
+    [isSnapEnabled, activePlacingTemplate, activeUnderlay]
+  );
+
+  /**
    * Calcula el punto de acople magnético para el esténcil rígido en tiempo real.
    * Prioridad 1: Candidatos detectados cercanos.
    * Prioridad 2: Centroide de masa de tinta negra de la lámina en memoria caché.
@@ -569,6 +727,10 @@ export function usePatternDetectorViewModel() {
       worldPos: { x: number; y: number },
       toleranceMeters: number = PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS
     ): { snappedPos: { x: number; y: number }; isSnapped: boolean } => {
+      if (!isSnapEnabled) {
+        return { snappedPos: worldPos, isSnapped: false };
+      }
+
       // 1. Primero intentar snap a cualquier candidato detectado
       const match = getClosestSnapMatch(worldPos.x, worldPos.y, toleranceMeters);
       if (match) {
@@ -598,7 +760,7 @@ export function usePatternDetectorViewModel() {
             positiveExemplars[0].patch,
             stencilRotationDeg,
             Math.max(16, Math.round(toleranceMeters / scale)),
-            0.35
+            0.45
           );
 
           if (snap.isSnapped) {
@@ -615,7 +777,7 @@ export function usePatternDetectorViewModel() {
 
       return { snappedPos: worldPos, isSnapped: false };
     },
-    [getClosestSnapMatch, activeUnderlay, positiveExemplars, stencilRotationDeg]
+    [isSnapEnabled, getClosestSnapMatch, activeUnderlay, positiveExemplars, stencilRotationDeg]
   );
 
   return {
@@ -653,6 +815,14 @@ export function usePatternDetectorViewModel() {
     cycleStencilRotation,
     stencilSizeWorld,
     svdConsensus,
-    executeStencilPlacement
+    executeStencilPlacement,
+    // Control de Snap y Muestreo Asistido
+    isSnapEnabled,
+    setIsSnapEnabled,
+    toggleSnap,
+    activePlacingTemplate,
+    capturePlacingTemplate,
+    resetPlacingTemplate,
+    getPlacingSnapPoint
   };
 }

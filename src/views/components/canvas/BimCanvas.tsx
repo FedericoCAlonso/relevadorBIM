@@ -7,7 +7,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall } from '../../../models/architecture/Wall';
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
@@ -71,9 +71,21 @@ interface BimCanvasProps {
   onSpaceClick?: (spaceId: string) => void;
   onElectricalElementClick?: (elementId: string) => void;
   onElectricalElementDoubleClick?: (elementId: string) => void;
-  onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap) => void;
+  onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap, rotationDeg?: number) => void;
   isArchitectureLocked?: boolean;
   onToggleLockArchitecture?: () => void;
+  isSnapEnabled?: boolean;
+  onToggleSnap?: () => void;
+  getPlacingSnapPoint?: (
+    worldPos: { x: number; y: number },
+    symbolId?: string,
+    isShiftBypassed?: boolean
+  ) => {
+    snappedPos: { x: number; y: number };
+    isSnapped: boolean;
+    rotationDeg: 0 | 90 | 180 | 270;
+    score: number;
+  };
 }
 
 export const BimCanvas: React.FC<BimCanvasProps> = ({
@@ -120,7 +132,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onElectricalElementDoubleClick,
   onCanvasClick,
   isArchitectureLocked = false,
-  onToggleLockArchitecture
+  onToggleLockArchitecture,
+  isSnapEnabled = true,
+  onToggleSnap,
+  getPlacingSnapPoint
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -223,8 +238,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
   };
 
+  // Limpiar punto inicial de muestreo al alternar el modo de muestreo
+  useEffect(() => {
+    setSamplingStartWorldPos(null);
+  }, [isSamplingPattern]);
+
   // Cálculo de coordenadas de cursor y acople magnético (snap)
-  const updateHoverCoordinates = (clientX: number, clientY: number) => {
+  const updateHoverCoordinates = (clientX: number, clientY: number, isShiftPressed: boolean = false) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     let wx = (clientX - rect.left - pan.x) / zoom;
@@ -235,8 +255,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     let snappedCenter = false;
     let snappedPattern = false;
 
-    if (selectedSymbolId) {
-      // 0. Prioridad Máxima: Snap magnético al centroide de un símbolo detectado en el plano de fondo
+    // El snap magnético se activa únicamente si está habilitado globalmente y no se mantiene Shift presionado
+    const snapAllowed = isSnapEnabled && !isShiftPressed;
+
+    if (selectedSymbolId && snapAllowed) {
+      // 0. Prioridad 1: Snap magnético al centroide de un símbolo detectado previamente
       if (detectedPatternMatches && detectedPatternMatches.length > 0) {
         let bestMatch: DetectedPatternMatch | null = null;
         let minD = 0.50; // 50 cm de tolerancia de atracción magnética
@@ -251,6 +274,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           wx = bestMatch.worldPos.x;
           wy = bestMatch.worldPos.y;
           rot = bestMatch.orientationDeg;
+          snappedPattern = true;
+        }
+      }
+
+      // 0.1 Prioridad 1.5: Snap guiado por auto-muestreo asistido del primer símbolo emplazado (Smart Assisted Placement)
+      if (!snappedPattern && getPlacingSnapPoint) {
+        const placingSnap = getPlacingSnapPoint({ x: wx, y: wy }, selectedSymbolId, !snapAllowed);
+        if (placingSnap.isSnapped) {
+          wx = placingSnap.snappedPos.x;
+          wy = placingSnap.snappedPos.y;
+          rot = placingSnap.rotationDeg;
           snappedPattern = true;
         }
       }
@@ -292,7 +326,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
 
     // 3. Snap magnético para el esténcil rígido al núcleo de tinta o candidatos detectados
-    if (isSamplingPattern && positiveExemplarsCount > 0 && getStencilSnapPoint) {
+    if (isSamplingPattern && positiveExemplarsCount > 0 && getStencilSnapPoint && snapAllowed) {
       const stencilSnap = getStencilSnapPoint({ x: wx, y: wy });
       if (stencilSnap.isSnapped) {
         wx = stencilSnap.snappedPos.x;
@@ -399,7 +433,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
     }
 
-    updateHoverCoordinates(e.clientX, e.clientY);
+    updateHoverCoordinates(e.clientX, e.clientY, e.shiftKey);
   };
 
   const handleMouseUp = () => {
@@ -566,52 +600,48 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
     if (!touchStateRef.current) return;
 
-    if (e.touches.length === 1 && touchStateRef.current.type === 'single') {
+    if (touchStateRef.current.type === 'single' && e.touches.length === 1) {
       const t = e.touches[0];
       const dx = t.clientX - touchStateRef.current.startX;
       const dy = t.clientY - touchStateRef.current.startY;
-      if (Math.hypot(dx, dy) > 6) {
+      if (Math.hypot(dx, dy) > 8) {
         touchStateRef.current.moved = true;
       }
-      if (touchStateRef.current.moved && !isSamplingPattern) {
-        setPan({
-          x: touchStateRef.current.panX + dx,
-          y: touchStateRef.current.panY + dy
-        });
+
+      if (isSamplingPattern && containerRef.current) {
+        updateHoverCoordinates(t.clientX, t.clientY);
+        return;
       }
+
+      setPan({
+        x: touchStateRef.current.panX + dx,
+        y: touchStateRef.current.panY + dy
+      });
       updateHoverCoordinates(t.clientX, t.clientY);
-    } else if (
-      e.touches.length === 2 &&
-      touchStateRef.current.type === 'pinch' &&
-      touchStateRef.current.pinchDist &&
-      touchStateRef.current.startZoom
-    ) {
+    } else if (touchStateRef.current.type === 'pinch' && e.touches.length === 2) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-      const scale = newDist / touchStateRef.current.pinchDist;
-      const newZoom = Math.min(Math.max(touchStateRef.current.startZoom * scale, 15), 300);
+      const scaleFactor = newDist / (touchStateRef.current.pinchDist || 1);
+      const newZoom = Math.min(300, Math.max(15, (touchStateRef.current.startZoom || 60) * scaleFactor));
 
-      if (containerRef.current) {
+      if (containerRef.current && touchStateRef.current.midX !== undefined && touchStateRef.current.midY !== undefined) {
         const rect = containerRef.current.getBoundingClientRect();
-        const mx = (touchStateRef.current.midX || 0) - rect.left;
-        const my = (touchStateRef.current.midY || 0) - rect.top;
-        setPan({
-          x: mx - (mx - touchStateRef.current.panX) * (newZoom / touchStateRef.current.startZoom),
-          y: my - (my - touchStateRef.current.panY) * (newZoom / touchStateRef.current.startZoom)
-        });
+        const mouseCanvasX = touchStateRef.current.midX - rect.left;
+        const mouseCanvasY = touchStateRef.current.midY - rect.top;
+        const worldX = (mouseCanvasX - touchStateRef.current.panX) / (touchStateRef.current.startZoom || 60);
+        const worldY = (mouseCanvasY - touchStateRef.current.panY) / (touchStateRef.current.startZoom || 60);
+
         setZoom(newZoom);
+        setPan({
+          x: mouseCanvasX - worldX * newZoom,
+          y: mouseCanvasY - worldY * newZoom
+        });
       }
     }
   };
 
   const handleTouchEnd = () => {
-    if (activeAdjustHandle) {
-      setActiveAdjustHandle(null);
-      adjustDragStartRef.current = null;
-      return;
-    }
-
     if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
@@ -657,7 +687,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
 
     if (!onCanvasClick) return;
-    let snapInfo: WallPlacementSnap | null = null;
 
     if (!selectedSymbolId) {
       // Prioridad táctil: chequear si el click/tap cayó cerca de una boca eléctrica o tablero (tolerancia de 48px)
@@ -680,42 +709,23 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         // En modo conexión de conductos, no activar inserción de muros ni clics residuales en fondo vacío
         return;
       }
+
+      onCanvasClick(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
     }
 
-    if (selectedSymbolId) {
-      const isCeilingSymbol = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
+    // Emplazamiento continuo de símbolo eléctrico (Multi-stamp asistido)
+    const targetWx = hoverWorldPos ? hoverWorldPos.x : wx;
+    const targetWy = hoverWorldPos ? hoverWorldPos.y : wy;
+    const targetSnap = activeSnapInfo;
+    const targetRot = hoverRotationDeg;
 
-      if (!isCeilingSymbol) {
-        const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
-        const wallSnap = calculateWallSnap({ x: wx, y: wy }, wallsInLevel, verticesMap, 0.45);
-        if (wallSnap) {
-          wx = wallSnap.snappedPoint.x;
-          wy = wallSnap.snappedPoint.y;
-          snapInfo = {
-            wallId: wallSnap.wall.id,
-            wallOffset: wallSnap.distanceAlongWall,
-            rotationDeg: wallSnap.rotationDeg,
-            side: wallSnap.side
-          };
-        }
-      }
-
-      if (!snapInfo) {
-        for (const space of project.spaces.filter((s) => s.levelId === project.activeLevelId)) {
-          const poly = resolveSpacePolygon(space, verticesMap);
-          if (poly.length >= 3) {
-            const centroid = calculatePolygonCentroid(poly);
-            if (Math.hypot(centroid.x - wx, centroid.y - wy) < 0.60) {
-              wx = centroid.x;
-              wy = centroid.y;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    onCanvasClick(Number(wx.toFixed(3)), Number(wy.toFixed(3)), snapInfo || undefined);
+    onCanvasClick(
+      Number(targetWx.toFixed(3)),
+      Number(targetWy.toFixed(3)),
+      targetSnap || undefined,
+      targetRot
+    );
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -1691,20 +1701,44 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 strokeDasharray="6 4"
                 strokeOpacity={0.6}
               />
-              {/* Retícula central sólida de mira CAD (40px) */}
+              {/* Retícula central sólida de mira CAD extendida (90px) con anillo de precisión */}
+              <circle
+                cx={hoverWorldPos.x * zoom}
+                cy={hoverWorldPos.y * zoom}
+                r={6}
+                fill="none"
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={1.5}
+              />
               <line
-                x1={hoverWorldPos.x * zoom - 20}
+                x1={hoverWorldPos.x * zoom - 45}
                 y1={hoverWorldPos.y * zoom}
-                x2={hoverWorldPos.x * zoom + 20}
+                x2={hoverWorldPos.x * zoom - 8}
+                y2={hoverWorldPos.y * zoom}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={1.5}
+              />
+              <line
+                x1={hoverWorldPos.x * zoom + 8}
+                y1={hoverWorldPos.y * zoom}
+                x2={hoverWorldPos.x * zoom + 45}
                 y2={hoverWorldPos.y * zoom}
                 stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
                 strokeWidth={1.5}
               />
               <line
                 x1={hoverWorldPos.x * zoom}
-                y1={hoverWorldPos.y * zoom - 20}
+                y1={hoverWorldPos.y * zoom - 45}
                 x2={hoverWorldPos.x * zoom}
-                y2={hoverWorldPos.y * zoom + 20}
+                y2={hoverWorldPos.y * zoom - 8}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={1.5}
+              />
+              <line
+                x1={hoverWorldPos.x * zoom}
+                y1={hoverWorldPos.y * zoom + 8}
+                x2={hoverWorldPos.x * zoom}
+                y2={hoverWorldPos.y * zoom + 45}
                 stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
                 strokeWidth={1.5}
               />
@@ -2254,7 +2288,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       )}
 
       {/* Botonera flotante CAD (Zoom In / Out / Recentrar / Cotas / Lámina de Fondo) */}
-      <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-10">
+      <div
+        className="absolute top-4 right-4 flex flex-col gap-1.5 z-10"
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={() => setZoom((z) => Math.min(300, Number((z * 1.25).toFixed(1))))}
@@ -2303,6 +2341,26 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           <DraftingCompass size={16} />
         </button>
+
+        {/* Conmutador de Snap Magnético ON / OFF (Tecla S) */}
+        {onToggleSnap && (
+          <button
+            type="button"
+            onClick={onToggleSnap}
+            className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+              isSnapEnabled
+                ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200'
+                : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-600'
+            }`}
+            title={
+              isSnapEnabled
+                ? 'Snap magnético activado (tecla S para desactivar, o mantener Shift)'
+                : 'Snap magnético desactivado (tecla S para activar)'
+            }
+          >
+            <span className="text-sm select-none">🧲</span>
+          </button>
+        )}
 
         {onToggleLockArchitecture && (
           <button
@@ -2361,13 +2419,23 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </button>
             <button
               type="button"
-              onClick={onStartPatternSampling}
+              onClick={() => {
+                if (isSamplingPattern) {
+                  onCancelSamplingPattern?.();
+                } else {
+                  onStartPatternSampling?.();
+                }
+              }}
               className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
                 isSamplingPattern
-                  ? 'bg-cyan-600 text-white border-cyan-700'
+                  ? 'bg-cyan-600 text-white border-cyan-700 shadow-cyan-200 ring-2 ring-cyan-400'
                   : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
               }`}
-              title="Detectar símbolos similares en plano con autovectores (selección con recuadro)"
+              title={
+                isSamplingPattern
+                  ? 'Desactivar detección de patrones'
+                  : 'Detectar símbolos similares en plano con autovectores (selección con recuadro)'
+              }
             >
               <ScanSearch size={16} />
             </button>
@@ -2386,7 +2454,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       <div className="hidden lg:flex absolute bottom-4 left-4 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl shadow-md border border-slate-200 text-xs font-mono text-slate-700 pointer-events-none items-center gap-2">
         {selectedSymbolId ? (
           <span className="text-blue-700 font-bold">
-            📍 Modo Eléctrico activo: Hacé clic dentro de cualquier habitación o muro para emplazar la boca {isSnappedToCenter ? '(Centro magnético)' : ''}
+            📍 Multi-inserción: Clic para emplazar · Esc para salir · S: Snap {isSnapEnabled ? 'ON' : 'OFF'} (Shift para liberar)
           </span>
         ) : project.vertices.length === 0 ? (
           'Tocá cualquier parte del lienzo para plantar el punto de inicio'

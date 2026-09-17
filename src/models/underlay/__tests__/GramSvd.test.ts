@@ -335,5 +335,45 @@ describe('GramSvd - Descomposición Espectral y Consenso Morfológico', () => {
       expect(wallSnapResult.snappedCenterPx.x).toBe(14);
       expect(wallSnapResult.snappedCenterPx.y).toBe(40);
     });
+
+    it('debe detectar y acoplar símbolos rotados a 90° con allowMultiRotation activo', () => {
+      const width = 80;
+      const height = 80;
+      const binary = new Uint8Array(width * height);
+
+      // Símbolo asimétrico vertical (ej. una "L"): en (20, 20)
+      // Segmento vertical largo y base corta horizontal hacia la derecha
+      for (let y = 15; y <= 25; y++) binary[y * width + 20] = 1;
+      for (let x = 20; x <= 24; x++) binary[25 * width + x] = 1;
+
+      // Extraer plantilla upright (0°)
+      const templateBox = { x: 14, y: 14, width: 14, height: 14 };
+      const refPatch = extractNormalizedPatch(binary, width, templateBox, 16);
+
+      // En (50, 50), dibujar el mismo símbolo rotado 90° horario:
+      // (dx, dy) -> (-dy, dx). El segmento vertical largo pasa a horizontal inferior
+      for (let x = 45; x <= 55; x++) binary[50 * width + x] = 1;
+      for (let y = 50; y <= 54; y++) binary[y * width + 45] = 1;
+
+      // Buscar snap con allowMultiRotation = true
+      const nearPos = { x: 53, y: 48 };
+      const result = findTemplateCorrelationSnap(
+        binary,
+        width,
+        height,
+        nearPos,
+        { width: 14, height: 14 },
+        refPatch,
+        0,
+        12,
+        0.40,
+        true
+      );
+
+      expect(result.isSnapped).toBe(true);
+      expect(Math.abs(result.snappedCenterPx.x - 50)).toBeLessThanOrEqual(2);
+      expect(Math.abs(result.snappedCenterPx.y - 50)).toBeLessThanOrEqual(2);
+      expect(result.snappedRotationDeg).toBe(90);
+    });
   });
 });

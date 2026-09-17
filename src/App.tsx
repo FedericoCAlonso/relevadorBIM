@@ -115,7 +115,13 @@ export function App() {
     stencilSizeWorld,
     svdConsensus,
     executeStencilPlacement,
-    getStencilSnapPoint
+    getStencilSnapPoint,
+    isSnapEnabled,
+    toggleSnap,
+    activePlacingTemplate,
+    capturePlacingTemplate,
+    resetPlacingTemplate,
+    getPlacingSnapPoint
   } = usePatternDetectorViewModel();
 
   const [isArchitectureLocked, setIsArchitectureLocked] = useState(false);
@@ -150,6 +156,13 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         undoLastWall();
+        return;
+      }
+
+      // Atajo para alternar el snap magnético con tecla S
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        toggleSnap();
         return;
       }
 
@@ -192,8 +205,14 @@ export function App() {
           clearPatternMatches();
           return;
         }
+        if (selectedSymbolId) {
+          setSelectedSymbolId(null);
+          resetPlacingTemplate();
+          return;
+        }
         setSelectedEntity(null);
         setSelectedSymbolId(null);
+        resetPlacingTemplate();
         return;
       }
 
@@ -251,7 +270,12 @@ export function App() {
   }, []);
 
   // Manejo de clic en el lienzo (colocación de punto inicial o bocas eléctricas con snap a pared)
-  const handleCanvasClick = (worldX: number, worldY: number, snapInfo?: WallPlacementSnap) => {
+  const handleCanvasClick = (
+    worldX: number,
+    worldY: number,
+    snapInfo?: WallPlacementSnap,
+    rotationDeg: number = 0
+  ) => {
     if (selectedSymbolId) {
       const symDef = getSymbolById(selectedSymbolId);
       const isCeiling = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
@@ -299,6 +323,8 @@ export function App() {
       }
 
       const newElementId = `el-${Date.now()}`;
+      const elementRotation = snapInfo?.rotationDeg ?? rotationDeg ?? 0;
+
       addElectricalElement({
         id: newElementId,
         symbolId: selectedSymbolId,
@@ -316,7 +342,7 @@ export function App() {
           : 1.20,
         wallId: snapInfo?.wallId || null,
         wallOffset: snapInfo?.wallOffset,
-        rotation: snapInfo?.rotationDeg ?? 0,
+        rotation: elementRotation,
         side: snapInfo?.side,
         circuitId: defaultCircuitId,
         status: 'proyectado',
@@ -331,8 +357,13 @@ export function App() {
         attributes: []
       });
 
-      setSelectedEntity({ type: 'electrical_element', id: newElementId });
-      setSelectedSymbolId(null);
+      // Auto-muestreo inteligente para emplazamiento asistido subsiguiente (Smart Assisted Placement)
+      const underlaySheet = project.underlaySheets?.[project.activeLevelId];
+      if (underlaySheet && (!activePlacingTemplate || activePlacingTemplate.symbolId !== selectedSymbolId)) {
+        capturePlacingTemplate(selectedSymbolId, { x: worldX, y: worldY });
+      }
+
+      // Multi-stamp continuo: Mantenemos selectedSymbolId para permitir múltiples inserciones
       return;
     }
 
@@ -363,7 +394,10 @@ export function App() {
             onChangeDistance={setCurrentDistanceInput}
             onCommitWall={() => commitWall()}
             selectedSymbolId={selectedSymbolId}
-            onSelectSymbol={setSelectedSymbolId}
+            onSelectSymbol={(symId) => {
+              setSelectedSymbolId(symId);
+              resetPlacingTemplate();
+            }}
             isConnectingConduit={isConnectingConduit}
             onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
           />
@@ -437,6 +471,9 @@ export function App() {
             onCanvasClick={handleCanvasClick}
             isArchitectureLocked={isArchitectureLocked}
             onToggleLockArchitecture={() => setIsArchitectureLocked((prev) => !prev)}
+            isSnapEnabled={isSnapEnabled}
+            onToggleSnap={toggleSnap}
+            getPlacingSnapPoint={getPlacingSnapPoint}
           />
 
           {/* Indicador de muestreo de símbolo activo */}
@@ -604,7 +641,10 @@ export function App() {
           onChangeDistance={setCurrentDistanceInput}
           onCommitWall={() => commitWall()}
           selectedSymbolId={selectedSymbolId}
-          onSelectSymbol={setSelectedSymbolId}
+          onSelectSymbol={(symId) => {
+            setSelectedSymbolId(symId);
+            resetPlacingTemplate();
+          }}
           isConnectingConduit={isConnectingConduit}
           onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
           onOpenCircuits={() => setShowCircuitsModal(true)}

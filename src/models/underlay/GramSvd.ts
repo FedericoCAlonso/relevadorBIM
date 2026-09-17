@@ -494,19 +494,25 @@ export function findTemplateCorrelationSnap(
   referencePatch: NormalizedPatch,
   rotationDeg: 0 | 90 | 180 | 270 = 0,
   searchRadiusPx: number = 16,
-  minScoreThreshold: number = 0.35
+  minScoreThreshold: number = 0.45,
+  allowMultiRotation: boolean = false
 ): {
   snappedCenterPx: { x: number; y: number };
   isSnapped: boolean;
   score: number;
+  snappedRotationDeg: 0 | 90 | 180 | 270;
 } {
-  const unrotateDeg = ((360 - rotationDeg) % 360) as 0 | 90 | 180 | 270;
+  const candidateAngles: Array<0 | 90 | 180 | 270> = allowMultiRotation
+    ? [0, 90, 180, 270]
+    : [rotationDeg];
+
   const radius = Math.max(4, Math.round(searchRadiusPx));
   const step = radius > 12 ? 2 : 1;
 
   let bestScore = -1;
   let bestCx = centerPx.x;
   let bestCy = centerPx.y;
+  let bestRot: 0 | 90 | 180 | 270 = rotationDeg;
 
   // 1. Barrido de correlación en la ventana de búsqueda
   for (let dy = -radius; dy <= radius; dy += step) {
@@ -529,13 +535,18 @@ export function findTemplateCorrelationSnap(
       };
 
       const rawPatch = extractNormalizedPatch(binaryMask, imgWidth, testBox, referencePatch.size);
-      const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
-      const score = calculateQuickZNCC(alignedPatch, referencePatch);
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestCx = testCx;
-        bestCy = testCy;
+      for (const rot of candidateAngles) {
+        const unrotateDeg = ((360 - rot) % 360) as 0 | 90 | 180 | 270;
+        const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+        const score = calculateQuickZNCC(alignedPatch, referencePatch);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestCx = testCx;
+          bestCy = testCy;
+          bestRot = rot;
+        }
       }
     }
   }
@@ -564,13 +575,18 @@ export function findTemplateCorrelationSnap(
         };
 
         const rawPatch = extractNormalizedPatch(binaryMask, imgWidth, testBox, referencePatch.size);
-        const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
-        const score = calculateQuickZNCC(alignedPatch, referencePatch);
 
-        if (score > bestScore) {
-          bestScore = score;
-          bestCx = testCx;
-          bestCy = testCy;
+        for (const rot of candidateAngles) {
+          const unrotateDeg = ((360 - rot) % 360) as 0 | 90 | 180 | 270;
+          const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+          const score = calculateQuickZNCC(alignedPatch, referencePatch);
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestCx = testCx;
+            bestCy = testCy;
+            bestRot = rot;
+          }
         }
       }
     }
@@ -581,14 +597,16 @@ export function findTemplateCorrelationSnap(
     return {
       snappedCenterPx: { x: Number(bestCx.toFixed(2)), y: Number(bestCy.toFixed(2)) },
       isSnapped: true,
-      score: Number(bestScore.toFixed(3))
+      score: Number(bestScore.toFixed(3)),
+      snappedRotationDeg: bestRot
     };
   }
 
   return {
     snappedCenterPx: centerPx,
     isSnapped: false,
-    score: Number(Math.max(0, bestScore).toFixed(3))
+    score: Number(Math.max(0, bestScore).toFixed(3)),
+    snappedRotationDeg: rotationDeg
   };
 }
 
