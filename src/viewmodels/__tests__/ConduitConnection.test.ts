@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useProjectStore } from '../useProjectStore';
+import { placeElectricalElementInStore, useElectricalSequenceStore } from '../useElectricalViewModel';
 import { getSymbolById } from '../../models/electrical/symbolsLib';
 import { getConduitLengthBreakdown } from '../../models/electrical/calculations';
 import { createDefaultLevel } from '../../models/architecture/Level';
@@ -194,5 +195,83 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     expect(cond?.fromElementId).toBe(tpId);
     expect(cond?.toElementId).toBe(tsId);
     expect(cond?.diameterMM).toBe(25);
+  });
+
+  it('debe encadenar cañerías ortogonales automáticamente al insertar una secuencia de bocas con etiqueta única', () => {
+    const seqStore = useElectricalSequenceStore.getState();
+    seqStore.resetSequence();
+    seqStore.setSequencePrefix('B');
+    seqStore.setAutoConnectConduits(true);
+    seqStore.setSequenceRoutingMode('orthogonal');
+    seqStore.setSequenceCircuitId(null);
+
+    // 1. Insertar primera boca de techo en (2, 2)
+    const el1 = placeElectricalElementInStore({
+      worldX: 2.0,
+      worldY: 2.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+
+    expect(el1.label).toBe('B1');
+    expect(el1.placement).toBe('ceiling');
+    expect(useProjectStore.getState().project.conduits).toHaveLength(0);
+
+    // 2. Insertar segunda boca de techo en (5, 2)
+    const el2 = placeElectricalElementInStore({
+      worldX: 5.0,
+      worldY: 2.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+
+    expect(el2.label).toBe('B2');
+    const conduitsAfter2 = useProjectStore.getState().project.conduits;
+    expect(conduitsAfter2).toHaveLength(1);
+    expect(conduitsAfter2[0].fromElementId).toBe(el1.id);
+    expect(conduitsAfter2[0].toElementId).toBe(el2.id);
+    expect(conduitsAfter2[0].routingMode).toBe('orthogonal');
+    expect(conduitsAfter2[0].diameterMM).toBe(19);
+
+    // 3. Configurar circuito activo C1 y colocar tercera boca en (5, 6)
+    useProjectStore.getState().addCircuit({
+      id: 'circ-c1',
+      panelId: 'panel-tp',
+      name: 'C1 - IUG Planta Baja',
+      type: 'IUG',
+      voltageV: 220,
+      wireSectionBaseMM2: 1.5,
+      breakerAmperageA: 10
+    });
+    seqStore.setSequenceCircuitId('circ-c1');
+
+    const el3 = placeElectricalElementInStore({
+      worldX: 5.0,
+      worldY: 6.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+
+    expect(el3.label).toBe('B3');
+    expect(el3.circuitId).toBe('circ-c1');
+
+    const conduitsAfter3 = useProjectStore.getState().project.conduits;
+    expect(conduitsAfter3).toHaveLength(2);
+    const cond2to3 = conduitsAfter3[1];
+    expect(cond2to3.fromElementId).toBe(el2.id);
+    expect(cond2to3.toElementId).toBe(el3.id);
+    expect(cond2to3.circuitId).toBe('circ-c1');
+    // Conductor section heredado del circuito (1.5 mm²)
+    expect(cond2to3.conductors[0].sectionMM2).toBe(1.5);
+    expect(cond2to3.conductors[0].circuitId).toBe('circ-c1');
+
+    // 4. Resetear la secuencia e insertar una cuarta boca: NO debe encadenar con B3
+    seqStore.resetSequence();
+    const el4 = placeElectricalElementInStore({
+      worldX: 8.0,
+      worldY: 8.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+
+    expect(el4.label).toBe('B4');
+    // La cantidad de cañerías no debe haber aumentado
+    expect(useProjectStore.getState().project.conduits).toHaveLength(2);
   });
 });

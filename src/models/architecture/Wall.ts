@@ -20,6 +20,13 @@ export interface WallFaceReference {
   endOffset: number;   // Distancia hasta donde se extiende este tramo
 }
 
+export interface WallPlacementSnap {
+  wallId: string;
+  wallOffset: number;
+  rotationDeg: number;
+  side: 'left' | 'right';
+}
+
 export interface Wall {
   id: string;
   levelId: string;           // ID del nivel/planta al que pertenece

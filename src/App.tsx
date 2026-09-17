@@ -27,9 +27,9 @@ import { CircuitsModal } from './views/components/electrical/CircuitsModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
+import { useElectricalViewModel } from './viewmodels/useElectricalViewModel';
 import { getSymbolById } from './models/electrical/symbolsLib';
-import { resolveSpacePolygon, isPointInPolygon } from './models/architecture/Space';
-import { AEA_CALCULATION_CONSTANTS } from './models/electrical/electricalStandards';
+import { X } from 'lucide-react';
 
 export function App() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -38,7 +38,6 @@ export function App() {
     project,
     selectedEntity,
     setSelectedEntity,
-    addElectricalElement,
     undoLastWall,
     deleteWall,
     deleteOpening,
@@ -46,6 +45,8 @@ export function App() {
     deleteConduit,
     deleteDimensionLine
   } = useProjectStore();
+
+  const { placeElectricalElement, sequence } = useElectricalViewModel();
 
   const {
     relativeTurn,
@@ -211,6 +212,7 @@ export function App() {
         if (selectedSymbolId) {
           setSelectedSymbolId(null);
           resetPlacingTemplate();
+          sequence.resetSequence();
           return;
         }
         setSelectedEntity(null);
@@ -280,84 +282,12 @@ export function App() {
     rotationDeg: number = 0
   ) => {
     if (selectedSymbolId) {
-      const symDef = getSymbolById(selectedSymbolId);
-      const isCeiling = selectedSymbolId.includes('techo') || selectedSymbolId.includes('ventilador');
-      const isWall =
-        Boolean(snapInfo?.wallId) ||
-        selectedSymbolId.includes('enchufe') ||
-        selectedSymbolId.includes('toma') ||
-        selectedSymbolId.includes('interruptor') ||
-        selectedSymbolId.includes('llave') ||
-        selectedSymbolId.includes('tablero') ||
-        selectedSymbolId.includes('tp') ||
-        selectedSymbolId.includes('ts') ||
-        selectedSymbolId.includes('medidor') ||
-        selectedSymbolId.includes('caja-pase') ||
-        selectedSymbolId.includes('aplique');
-
-      // Buscar si el punto cae dentro de algún ambiente cerrado
-      const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
-      const containingSpace = project.spaces.find((space) => {
-        const poly = resolveSpacePolygon(space, verticesMap);
-        return poly.length >= 3 && isPointInPolygon({ x: worldX, y: worldY }, poly);
-      });
-
-      const ceilingH = containingSpace ? containingSpace.ceilingHeight : 2.70;
-      const count = project.electricalElements.filter((e) => e.symbolId === selectedSymbolId).length + 1;
-      const baseLabel = symDef?.label?.split(' ')[0] || 'Boca';
-      const label = `${baseLabel} ${count}`;
-
-      // Estimación de potencia según norma AEA
-      const powerW =
-        selectedSymbolId.includes('toma') || selectedSymbolId.includes('enchufe')
-          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_TOMA_W
-          : selectedSymbolId.includes('techo')
-          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_CENTRO_LUZ_W
-          : selectedSymbolId.includes('aplique')
-          ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_APLIQUE_W
-          : 0;
-
-      // Inferir circuito sugerido según el tipo de boca (Norma AEA)
-      let defaultCircuitId: string | null = null;
-      if (isCeiling || selectedSymbolId.includes('aplique') || selectedSymbolId.includes('llave')) {
-        defaultCircuitId = project.circuits.find((c) => c.type === 'IUG')?.id || null;
-      } else if (selectedSymbolId.includes('toma') || selectedSymbolId.includes('enchufe')) {
-        defaultCircuitId = project.circuits.find((c) => c.type === 'TUG')?.id || null;
-      }
-
-      const newElementId = `el-${Date.now()}`;
-      const elementRotation = snapInfo?.rotationDeg ?? rotationDeg ?? 0;
-
-      addElectricalElement({
-        id: newElementId,
+      placeElectricalElement({
+        worldX,
+        worldY,
         symbolId: selectedSymbolId,
-        levelId: project.activeLevelId,
-        spaceId: containingSpace?.id || project.spaces[0]?.id || 'espacio-principal',
-        placement: isCeiling ? 'ceiling' : isWall ? 'wall' : 'floor',
-        x: Number(worldX.toFixed(3)),
-        y: Number(worldY.toFixed(3)),
-        heightZ: isCeiling
-          ? ceilingH
-          : selectedSymbolId.includes('tp') || selectedSymbolId.includes('ts') || selectedSymbolId.includes('tablero') || selectedSymbolId.includes('medidor')
-          ? 1.40
-          : selectedSymbolId.includes('enchufe') || selectedSymbolId.includes('toma')
-          ? 0.30
-          : 1.20,
-        wallId: snapInfo?.wallId || null,
-        wallOffset: snapInfo?.wallOffset,
-        rotation: elementRotation,
-        side: snapInfo?.side,
-        circuitId: defaultCircuitId,
-        status: 'proyectado',
-        powerW,
-        phases: 1,
-        isPanel:
-          selectedSymbolId.includes('tablero') ||
-          selectedSymbolId.includes('tp') ||
-          selectedSymbolId.includes('ts') ||
-          selectedSymbolId.includes('medidor'),
-        label,
-        attributes: []
+        snapInfo,
+        rotationDeg
       });
 
       // Auto-muestreo inteligente para emplazamiento asistido subsiguiente (Smart Assisted Placement)
@@ -400,6 +330,17 @@ export function App() {
             onSelectSymbol={(symId) => {
               setSelectedSymbolId(symId);
               resetPlacingTemplate();
+              sequence.resetSequence();
+              if (symId) {
+                const sym = getSymbolById(symId);
+                if (sym?.categoria === 'tableros') {
+                  sequence.setPrefix('TP');
+                } else if (symId.includes('toma') || symId.includes('enchufe')) {
+                  sequence.setPrefix('TUG');
+                } else if (symId.includes('techo') || symId.includes('aplique')) {
+                  sequence.setPrefix('B');
+                }
+              }
             }}
             isConnectingConduit={isConnectingConduit}
             onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
@@ -408,6 +349,91 @@ export function App() {
 
         {/* Lienzo Gráfico CAD 2D */}
         <main className={`flex-1 w-full h-full relative ${isDesktop ? 'pb-0' : 'pb-44'}`}>
+          {/* Barra Contextual Flotante de Inserción Continua de Símbolos */}
+          {selectedSymbolId && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap max-w-[95vw] gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-full shadow-2xl border border-slate-700/80 text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Badge de Símbolo Activo */}
+              <div className="flex items-center gap-1.5 font-semibold text-sky-400 pl-1 pr-2 border-r border-slate-700/70">
+                <span className="text-xs">⚡</span>
+                <span className="max-w-[110px] truncate">{getSymbolById(selectedSymbolId)?.label || 'Boca'}</span>
+              </div>
+
+              {/* Prefijo y Próxima Etiqueta Única */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 text-[11px]">Pref:</span>
+                <input
+                  type="text"
+                  value={sequence.prefix}
+                  onChange={(e) => sequence.setPrefix(e.target.value)}
+                  className="w-12 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-center font-mono font-bold text-white text-xs focus:border-sky-500 focus:outline-none"
+                  title="Prefijo para la numeración secuencial de bocas"
+                />
+                <span
+                  className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-1.5 py-0.5 rounded select-none"
+                  title="Próxima etiqueta única garantizada sin colisiones"
+                >
+                  {sequence.nextSuggestedLabel}
+                </span>
+              </div>
+
+              {/* Selector de Circuito de la Secuencia */}
+              <div className="flex items-center gap-1.5 border-l border-slate-700/70 pl-2">
+                <span className="text-slate-400 text-[11px]">Circ:</span>
+                <select
+                  value={sequence.circuitId || ''}
+                  onChange={(e) => sequence.setCircuitId(e.target.value || null)}
+                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-xs focus:border-sky-500 focus:outline-none max-w-[125px] truncate"
+                >
+                  <option value="">(Libre / Sin circ.)</option>
+                  {project.circuits.map((circ) => (
+                    <option key={circ.id} value={circ.id}>
+                      {circ.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Switch Auto-Enlace de Cañería */}
+              <label
+                className="flex items-center gap-1.5 cursor-pointer border-l border-slate-700/70 pl-2 select-none"
+                title="Enlazar automáticamente cañería boca a boca durante la secuencia de clics"
+              >
+                <input
+                  type="checkbox"
+                  checked={sequence.autoConnectConduits}
+                  onChange={(e) => sequence.setAutoConnectConduits(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-0 bg-slate-800 border-slate-600 cursor-pointer"
+                />
+                <span className="text-slate-300 text-[11px]">Enlazar</span>
+              </label>
+
+              {/* Selector de Ruteo (Ortogonal / Arco) */}
+              {sequence.autoConnectConduits && (
+                <select
+                  value={sequence.routingMode}
+                  onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
+                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                  title="Modo de trazado de cañería"
+                >
+                  <option value="orthogonal">📐 90° Ortogonal</option>
+                  <option value="schematic_arc">⌒ Arco AEA</option>
+                </select>
+              )}
+
+              {/* Botón Salir / Terminar */}
+              <button
+                onClick={() => {
+                  setSelectedSymbolId(null);
+                  resetPlacingTemplate();
+                  sequence.resetSequence();
+                }}
+                className="ml-1 p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                title="Finalizar colocación continua (Esc)"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
           <BimCanvas
             currentDirectionDeg={effectiveAngleDeg}
             previewDistanceM={previewDist}
@@ -682,6 +708,17 @@ export function App() {
           onSelectSymbol={(symId) => {
             setSelectedSymbolId(symId);
             resetPlacingTemplate();
+            sequence.resetSequence();
+            if (symId) {
+              const sym = getSymbolById(symId);
+              if (sym?.categoria === 'tableros') {
+                sequence.setPrefix('TP');
+              } else if (symId.includes('toma') || symId.includes('enchufe')) {
+                sequence.setPrefix('TUG');
+              } else if (symId.includes('techo') || symId.includes('aplique')) {
+                sequence.setPrefix('B');
+              }
+            }
           }}
           isConnectingConduit={isConnectingConduit}
           onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}

@@ -9,7 +9,7 @@
 
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import type { WallVertex, Wall } from '../../../models/architecture/Wall';
+import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
@@ -18,13 +18,13 @@ import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
+import {
+  generateRoundedPolylineSvgPath,
+  computeOrthogonalConduitPoints,
+  getConduitVerticalTransitions
+} from '../../../models/electrical/calculations';
 
-export interface WallPlacementSnap {
-  wallId: string;
-  wallOffset: number;
-  rotationDeg: number;
-  side: 'left' | 'right';
-}
+export type { WallPlacementSnap };
 
 interface BimCanvasProps {
   currentDirectionDeg: number;
@@ -1221,14 +1221,35 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const dist = Math.hypot(dx, dy);
       if (dist < 1) return null;
 
-      // Curvatura suave ortogonal/arco
-      const normalX = -dy / dist;
-      const normalY = dx / dist;
-      const curveOffset = Math.min(dist * 0.18, 28);
-      const midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
-      const midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
+      const isOrthogonal = conduit.routingMode !== 'schematic_arc';
+      let pathD: string;
+      let midX: number;
+      let midY: number;
 
-      const pathD = `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`;
+      if (isOrthogonal) {
+        const waypointsPx = conduit.waypoints?.map((wp) => ({
+          x: wp.x * zoom,
+          y: wp.y * zoom
+        }));
+        const orthoPoints = computeOrthogonalConduitPoints(p1, p2, waypointsPx);
+        const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
+        pathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
+
+        const midSegmentIdx = Math.max(1, Math.floor(orthoPoints.length / 2));
+        const pSegA = orthoPoints[midSegmentIdx - 1];
+        const pSegB = orthoPoints[midSegmentIdx];
+        midX = (pSegA.x + pSegB.x) / 2;
+        midY = (pSegA.y + pSegB.y) / 2;
+      } else {
+        // Curvatura suave arco esquemático tradicional
+        const normalX = -dy / dist;
+        const normalY = dx / dist;
+        const curveOffset = Math.min(dist * 0.18, 28);
+        midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
+        midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
+        pathD = `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`;
+      }
+
       const isSelected = selectedEntity?.type === 'conduit' && selectedEntity.id === conduit.id;
 
       // Color del circuito asignado o anaranjado por defecto
@@ -1238,6 +1259,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const labelText = circ
         ? `${circ.name.split(' ')[0]} · Ø${conduit.diameterMM}mm`
         : conduit.label || `Ø${conduit.diameterMM}mm`;
+
+      // Verificación de desnivel vertical (subidas ▲ y bajadas ▼ según AEA)
+      const vertTrans = getConduitVerticalTransitions(elFrom.heightZ, elTo.heightZ);
 
       return (
         <g
@@ -1255,7 +1279,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           {/* Hit area amplia */}
           <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
-          {/* Cañería en arco estilo unifilar AEA */}
+          {/* Cañería continua con esquinas redondeadas o arco */}
           <path
             d={pathD}
             fill="none"
@@ -1263,6 +1287,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             strokeWidth={isSelected ? 3.5 : conduit.material.includes('bandeja') ? 3.0 : 2.2}
             strokeDasharray={conduit.material.includes('corrugado') ? '6 3' : conduit.material.includes('bandeja') ? '5 2' : 'none'}
             strokeLinecap="round"
+            strokeLinejoin="round"
           />
           {/* Diámetro y circuito de la cañería */}
           <text
@@ -1275,10 +1300,45 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           >
             {labelText}
           </text>
+          {/* Indicador de cota vertical de subida o bajada en pared */}
+          {vertTrans.hasTransition && vertTrans.glyphTextTo && (
+            <g transform={`translate(${p2.x + 8}, ${p2.y + (vertTrans.toType === 'bajada' ? 12 : -8)})`} className="pointer-events-none">
+              <rect
+                x={-2}
+                y={-8}
+                width={vertTrans.glyphTextTo.length * 5.6 + 6}
+                height={11}
+                rx={2.5}
+                fill="#0f172a"
+                fillOpacity={0.85}
+              />
+              <text
+                x={1}
+                y={0.5}
+                fontSize={7.5}
+                fill={vertTrans.toType === 'bajada' ? '#38bdf8' : '#fbbf24'}
+                className="font-mono font-bold select-none"
+              >
+                {vertTrans.glyphTextTo}
+              </text>
+            </g>
+          )}
         </g>
       );
     });
-  }, [project.conduits, project.circuits, project.activeLevelId, elementsMap, zoom, selectedEntity, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, setSelectedEntity]);
+  }, [
+    project.conduits,
+    project.circuits,
+    project.activeLevelId,
+    elementsMap,
+    zoom,
+    selectedEntity,
+    isConnectingConduit,
+    isCalibratingUnderlay,
+    isAddingDimension,
+    setSelectedEntity,
+    triggerPlacement
+  ]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
   const renderedElements = useMemo(() => {

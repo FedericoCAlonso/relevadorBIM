@@ -7,18 +7,24 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import { create } from 'zustand';
 import { useProjectStore } from './useProjectStore';
 import type {
   ElectricalElement,
   Conduit,
+  ConduitRoutingMode,
+  ConduitMaterial,
   ConductorLine,
   ConductorRole
 } from '../models/electrical/ElectricalModel';
+import type { WallPlacementSnap } from '../models/architecture/Wall';
+import { resolveSpacePolygon, isPointInPolygon } from '../models/architecture/Space';
 import {
   CONDUIT_DIAMETERS_CATALOG,
   AEA_HEIGHT_PRESETS,
   AEA_CONDUCTOR_PRESETS,
   AEA_CONDUCTOR_COLORS,
+  AEA_CALCULATION_CONSTANTS,
   SUGGESTED_ELEMENT_METADATA_KEYS,
   DEFAULT_CONDUIT_TYPES,
   DEFAULT_CABLE_TYPES,
@@ -28,10 +34,215 @@ import {
   type ConduitSizeOption
 } from '../models/electrical/electricalStandards';
 import {
+  generateNextUniqueLabel,
   calculateConduitOccupancyFactor,
   getConduitLengthBreakdown,
   type ConduitLengthBreakdown
 } from '../models/electrical/calculations';
+
+export interface ElectricalSequenceStoreState {
+  sequencePrefix: string;
+  sequenceCircuitId: string | null;
+  sequencePassingCircuitIds: string[];
+  autoConnectConduits: boolean;
+  sequenceConduitMaterial: ConduitMaterial;
+  sequenceConduitDiameterMM: number;
+  sequenceRoutingMode: ConduitRoutingMode;
+  lastPlacedElementId: string | null;
+
+  setSequencePrefix: (prefix: string) => void;
+  setSequenceCircuitId: (circuitId: string | null) => void;
+  setSequencePassingCircuitIds: (circuitIds: string[]) => void;
+  toggleSequencePassingCircuit: (circuitId: string) => void;
+  setAutoConnectConduits: (autoConnect: boolean) => void;
+  setSequenceConduitMaterial: (material: ConduitMaterial) => void;
+  setSequenceConduitDiameterMM: (diameterMM: number) => void;
+  setSequenceRoutingMode: (mode: ConduitRoutingMode) => void;
+  setLastPlacedElementId: (elementId: string | null) => void;
+  resetSequence: () => void;
+}
+
+export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((set) => ({
+  sequencePrefix: 'B',
+  sequenceCircuitId: null,
+  sequencePassingCircuitIds: [],
+  autoConnectConduits: true,
+  sequenceConduitMaterial: 'hierro_semipesado_rs',
+  sequenceConduitDiameterMM: 19,
+  sequenceRoutingMode: 'orthogonal',
+  lastPlacedElementId: null,
+
+  setSequencePrefix: (sequencePrefix) => set({ sequencePrefix }),
+  setSequenceCircuitId: (sequenceCircuitId) => set({ sequenceCircuitId }),
+  setSequencePassingCircuitIds: (sequencePassingCircuitIds) => set({ sequencePassingCircuitIds }),
+  toggleSequencePassingCircuit: (circuitId) =>
+    set((state) => {
+      const exists = state.sequencePassingCircuitIds.includes(circuitId);
+      return {
+        sequencePassingCircuitIds: exists
+          ? state.sequencePassingCircuitIds.filter((id) => id !== circuitId)
+          : [...state.sequencePassingCircuitIds, circuitId]
+      };
+    }),
+  setAutoConnectConduits: (autoConnectConduits) => set({ autoConnectConduits }),
+  setSequenceConduitMaterial: (sequenceConduitMaterial) => set({ sequenceConduitMaterial }),
+  setSequenceConduitDiameterMM: (sequenceConduitDiameterMM) => set({ sequenceConduitDiameterMM }),
+  setSequenceRoutingMode: (sequenceRoutingMode) => set({ sequenceRoutingMode }),
+  setLastPlacedElementId: (lastPlacedElementId) => set({ lastPlacedElementId }),
+  resetSequence: () => set({ lastPlacedElementId: null })
+}));
+
+export interface PlaceElectricalElementInput {
+  worldX: number;
+  worldY: number;
+  symbolId: string;
+  snapInfo?: WallPlacementSnap;
+  rotationDeg?: number;
+  overridePrefix?: string;
+  overrideCircuitId?: string | null;
+}
+
+/**
+ * Función desacoplada para inserción y auto-conexión directa en los stores.
+ * Permite ejecución tanto en hooks como en tests sin requerir renderHook de React.
+ */
+export function placeElectricalElementInStore(
+  params: PlaceElectricalElementInput,
+  projectStore: ReturnType<typeof useProjectStore.getState> = useProjectStore.getState(),
+  sequenceStore: ElectricalSequenceStoreState = useElectricalSequenceStore.getState()
+): ElectricalElement {
+  const {
+    worldX,
+    worldY,
+    symbolId,
+    snapInfo,
+    rotationDeg = 0,
+    overridePrefix,
+    overrideCircuitId
+  } = params;
+
+  const { project, addElectricalElement, addConduit } = projectStore;
+  const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+  const isCeiling = symbolId.includes('techo') || symbolId.includes('ventilador');
+  const isWall =
+    Boolean(snapInfo?.wallId) ||
+    symbolId.includes('enchufe') ||
+    symbolId.includes('toma') ||
+    symbolId.includes('interruptor') ||
+    symbolId.includes('llave') ||
+    symbolId.includes('tablero') ||
+    symbolId.includes('tp') ||
+    symbolId.includes('ts') ||
+    symbolId.includes('medidor') ||
+    symbolId.includes('caja-pase') ||
+    symbolId.includes('aplique');
+
+  const containingSpace = project.spaces.find((space) => {
+    const poly = resolveSpacePolygon(space, verticesMap);
+    return poly.length >= 3 && isPointInPolygon({ x: worldX, y: worldY }, poly);
+  });
+
+  const ceilingH = containingSpace ? containingSpace.ceilingHeight : 2.70;
+
+  const activePrefix = overridePrefix !== undefined ? overridePrefix : sequenceStore.sequencePrefix;
+  const label = generateNextUniqueLabel(activePrefix, project.electricalElements);
+
+  const powerW =
+    symbolId.includes('toma') || symbolId.includes('enchufe')
+      ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_TOMA_W
+      : symbolId.includes('techo')
+      ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_CENTRO_LUZ_W
+      : symbolId.includes('aplique')
+      ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_APLIQUE_W
+      : 0;
+
+  const activeCircuitId = overrideCircuitId !== undefined ? overrideCircuitId : sequenceStore.sequenceCircuitId;
+
+  const isPanel =
+    symbolId.includes('tablero') ||
+    symbolId.includes('tp') ||
+    symbolId.includes('ts') ||
+    symbolId.includes('medidor');
+
+  const heightZ = isCeiling
+    ? ceilingH
+    : isPanel
+    ? 1.40
+    : symbolId.includes('enchufe') || symbolId.includes('toma')
+    ? 0.30
+    : 1.20;
+
+  const newElementId = `el-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const elementRotation = snapInfo?.rotationDeg ?? rotationDeg ?? 0;
+
+  const newElement: ElectricalElement = {
+    id: newElementId,
+    symbolId,
+    levelId: project.activeLevelId,
+    spaceId: containingSpace?.id || project.spaces[0]?.id || 'espacio-principal',
+    placement: isCeiling ? 'ceiling' : isWall ? 'wall' : 'floor',
+    x: Number(worldX.toFixed(3)),
+    y: Number(worldY.toFixed(3)),
+    heightZ,
+    wallId: snapInfo?.wallId || null,
+    wallOffset: snapInfo?.wallOffset,
+    rotation: elementRotation,
+    side: snapInfo?.side,
+    circuitId: activeCircuitId,
+    passingCircuitIds: [...sequenceStore.sequencePassingCircuitIds],
+    status: 'proyectado',
+    powerW,
+    phases: 1,
+    isPanel,
+    label,
+    attributes: []
+  };
+
+  addElectricalElement(newElement);
+
+  if (sequenceStore.autoConnectConduits && sequenceStore.lastPlacedElementId) {
+    const prevElement = project.electricalElements.find(
+      (e) => e.id === sequenceStore.lastPlacedElementId
+    );
+    if (prevElement) {
+      const circ = activeCircuitId
+        ? project.circuits.find((c) => c.id === activeCircuitId)
+        : null;
+      const section = circ?.wireSectionBaseMM2 || 2.5;
+
+      const conductors: ConductorLine[] = [
+        { role: 'fase', sectionMM2: section, color: '#991b1b', circuitId: activeCircuitId || undefined },
+        { role: 'neutro', sectionMM2: section, color: '#2563eb', circuitId: activeCircuitId || undefined },
+        { role: 'pe', sectionMM2: section, color: '#16a34a', circuitId: activeCircuitId || undefined }
+      ];
+
+      const isVerticalRiser = prevElement.levelId !== newElement.levelId;
+      const circuitIds = activeCircuitId
+        ? [activeCircuitId, ...sequenceStore.sequencePassingCircuitIds]
+        : [...sequenceStore.sequencePassingCircuitIds];
+
+      const conduitId = `cond-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      addConduit({
+        id: conduitId,
+        circuitId: activeCircuitId,
+        circuitIds,
+        fromElementId: prevElement.id,
+        toElementId: newElement.id,
+        fromLevelId: prevElement.levelId,
+        toLevelId: newElement.levelId,
+        diameterMM: sequenceStore.sequenceConduitDiameterMM,
+        material: sequenceStore.sequenceConduitMaterial,
+        isVerticalRiser,
+        conductors,
+        routingMode: sequenceStore.sequenceRoutingMode
+      });
+    }
+  }
+
+  sequenceStore.setLastPlacedElementId(newElement.id);
+  return newElement;
+}
 
 export function useElectricalViewModel() {
   const {
@@ -49,6 +260,8 @@ export function useElectricalViewModel() {
     addBoxType,
     removeBoxType
   } = useProjectStore();
+
+  const sequenceStore = useElectricalSequenceStore();
 
   // Entidades activas según la entidad seleccionada en el almacén
   const selectedElement = useMemo(() => {
@@ -105,7 +318,7 @@ export function useElectricalViewModel() {
   const conduitAvailableSizes = useMemo<readonly ConduitSizeOption[]>(() => {
     if (!selectedConduit) return [];
     return getSizesForConduitType(selectedConduit.material, project.materialCatalog);
-  }, [selectedConduit?.material, project.materialCatalog]);
+  }, [selectedConduit, project.materialCatalog]);
 
   // Muro al que está adosada la boca activa
   const elementWall = useMemo(() => {
@@ -235,7 +448,7 @@ export function useElectricalViewModel() {
 
       updateConduit(conduitId, finalPatch);
     },
-    [project.conduits, updateConduit]
+    [project.conduits, project.materialCatalog, updateConduit]
   );
 
   /** Alterna la asignación de un circuito a la cañería (multi-circuito) */
@@ -329,6 +542,41 @@ export function useElectricalViewModel() {
     [deleteConduit, setSelectedEntity]
   );
 
+  // Próxima etiqueta sugerida única para el prefijo de secuencia activo
+  const nextSuggestedLabel = useMemo(() => {
+    return generateNextUniqueLabel(sequenceStore.sequencePrefix, project.electricalElements);
+  }, [sequenceStore.sequencePrefix, project.electricalElements]);
+
+  /**
+   * Emplaza una boca eléctrica con resolución de dominio arquitectónico (espacio, altura,
+   * potencia AEA y etiqueta única determinista). Si el auto-enlace está activo y existe una boca previa,
+   * traza automáticamente la cañería lógica entre ambas con el circuito y sección asignados.
+   */
+  const placeElectricalElement = useCallback(
+    (params: PlaceElectricalElementInput): ElectricalElement => {
+      return placeElectricalElementInStore(params);
+    },
+    []
+  );
+
+  const toggleConduitRoutingMode = useCallback(
+    (conduitId: string) => {
+      const conduit = project.conduits.find((c) => c.id === conduitId);
+      if (!conduit) return;
+      const nextMode: ConduitRoutingMode =
+        conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal';
+      updateConduit(conduitId, { routingMode: nextMode });
+    },
+    [project.conduits, updateConduit]
+  );
+
+  const setConduitWaypoints = useCallback(
+    (conduitId: string, waypoints: Array<{ x: number; y: number }>) => {
+      updateConduit(conduitId, { waypoints });
+    },
+    [updateConduit]
+  );
+
   return {
     // Estado del modelo reactivo
     selectedElement,
@@ -340,6 +588,29 @@ export function useElectricalViewModel() {
     conduitOccupancy,
     conduitAvailableSizes,
     circuits: project.circuits,
+
+    // Secuencia de inserción continua y ruteo
+    sequence: {
+      prefix: sequenceStore.sequencePrefix,
+      circuitId: sequenceStore.sequenceCircuitId,
+      passingCircuitIds: sequenceStore.sequencePassingCircuitIds,
+      autoConnectConduits: sequenceStore.autoConnectConduits,
+      conduitMaterial: sequenceStore.sequenceConduitMaterial,
+      conduitDiameterMM: sequenceStore.sequenceConduitDiameterMM,
+      routingMode: sequenceStore.sequenceRoutingMode,
+      lastPlacedElementId: sequenceStore.lastPlacedElementId,
+      nextSuggestedLabel,
+      setPrefix: sequenceStore.setSequencePrefix,
+      setCircuitId: sequenceStore.setSequenceCircuitId,
+      setPassingCircuitIds: sequenceStore.setSequencePassingCircuitIds,
+      togglePassingCircuit: sequenceStore.toggleSequencePassingCircuit,
+      setAutoConnectConduits: sequenceStore.setAutoConnectConduits,
+      setConduitMaterial: sequenceStore.setSequenceConduitMaterial,
+      setConduitDiameterMM: sequenceStore.setSequenceConduitDiameterMM,
+      setRoutingMode: sequenceStore.setSequenceRoutingMode,
+      setLastPlacedElementId: sequenceStore.setLastPlacedElementId,
+      resetSequence: sequenceStore.resetSequence
+    },
 
     // Catálogos normativos y abiertos (cero código hardcodeado en la vista)
     catalogs: {
@@ -373,6 +644,7 @@ export function useElectricalViewModel() {
     removeBoxType,
 
     // Comandos de Bocas
+    placeElectricalElement,
     setElementProperties,
     invertElementWallSide,
     addElementAttribute,
@@ -388,6 +660,8 @@ export function useElectricalViewModel() {
     updateConduitConductor,
     removeConductorFromConduit,
     removeConduit,
-    toggleConduitCircuit
+    toggleConduitCircuit,
+    toggleConduitRoutingMode,
+    setConduitWaypoints
   };
 }

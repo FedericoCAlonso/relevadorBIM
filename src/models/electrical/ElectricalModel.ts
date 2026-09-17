@@ -139,6 +139,8 @@ export interface ProjectMaterialCatalog {
   boxTypes: BoxTypeDefinition[];
 }
 
+export type ConduitRoutingMode = 'orthogonal' | 'schematic_arc';
+
 export interface Conduit {
   id: string;
   circuitId?: string | null;
@@ -154,6 +156,8 @@ export interface Conduit {
   manualLengthM?: number;   // Longitud forzada manualmente si aplica
   label?: string;           // Referencia o rótulo en plano (ej: "C1", "X1")
   defaultCableStandard?: CableStandard; // Norma de conductor principal
+  routingMode?: ConduitRoutingMode; // Ruteo en escuadra ortogonal ('orthogonal') o arco unifilar ('schematic_arc')
+  waypoints?: Array<{ x: number; y: number }>; // Puntos intermedios para sortear obstáculos o interferencias
   notes?: string;
 }
 
