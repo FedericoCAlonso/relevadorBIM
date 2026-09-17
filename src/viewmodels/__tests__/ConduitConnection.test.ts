@@ -423,4 +423,78 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     const clearedCond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-arbitrario');
     expect(clearedCond?.waypoints).toBeUndefined();
   });
+
+  it('los waypoints deben estar restringidos exclusivamente a modos no-arco (schematic_arc nunca debe poseer waypoints)', () => {
+    const { addElectricalElement, addConduit, updateConduit } = useProjectStore.getState();
+
+    // Crear dos bocas
+    addElectricalElement({
+      id: 'boca-a',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 1,
+      y: 1,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'BA',
+      attributes: []
+    });
+
+    addElectricalElement({
+      id: 'boca-b',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 5,
+      y: 5,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'BB',
+      attributes: []
+    });
+
+    // 1. Conducto creado en modo ortogonal con waypoints
+    addConduit({
+      id: 'cond-test-1',
+      circuitId: null,
+      circuitIds: [],
+      fromElementId: 'boca-a',
+      toElementId: 'boca-b',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 19,
+      material: 'hierro_semipesado_rs',
+      isVerticalRiser: false,
+      routingMode: 'orthogonal',
+      routingPlane: 'ceiling_slab',
+      waypoints: [{ x: 1, y: 5 }],
+      conductors: []
+    });
+
+    const condOrtogonal = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-test-1');
+    expect(condOrtogonal?.routingMode).toBe('orthogonal');
+    expect(condOrtogonal?.waypoints).toHaveLength(1);
+
+    // 2. Al alternar a schematic_arc, se resetean los waypoints
+    updateConduit('cond-test-1', { routingMode: 'schematic_arc', waypoints: undefined });
+    const condArc = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-test-1');
+    expect(condArc?.routingMode).toBe('schematic_arc');
+    expect(condArc?.waypoints).toBeUndefined();
+  });
 });
+

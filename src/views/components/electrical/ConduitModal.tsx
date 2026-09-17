@@ -376,17 +376,19 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               <span className="font-semibold">Geometría de trazado en plano:</span>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  const nextMode = conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal';
                   setConduitProperties(conduit.id, {
-                    routingMode: conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal'
-                  })
-                }
+                    routingMode: nextMode,
+                    ...(nextMode === 'schematic_arc' ? { waypoints: undefined } : {})
+                  });
+                }}
                 className="px-2.5 py-1 rounded-md bg-white border border-slate-300 font-bold hover:bg-slate-100 flex items-center gap-1.5 text-xs text-slate-800 transition-colors shadow-2xs"
               >
                 <span>{conduit.routingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco Curvo AEA'}</span>
               </button>
             </div>
-            {conduit.waypoints && conduit.waypoints.length > 0 && (
+            {conduit.routingMode !== 'schematic_arc' && conduit.waypoints && conduit.waypoints.length > 0 && (
               <div className="flex items-center justify-between pt-1.5 text-[11px] text-amber-900 border-t border-slate-200">
                 <span className="font-semibold">Quiebres intermedios: {conduit.waypoints.length} puntos</span>
                 <button

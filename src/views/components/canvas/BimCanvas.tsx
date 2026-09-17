@@ -36,6 +36,7 @@ interface BimCanvasProps {
   pendingConduitStartId?: string | null;
   pendingConduitWaypoints?: Array<{ x: number; y: number }>;
   onUndoConduitWaypoint?: () => void;
+  onClearConduitWaypoints?: () => void;
   onCancelConnectingConduit?: () => void;
   underlaySheet?: UnderlaySheet | null;
   isCalibratingUnderlay?: boolean;
@@ -102,6 +103,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   pendingConduitStartId = null,
   pendingConduitWaypoints = [],
   onUndoConduitWaypoint,
+  onClearConduitWaypoints,
   onCancelConnectingConduit,
   underlaySheet = null,
   isCalibratingUnderlay = false,
@@ -718,8 +720,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
-    // Si la arquitectura está bloqueada y no se está emplazando una boca, ignorar clics de fondo
-    if (isArchitectureLocked && !selectedSymbolId) {
+    // Si la arquitectura está bloqueada y no se está emplazando una boca ni conectando cañería, ignorar clics de fondo
+    if (isArchitectureLocked && !selectedSymbolId && !isConnectingConduit) {
       return;
     }
 
@@ -743,7 +745,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       }
 
       if (isConnectingConduit) {
-        if (pendingConduitStartId) {
+        if (pendingConduitStartId && sequenceRoutingMode !== 'schematic_arc') {
           onCanvasClick(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
         }
         return;
@@ -1245,10 +1247,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         x: wp.x * zoom,
         y: wp.y * zoom
       }));
-      const hasWaypoints = Boolean(waypointsPx && waypointsPx.length > 0);
 
-      if (isSchematicArc && !hasWaypoints) {
-        // Curvatura suave arco esquemático tradicional AEA
+      if (isSchematicArc) {
+        // Curvatura suave arco esquemático tradicional AEA (el modo arco no admite waypoints)
         const normalX = -dy / dist;
         const normalY = dx / dist;
         const curveOffset = Math.min(dist * 0.18, 28);
@@ -2297,8 +2298,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               y: wp.y * zoom
             }));
 
-            const hasWp = waypointsPx.length > 0;
-            const isArc = sequenceRoutingMode === 'schematic_arc' && !hasWp;
+            const isArc = sequenceRoutingMode === 'schematic_arc';
             let guidePathD: string;
 
             if (isArc) {
@@ -2331,8 +2331,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   strokeWidth={2.5}
                   strokeDasharray="6 4"
                 />
-                {/* Marcadores visuales para cada vértice intermedio ya fijado */}
-                {waypointsPx.map((wp, idx) => (
+                {/* Marcadores visuales para cada vértice intermedio ya fijado (solo en modos no-arco) */}
+                {!isArc && waypointsPx.map((wp, idx) => (
                   <g key={`pending-wp-${idx}`}>
                     <circle
                       cx={wp.x}
@@ -2416,12 +2416,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <span className="truncate max-w-[280px] sm:max-w-none">
             {!pendingConduitStartId
               ? '⚡ Trazar Cañería: Tocá la primera boca o tablero'
+              : sequenceRoutingMode === 'schematic_arc'
+              ? '⚡ 1° Extremo fijado · Tocá la boca o tablero de destino'
               : (pendingConduitWaypoints?.length || 0) === 0
               ? '⚡ 1° Extremo fijado · Clic en plano para quiebre o en boca para cerrar'
               : `⚡ Recorrido (${pendingConduitWaypoints?.length} quiebres) · Clic para sumar quiebre o en boca final`}
           </span>
           <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
-            {(pendingConduitWaypoints?.length || 0) > 0 && onUndoConduitWaypoint && (
+            {sequenceRoutingMode !== 'schematic_arc' && (pendingConduitWaypoints?.length || 0) > 0 && onUndoConduitWaypoint && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -2439,7 +2441,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setSequenceRoutingMode(sequenceRoutingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal');
+                const nextMode = sequenceRoutingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal';
+                setSequenceRoutingMode(nextMode);
+                if (nextMode === 'schematic_arc') {
+                  onClearConduitWaypoints?.();
+                }
               }}
               className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 hover:bg-slate-700 text-amber-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap"
               title="Alternar entre Arco Curvo AEA y Trazado Ortogonal a 90°"

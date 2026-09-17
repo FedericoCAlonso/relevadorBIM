@@ -1892,7 +1892,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         <div className="grid grid-cols-2 gap-1.5">
                           <button
                             type="button"
-                            onClick={() => updateConduit(selectedConduit.id, { routingMode: 'schematic_arc' })}
+                            onClick={() => updateConduit(selectedConduit.id, { routingMode: 'schematic_arc', waypoints: undefined })}
                             className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 border ${
                               selectedConduit.routingMode !== 'orthogonal'
                                 ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
@@ -1917,8 +1917,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </div>
                       </div>
 
-                      {/* Waypoints del Recorrido Arbitrario */}
-                      {selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
+                      {/* Waypoints del Recorrido Arbitrario (solo disponible en modos no-arco) */}
+                      {selectedConduit.routingMode !== 'schematic_arc' && selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
                         <div className="p-2.5 bg-amber-100/60 border border-amber-300 rounded-xl space-y-1 text-xs">
                           <div className="flex items-center justify-between">
                             <span className="font-bold text-amber-950">

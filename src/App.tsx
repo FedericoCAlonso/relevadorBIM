@@ -69,6 +69,7 @@ export function App() {
     pendingConduitWaypoints,
     addConduitWaypoint,
     undoLastConduitWaypoint,
+    clearConduitWaypoints,
     cancelConduitConnection,
     commitWall,
     handleElectricalElementClick,
@@ -309,7 +310,7 @@ export function App() {
     }
 
     if (isConnectingConduit) {
-      if (pendingConduitStartId) {
+      if (pendingConduitStartId && sequence.routingMode !== 'schematic_arc') {
         addConduitWaypoint({ x: worldX, y: worldY });
       }
       return;
@@ -593,6 +594,7 @@ export function App() {
             pendingConduitStartId={pendingConduitStartId}
             pendingConduitWaypoints={pendingConduitWaypoints}
             onUndoConduitWaypoint={undoLastConduitWaypoint}
+            onClearConduitWaypoints={clearConduitWaypoints}
             onCancelConnectingConduit={cancelConduitConnection}
             underlaySheet={activeUnderlay}
             isCalibratingUnderlay={isCalibratingUnderlay}

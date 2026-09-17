@@ -40,6 +40,10 @@ export function useSurveyViewModel() {
     setPendingConduitWaypoints((prev) => prev.slice(0, -1));
   }, []);
 
+  const clearConduitWaypoints = useCallback(() => {
+    setPendingConduitWaypoints([]);
+  }, []);
+
   // Modales contextuales para empalmes y aberturas
   const [showTeeModal, setShowTeeModal] = useState(false);
   const [showOpeningModal, setShowOpeningModal] = useState(false);
@@ -266,7 +270,7 @@ export function useSurveyViewModel() {
             isVerticalRiser: false,
             routingMode: seqMode,
             routingPlane: seqPlane,
-            waypoints: pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
+            waypoints: seqMode !== 'schematic_arc' && pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
             conductors: [
               { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
               { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },
@@ -310,6 +314,7 @@ export function useSurveyViewModel() {
     pendingConduitWaypoints,
     addConduitWaypoint,
     undoLastConduitWaypoint,
+    clearConduitWaypoints,
     cancelConduitConnection,
     showTeeModal,
     setShowTeeModal,
