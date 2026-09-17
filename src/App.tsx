@@ -104,7 +104,12 @@ export function App() {
     dismissMatch: dismissPatternMatch,
     clearMatches: clearPatternMatches,
     undoLastPositiveExemplar,
-    convertMatchesToElectricalElements
+    convertMatchesToElectricalElements,
+    stencilRotationDeg,
+    cycleStencilRotation,
+    stencilSizeWorld,
+    svdConsensus,
+    executeStencilPlacement
   } = usePatternDetectorViewModel();
 
   const [isArchitectureLocked, setIsArchitectureLocked] = useState(false);
@@ -139,6 +144,13 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         undoLastWall();
+        return;
+      }
+
+      // Atajo para rotar el esténcil rígido de muestra (tecla R o barra espaciadora)
+      if (isSamplingPattern && positiveExemplars.length > 0 && (e.key === 'r' || e.key === 'R' || e.key === ' ')) {
+        e.preventDefault();
+        cycleStencilRotation();
         return;
       }
 
@@ -366,6 +378,11 @@ export function App() {
             onDimensionCanvasClick={handleDimensionCanvasClick}
             onCancelAddingDimension={cancelAddingDimension}
             isSamplingPattern={isSamplingPattern}
+            positiveExemplarsCount={positiveExemplars.length}
+            stencilSizeWorld={stencilSizeWorld}
+            stencilRotationDeg={stencilRotationDeg}
+            onRotateStencil={cycleStencilRotation}
+            onPatternStencilPlaced={executeStencilPlacement}
             onStartPatternSampling={startSamplingPattern}
             onCancelSamplingPattern={cancelSamplingPattern}
             onPatternSampleBoxCompleted={(p1, p2) => executeDetectionFromWorldBox(p1, p2)}
@@ -401,17 +418,32 @@ export function App() {
 
           {/* Indicador de muestreo de símbolo activo */}
           {isSamplingPattern && (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/60 flex items-center gap-3 text-xs animate-in fade-in slide-in-from-top-2 pointer-events-auto">
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/60 flex flex-wrap items-center justify-center gap-2.5 text-xs animate-in fade-in slide-in-from-top-2 pointer-events-auto">
               <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
               <span className="font-semibold text-cyan-200">
-                {isAddingSample
-                  ? 'Dibujá un recuadro sobre otro símbolo para sumar como muestra...'
-                  : 'Dibujá un recuadro sobre el símbolo a buscar en el plano...'}
+                {isAddingSample && positiveExemplars.length > 0
+                  ? `🎯 Sello Muestra #${positiveExemplars.length + 1}: Clic para estampar con auto-centrado`
+                  : 'Dibujá un recuadro sobre el símbolo base en el plano...'}
               </span>
+
+              {isAddingSample && positiveExemplars.length > 0 && (
+                <div className="flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded-xl border border-slate-700 text-[11px]">
+                  <span className="text-slate-400 text-[10px]">Giro:</span>
+                  <button
+                    type="button"
+                    onClick={cycleStencilRotation}
+                    className="text-cyan-300 hover:text-white font-bold px-1.5 py-0.5 rounded hover:bg-slate-700 transition-colors cursor-pointer"
+                    title="Rotar 90° (atajo: tecla R o barra espaciadora)"
+                  >
+                    ↷ {stencilRotationDeg}°
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={cancelSamplingPattern}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-[11px] cursor-pointer"
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-[11px] cursor-pointer ml-1"
               >
                 Cancelar
               </button>
@@ -441,6 +473,26 @@ export function App() {
                     {negativeExemplars.length > 0 ? ` · ${negativeExemplars.length} desc.` : ''}
                   </span>
                 )}
+
+                {/* Badge de Pureza Espectral SVD y Umbral Dinámico */}
+                {svdConsensus && (
+                  <div className="flex items-center gap-1.5 bg-slate-800/90 px-2 py-0.5 rounded-xl border border-emerald-500/40 text-[11px]">
+                    <span className="text-emerald-400 font-bold text-[10px]">✨ SVD:</span>
+                    <span className="text-emerald-200 text-[10px] font-mono" title="Relación de energía del primer autovector (pureza estructural)">
+                      {Math.round(svdConsensus.purityRatio * 100)}% puro
+                    </span>
+                    {svdConsensus.suggestedThreshold && (
+                      <button
+                        type="button"
+                        onClick={() => setSimilarityThreshold(svdConsensus.suggestedThreshold)}
+                        className="text-[10px] text-cyan-300 hover:text-white bg-slate-700/90 hover:bg-slate-600 px-1.5 py-0.5 rounded font-mono transition-colors cursor-pointer"
+                        title="Aplicar umbral auto-calibrado derivado de las muestras"
+                      >
+                        Auto {Math.round(svdConsensus.suggestedThreshold * 100)}%
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Control deslizante interactivo de Sensibilidad */}
@@ -460,7 +512,7 @@ export function App() {
                 />
               </div>
 
-              {/* Botón para agregar otra muestra (aprendizaje activo) */}
+              {/* Botón para agregar otra muestra con el esténcil rígido */}
               <button
                 type="button"
                 onClick={() => startSamplingPattern(true)}
@@ -469,9 +521,9 @@ export function App() {
                     ? 'bg-cyan-700 text-white border-cyan-400 shadow-md ring-1 ring-cyan-400'
                     : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white border-cyan-500/40'
                 }`}
-                title="Seleccionar otra muestra para ampliar el reconocimiento"
+                title="Estampar otra muestra con el esténcil fijo y auto-centrado para reforzar el consenso por SVD"
               >
-                <span>＋ Otra muestra</span>
+                <span>＋ Sello muestra ({positiveExemplars.length + 1})</span>
               </button>
 
               {/* Botón para deshacer última muestra si se tomó por error */}

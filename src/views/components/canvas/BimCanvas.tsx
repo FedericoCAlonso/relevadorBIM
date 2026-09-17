@@ -47,6 +47,11 @@ interface BimCanvasProps {
   onDimensionCanvasClick?: (worldX: number, worldY: number) => void;
   onCancelAddingDimension?: () => void;
   isSamplingPattern?: boolean;
+  positiveExemplarsCount?: number;
+  stencilSizeWorld?: { width: number; height: number } | null;
+  stencilRotationDeg?: 0 | 90 | 180 | 270;
+  onRotateStencil?: () => void;
+  onPatternStencilPlaced?: (centerWorld: { x: number; y: number }) => void;
   onStartPatternSampling?: () => void;
   onCancelSamplingPattern?: () => void;
   onPatternSampleBoxCompleted?: (p1: { x: number; y: number }, p2: { x: number; y: number }) => void;
@@ -83,6 +88,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onDimensionCanvasClick,
   onCancelAddingDimension,
   isSamplingPattern = false,
+  positiveExemplarsCount = 0,
+  stencilSizeWorld = null,
+  stencilRotationDeg = 0,
+  onRotateStencil,
+  onPatternStencilPlaced,
   onStartPatternSampling,
   onCancelSamplingPattern,
   onPatternSampleBoxCompleted,
@@ -263,6 +273,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       const wx = (e.clientX - rect.left - pan.x) / zoom;
       const wy = (e.clientY - rect.top - pan.y) / zoom;
+
+      // Si estamos en modo esténcil rígido (muestras adicionales con tamaño fijo)
+      if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
+        justCompletedSamplingRef.current = true;
+        onPatternStencilPlaced({ x: wx, y: wy });
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
+        return;
+      }
+
       setSamplingStartWorldPos({ x: wx, y: wy });
       return;
     }
@@ -304,6 +325,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+
+    // Rueda con Shift o Alt en modo esténcil rota 90° el sello
+    if (isSamplingPattern && positiveExemplarsCount > 0 && onRotateStencil && (e.shiftKey || e.altKey)) {
+      onRotateStencil();
+      return;
+    }
+
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const newZoom = Math.min(Math.max(zoom * zoomFactor, 15), 300);
 
@@ -327,6 +355,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       const wx = (t.clientX - rect.left - pan.x) / zoom;
       const wy = (t.clientY - rect.top - pan.y) / zoom;
+
+      // Si estamos en modo esténcil rígido en móvil
+      if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
+        justCompletedSamplingRef.current = true;
+        onPatternStencilPlaced({ x: wx, y: wy });
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
+        return;
+      }
+
       setSamplingStartWorldPos({ x: wx, y: wy });
       touchStateRef.current = {
         type: 'single',
@@ -1467,8 +1506,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
-          {/* Recuadro elástico de selección de patrón (Marquesina) */}
-          {isSamplingPattern && samplingStartWorldPos && hoverWorldPos && (
+          {/* Recuadro elástico de selección de patrón (Marquesina Muestra #1) */}
+          {isSamplingPattern && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
             <g pointerEvents="none">
               <rect
                 x={Math.min(samplingStartWorldPos.x, hoverWorldPos.x) * zoom}
@@ -1490,7 +1529,54 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 fill="#0891b2"
                 className="font-mono bg-white select-none"
               >
-                🎯 Enmarcar símbolo
+                🎯 Muestra #1: Enmarcar símbolo base
+              </text>
+            </g>
+          )}
+
+          {/* Esténcil rígido semitransparente asistido por SVD (Muestras #2 en adelante) */}
+          {isSamplingPattern && positiveExemplarsCount > 0 && stencilSizeWorld && hoverWorldPos && (
+            <g pointerEvents="none">
+              {/* Rectángulo rígido centrado en el cursor/hover */}
+              <rect
+                x={(hoverWorldPos.x - stencilSizeWorld.width / 2) * zoom}
+                y={(hoverWorldPos.y - stencilSizeWorld.height / 2) * zoom}
+                width={stencilSizeWorld.width * zoom}
+                height={stencilSizeWorld.height * zoom}
+                fill="rgba(6, 182, 212, 0.25)"
+                stroke="#06b6d4"
+                strokeWidth={2.5}
+                strokeDasharray="6 3"
+                rx={3}
+              />
+              {/* Retícula en cruz para centrado visual */}
+              <line
+                x1={(hoverWorldPos.x - 0.15) * zoom}
+                y1={hoverWorldPos.y * zoom}
+                x2={(hoverWorldPos.x + 0.15) * zoom}
+                y2={hoverWorldPos.y * zoom}
+                stroke="#0891b2"
+                strokeWidth={1.5}
+              />
+              <line
+                x1={hoverWorldPos.x * zoom}
+                y1={(hoverWorldPos.y - 0.15) * zoom}
+                x2={hoverWorldPos.x * zoom}
+                y2={(hoverWorldPos.y + 0.15) * zoom}
+                stroke="#0891b2"
+                strokeWidth={1.5}
+              />
+              {/* Etiqueta flotante con orientación y aviso de snap magnético */}
+              <text
+                x={hoverWorldPos.x * zoom}
+                y={(hoverWorldPos.y - stencilSizeWorld.height / 2 - 0.15) * zoom}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight="bold"
+                fill="#0891b2"
+                className="font-mono bg-white select-none"
+              >
+                🎯 Sello Muestra #{positiveExemplarsCount + 1} ({stencilRotationDeg ?? 0}°) · Clic para estampar
               </text>
             </g>
           )}

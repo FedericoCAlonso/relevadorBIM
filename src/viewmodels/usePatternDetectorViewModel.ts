@@ -11,11 +11,20 @@ import { useProjectStore } from './useProjectStore';
 import {
   detectPatternMatchesWithExemplars,
   createPatternExemplar,
+  calculateImageMoments,
+  calculateEigenSignature,
+  extractNormalizedPatch,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
   type DetectedPatternMatch,
   type PatternExemplar
 } from '../models/underlay/PatternDetector';
+import {
+  computeGramSvdConsensus,
+  magneticSubpixelSnap,
+  rotateNormalizedPatch,
+  type SvdConsensusResult
+} from '../models/underlay/GramSvd';
 import { getUnderlayBinaryMask } from '../services/imageProcessingService';
 
 export function usePatternDetectorViewModel() {
@@ -39,6 +48,7 @@ export function usePatternDetectorViewModel() {
   );
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [stencilRotationDeg, setStencilRotationDeg] = useState<0 | 90 | 180 | 270>(0);
 
   /**
    * Coincidencias activas (excluyendo las descartadas por el usuario y filtradas por umbral)
@@ -48,6 +58,43 @@ export function usePatternDetectorViewModel() {
       (m) => !dismissedMatchIds.has(m.id) && m.similarityScore >= similarityThreshold
     );
   }, [detectedMatches, dismissedMatchIds, similarityThreshold]);
+
+  /**
+   * Dimensiones métricas del esténcil rígido en mundo (anchura y altura en metros)
+   * calculadas a partir de la primera muestra y adaptadas según la rotación de 90°.
+   */
+  const stencilSizeWorld = useMemo(() => {
+    if (positiveExemplars.length === 0 || !activeUnderlay) return null;
+    const baseBox = positiveExemplars[0].boxPx;
+    const scale = activeUnderlay.scaleMetersPerPx;
+    const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
+    return {
+      width: (isRotated90 ? baseBox.height : baseBox.width) * scale,
+      height: (isRotated90 ? baseBox.width : baseBox.height) * scale
+    };
+  }, [positiveExemplars, activeUnderlay, stencilRotationDeg]);
+
+  /**
+   * Consenso espectral SVD acumulado a partir de 2 o más muestras positivas.
+   */
+  const svdConsensus = useMemo<SvdConsensusResult | null>(() => {
+    if (positiveExemplars.length >= 2) {
+      return computeGramSvdConsensus(positiveExemplars.map((e) => e.patch));
+    }
+    return null;
+  }, [positiveExemplars]);
+
+  /**
+   * Conmuta la rotación del esténcil rígido en pasos de 90° (0° -> 90° -> 180° -> 270° -> 0°)
+   */
+  const cycleStencilRotation = useCallback(() => {
+    setStencilRotationDeg((prev) => {
+      if (prev === 0) return 90;
+      if (prev === 90) return 180;
+      if (prev === 180) return 270;
+      return 0;
+    });
+  }, []);
 
   /**
    * Inicia el modo de muestreo rectangular (para primera muestra o muestras adicionales)
@@ -155,6 +202,101 @@ export function usePatternDetectorViewModel() {
   );
 
   /**
+   * Estampa una nueva muestra positiva mediante el esténcil rígido asistido por
+   * micro-snap magnético subpíxel y rotación cardinal exacta.
+   */
+  const executeStencilPlacement = useCallback(
+    async (centerWorld: { x: number; y: number }) => {
+      if (!activeUnderlay || positiveExemplars.length === 0) return;
+
+      setIsDetecting(true);
+      setIsSamplingPattern(false);
+      setIsAddingSample(false);
+      setErrorMessage(null);
+
+      try {
+        const scale = activeUnderlay.scaleMetersPerPx;
+        const originX = activeUnderlay.originWorldX;
+        const originY = activeUnderlay.originWorldY;
+
+        const baseBox = positiveExemplars[0].boxPx;
+        const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
+        const targetBoxWidth = isRotated90 ? baseBox.height : baseBox.width;
+        const targetBoxHeight = isRotated90 ? baseBox.width : baseBox.height;
+
+        const centerPx = {
+          x: Math.round((centerWorld.x - originX) / scale),
+          y: Math.round((centerWorld.y - originY) / scale)
+        };
+
+        const { width, height, mask } = await getUnderlayBinaryMask(
+          activeUnderlay.id,
+          activeUnderlay.imageUrl
+        );
+
+        // 1. Auto-centrado milimétrico por micro-snap magnético
+        const snapResult = magneticSubpixelSnap(
+          mask,
+          width,
+          height,
+          centerPx,
+          targetBoxWidth,
+          targetBoxHeight,
+          positiveExemplars[0].patch,
+          stencilRotationDeg,
+          4
+        );
+
+        // 2. Extraer parche y rotar a la orientación de referencia neutra (0°)
+        const rawPatch = extractNormalizedPatch(mask, width, snapResult.boxPx);
+        const unrotateDeg = ((360 - stencilRotationDeg) % 360) as 0 | 90 | 180 | 270;
+        const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+
+        // 3. Obtener firma espectral
+        const moments = calculateImageMoments(mask, width, snapResult.boxPx);
+        const signature =
+          calculateEigenSignature(moments, snapResult.boxPx.width, snapResult.boxPx.height) ||
+          positiveExemplars[0].signature;
+
+        const newExemplar: PatternExemplar = {
+          id: `ex-${Date.now()}-${Math.round(snapResult.boxPx.x)}_${Math.round(snapResult.boxPx.y)}`,
+          boxPx: snapResult.boxPx,
+          signature,
+          patch: alignedPatch,
+          isNegative: false
+        };
+
+        const nextPositives = [...positiveExemplars, newExemplar];
+        setPositiveExemplars(nextPositives);
+
+        // Si SVD sugiere un umbral ajustado, sincronizarlo
+        const consensus = computeGramSvdConsensus(nextPositives.map((e) => e.patch));
+        if (consensus?.suggestedThreshold) {
+          setSimilarityThreshold(consensus.suggestedThreshold);
+        }
+
+        const matches = detectPatternMatchesWithExemplars(
+          mask,
+          width,
+          height,
+          nextPositives,
+          negativeExemplars,
+          scale,
+          { x: originX, y: originY },
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+        );
+
+        setDetectedMatches(matches);
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Error al procesar la nueva muestra con el esténcil.');
+      } finally {
+        setIsDetecting(false);
+      }
+    },
+    [activeUnderlay, positiveExemplars, stencilRotationDeg, negativeExemplars]
+  );
+
+  /**
    * Limpia todas las coincidencias y ejemplares aprendidos
    */
   const clearMatches = useCallback(() => {
@@ -164,6 +306,7 @@ export function usePatternDetectorViewModel() {
     setNegativeExemplars([]);
     setDismissedMatchIds(new Set());
     setIsAddingSample(false);
+    setStencilRotationDeg(0);
   }, []);
 
   /**
@@ -362,6 +505,13 @@ export function usePatternDetectorViewModel() {
     clearMatches,
     undoLastPositiveExemplar,
     convertMatchesToElectricalElements,
-    getClosestSnapMatch
+    getClosestSnapMatch,
+    // Esténcil rígido y SVD
+    stencilRotationDeg,
+    setStencilRotationDeg,
+    cycleStencilRotation,
+    stencilSizeWorld,
+    svdConsensus,
+    executeStencilPlacement
   };
 }

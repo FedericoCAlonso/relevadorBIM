@@ -18,6 +18,11 @@ export interface BoundingBoxPx {
   height: number;
 }
 
+import {
+  computeGramSvdConsensus,
+  calculateMultiRotationWeightedZNCC
+} from './GramSvd';
+
 export interface ImageMoments {
   m00: number; // Área / masa (cantidad de píxeles oscuros)
   m10: number;
@@ -655,6 +660,12 @@ export function detectPatternMatchesWithExemplars(
     height: avgHeight
   };
 
+  // 0. Pre-computar consenso SVD si hay 2 o más ejemplares positivos
+  const svdConsensus =
+    positiveExemplars.length >= 2
+      ? computeGramSvdConsensus(positiveExemplars.map((ex) => ex.patch))
+      : null;
+
   // 1. Extraer candidatos por componentes conexas directamente en la máscara binaria
   const blobCandidates = extractCandidateBlobs(binaryMask, imgWidth, imgHeight, referenceBox);
 
@@ -739,6 +750,19 @@ export function detectPatternMatchesWithExemplars(
         const score = calculateExemplarSimilarity(candSignature, candPatch, posEx);
         if (score > maxPositiveScore) {
           maxPositiveScore = score;
+        }
+      }
+
+      // Si tenemos consenso SVD, contrastar además contra el autosímbolo filtrado
+      // con la máscara de varianza (ignora interferencias ortogonales como caños cruzados)
+      if (svdConsensus) {
+        const consensusScore = calculateMultiRotationWeightedZNCC(
+          candPatch,
+          svdConsensus.consensusPatch,
+          svdConsensus.confidenceWeights
+        );
+        if (consensusScore > maxPositiveScore) {
+          maxPositiveScore = consensusScore;
         }
       }
 
