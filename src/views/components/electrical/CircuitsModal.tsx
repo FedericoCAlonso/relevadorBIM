@@ -85,6 +85,24 @@ const CIRCUIT_PRESETS: Array<{
     desc: 'Bombas elevadoras, portones y motores'
   },
   {
+    type: 'LP',
+    label: 'LP',
+    defaultName: 'Línea Principal (Alimentador)',
+    wireMM2: 6.0,
+    breakerA: 32,
+    color: '#b91c1c',
+    desc: 'Alimentación troncal de tablero'
+  },
+  {
+    type: 'LS',
+    label: 'LS',
+    defaultName: 'Línea Seccional (Subtablero)',
+    wireMM2: 4.0,
+    breakerA: 25,
+    color: '#c2410c',
+    desc: 'Alimentación seccional entre tableros'
+  },
+  {
     type: 'OTRO',
     label: 'OTRO',
     defaultName: 'Circuito Especial',
@@ -109,8 +127,12 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
   const [wireSection, setWireSection] = useState<number>(1.5);
   const [breakerAmperage, setBreakerAmperage] = useState<number>(10);
   const [circuitColor, setCircuitColor] = useState<string>('#2563eb');
+  const [panelId, setPanelId] = useState<string>('');
+  const [targetPanelId, setTargetPanelId] = useState<string>('');
 
   if (!isOpen) return null;
+
+  const defaultPanelId = project.panels[0]?.id || 'pan-principal';
 
   const handleApplyPreset = (preset: (typeof CIRCUIT_PRESETS)[0]) => {
     setCircuitType(preset.type);
@@ -127,6 +149,8 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setWireSection(2.5);
     setBreakerAmperage(16);
     setCircuitColor(CIRCUIT_COLOR_PALETTE[(nextIdx - 1) % CIRCUIT_COLOR_PALETTE.length].hex);
+    setPanelId(defaultPanelId);
+    setTargetPanelId('');
     setIsCreating(true);
     setEditingCircuitId(null);
   };
@@ -134,10 +158,10 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
   const handleSaveNewCircuit = () => {
     if (!circuitName.trim()) return;
 
-    const defaultPanelId = project.panels[0]?.id || 'pan-principal';
     const newCirc: Circuit = {
       id: `circ-${Date.now()}`,
-      panelId: defaultPanelId,
+      panelId: panelId || defaultPanelId,
+      targetPanelId: (circuitType === 'LP' || circuitType === 'LS') && targetPanelId ? targetPanelId : null,
       name: circuitName.trim(),
       type: circuitType,
       voltageV: AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
@@ -158,6 +182,8 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setWireSection(circ.wireSectionBaseMM2 || 2.5);
     setBreakerAmperage(circ.breakerAmperageA || 16);
     setCircuitColor(circ.color || '#2563eb');
+    setPanelId(circ.panelId || defaultPanelId);
+    setTargetPanelId(circ.targetPanelId || '');
     setIsCreating(false);
   };
 
@@ -166,6 +192,8 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     updateCircuit(circId, {
       name: circuitName.trim(),
       type: circuitType,
+      panelId: panelId || defaultPanelId,
+      targetPanelId: (circuitType === 'LP' || circuitType === 'LS') && targetPanelId ? targetPanelId : null,
       wireSectionBaseMM2: wireSection,
       breakerAmperageA: breakerAmperage,
       color: circuitColor
@@ -313,10 +341,60 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                     <option value="TUE">TUE (Tomas Especiales)</option>
                     <option value="ACU">ACU (Alimentación Clima)</option>
                     <option value="FM">FM (Fuerza Motriz / Bombas)</option>
+                    <option value="LP">LP (Línea Principal Alimentador)</option>
+                    <option value="LS">LS (Línea Seccional Subtablero)</option>
                     <option value="OTRO">OTRO (Uso Específico)</option>
                   </select>
                 </div>
 
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                    TABLERO ALIMENTADOR
+                  </label>
+                  <select
+                    value={panelId || defaultPanelId}
+                    onChange={(e) => setPanelId(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {project.panels.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                    {project.panels.length === 0 && (
+                      <option value="pan-principal">Tablero Principal (TP)</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Si es LP o LS: Selector de Tablero Receptor / Alimentado */}
+              {(circuitType === 'LP' || circuitType === 'LS') && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                  <label className="text-[10px] font-bold text-amber-900 block">
+                    ⚡ TABLERO DESTINO / ALIMENTADO POR ESTA LÍNEA:
+                  </label>
+                  <select
+                    value={targetPanelId}
+                    onChange={(e) => setTargetPanelId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">(Seleccionar tablero receptor...)</option>
+                    {project.panels
+                      .filter((p) => p.id !== (panelId || defaultPanelId))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-[10px] text-amber-700">
+                    Conecta eléctricamente el tablero cabecera con el subtablero.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 block mb-1">
                     SECCIÓN CONDUCTOR
@@ -396,133 +474,173 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* Lista de Circuitos Existentes */}
-          <div className="space-y-2.5">
-            {project.circuits.map((circ) => {
-              const bocasCount = project.electricalElements.filter(
-                (e) => e.circuitId === circ.id
-              ).length;
-              const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
-              const isEditingThis = editingCircuitId === circ.id;
-              if (isEditingThis) return null; // Ya se muestra arriba en el formulario
-
-              // Calcular longitud total de cañería asociada a este circuito
-              const conduitsLengthM = project.conduits
-                .filter((c) => c.circuitId === circ.id || c.circuitIds?.includes(circ.id))
-                .reduce((acc, c) => acc + (c.manualLengthM || 0), 0);
+          {/* Lista de Circuitos Existentes Agrupados por Tablero Cabecera */}
+          <div className="space-y-4">
+            {project.panels.map((panel) => {
+              const panelCircuits = project.circuits.filter(
+                (c) => (c.panelId || defaultPanelId) === panel.id
+              );
+              if (panelCircuits.length === 0 && project.panels.length > 1) return null;
 
               return (
-                <div
-                  key={circ.id}
-                  className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl space-y-2 shadow-xs transition-all"
-                >
-                  {/* Fila Principal: Color, Nombre y Botones */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 truncate">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditingColorCircuitId(
-                            editingColorCircuitId === circ.id ? null : circ.id
-                          )
-                        }
-                        className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white hover:scale-110 active:scale-95 transition-transform cursor-pointer ring-1 ring-slate-300"
-                        style={{ backgroundColor: circ.color || '#2563eb' }}
-                        title="Toca para cambiar color en plano"
-                      />
-                      <span className="font-bold text-xs text-slate-900 truncate">
-                        {circ.name}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold shrink-0">
-                        {circ.type}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleStartEdit(circ)}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                        title="Modificar circuito"
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (
-                            bocasCount > 0 &&
-                            !window.confirm(
-                              `El circuito ${circ.name} tiene ${bocasCount} bocas asignadas. ¿Deseas eliminarlo y dejar las bocas sin circuito?`
-                            )
-                          ) {
-                            return;
-                          }
-                          deleteCircuit(circ.id);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Eliminar circuito"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                <div key={panel.id} className="space-y-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      🏢 {panel.name} ({panelCircuits.length})
+                    </span>
+                    <div className="flex-1 h-px bg-slate-200" />
                   </div>
 
-                  {/* Selector de Color Desplegable */}
-                  {editingColorCircuitId === circ.id && (
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 animate-in fade-in duration-100">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-500">
-                          Color asignado en el plano CAD:
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setEditingColorCircuitId(null)}
-                          className="text-[10px] text-slate-400 hover:text-slate-600"
+                  <div className="space-y-2">
+                    {panelCircuits.map((circ) => {
+                      const bocasCount = project.electricalElements.filter(
+                        (e) => e.circuitId === circ.id
+                      ).length;
+                      const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
+                      const isEditingThis = editingCircuitId === circ.id;
+                      if (isEditingThis) return null;
+
+                      const targetPanel = circ.targetPanelId
+                        ? project.panels.find((p) => p.id === circ.targetPanelId)
+                        : null;
+
+                      const conduitsLengthM = project.conduits
+                        .filter((c) => c.circuitId === circ.id || c.circuitIds?.includes(circ.id))
+                        .reduce((acc, c) => acc + (c.manualLengthM || 0), 0);
+
+                      return (
+                        <div
+                          key={circ.id}
+                          className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl space-y-2 shadow-xs transition-all"
                         >
-                          ✕
-                        </button>
-                      </div>
-                      <CircuitColorPicker
-                        selectedColor={circ.color || '#2563eb'}
-                        onChangeColor={(color) => {
-                          updateCircuit(circ.id, { color });
-                        }}
-                        size="sm"
-                      />
-                    </div>
-                  )}
+                          {/* Fila Principal: Color, Nombre y Botones */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 truncate">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingColorCircuitId(
+                                    editingColorCircuitId === circ.id ? null : circ.id
+                                  )
+                                }
+                                className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white hover:scale-110 active:scale-95 transition-transform cursor-pointer ring-1 ring-slate-300"
+                                style={{ backgroundColor: circ.color || '#2563eb' }}
+                                title="Toca para cambiar color en plano"
+                              />
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {circ.name}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                                  circ.type === 'LP' || circ.type === 'LS'
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {circ.type}
+                              </span>
+                              {targetPanel && (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold truncate">
+                                  ↳ Alimenta a: {targetPanel.name}
+                                </span>
+                              )}
+                            </div>
 
-                  {/* Fila de Datos Técnicos y Carga */}
-                  <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono pt-1 border-t border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span>
-                        Térmica: <strong>{circ.breakerAmperageA || 16}A</strong>
-                      </span>
-                      <span>·</span>
-                      <span>
-                        Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
-                      </span>
-                      {conduitsLengthM > 0 && (
-                        <>
-                          <span>·</span>
-                          <span><strong>{conduitsLengthM.toFixed(1)}</strong> m caño</span>
-                        </>
-                      )}
-                    </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(circ)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                title="Modificar circuito"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    bocasCount > 0 &&
+                                    !window.confirm(
+                                      `El circuito ${circ.name} tiene ${bocasCount} bocas asignadas. ¿Deseas eliminarlo y dejar las bocas sin circuito?`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  deleteCircuit(circ.id);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar circuito"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          isOverloaded
-                            ? 'bg-red-100 text-red-700 font-bold'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                        title={isOverloaded ? 'Supera las 15 bocas reglamentarias AEA' : undefined}
-                      >
-                        {bocasCount} bocas {isOverloaded && '⚠️'}
-                      </span>
-                    </div>
+                          {/* Selector de Color Desplegable */}
+                          {editingColorCircuitId === circ.id && (
+                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 animate-in fade-in duration-100">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  Color asignado en el plano CAD:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingColorCircuitId(null)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-600"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                              <CircuitColorPicker
+                                selectedColor={circ.color || '#2563eb'}
+                                onChangeColor={(color) => {
+                                  updateCircuit(circ.id, { color });
+                                }}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+
+                          {/* Fila de Datos Técnicos y Carga */}
+                          <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono pt-1 border-t border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <span>
+                                Térmica: <strong>{circ.breakerAmperageA || 16}A</strong>
+                              </span>
+                              <span>·</span>
+                              <span>
+                                Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
+                              </span>
+                              {conduitsLengthM > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <span>
+                                    <strong>{conduitsLengthM.toFixed(1)}</strong> m caño
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                  isOverloaded
+                                    ? 'bg-red-100 text-red-700 font-bold'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                                title={
+                                  isOverloaded
+                                    ? 'Supera las 15 bocas reglamentarias AEA'
+                                    : undefined
+                                }
+                              >
+                                {bocasCount} bocas {isOverloaded && '⚠️'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

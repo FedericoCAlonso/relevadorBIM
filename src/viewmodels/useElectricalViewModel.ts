@@ -13,9 +13,11 @@ import type {
   ElectricalElement,
   Conduit,
   ConduitRoutingMode,
+  ConduitRoutingPlane,
   ConduitMaterial,
   ConductorLine,
-  ConductorRole
+  ConductorRole,
+  ConduitWaypoint
 } from '../models/electrical/ElectricalModel';
 import type { WallPlacementSnap } from '../models/architecture/Wall';
 import { resolveSpacePolygon, isPointInPolygon } from '../models/architecture/Space';
@@ -34,7 +36,8 @@ import {
   type ConduitSizeOption
 } from '../models/electrical/electricalStandards';
 import {
-  generateNextUniqueLabel,
+  generateNextUniqueLabelInCircuit,
+  formatElementLabel,
   calculateConduitOccupancyFactor,
   getConduitLengthBreakdown,
   type ConduitLengthBreakdown
@@ -48,6 +51,7 @@ export interface ElectricalSequenceStoreState {
   sequenceConduitMaterial: ConduitMaterial;
   sequenceConduitDiameterMM: number;
   sequenceRoutingMode: ConduitRoutingMode;
+  sequenceRoutingPlane: ConduitRoutingPlane;
   lastPlacedElementId: string | null;
 
   setSequencePrefix: (prefix: string) => void;
@@ -58,6 +62,7 @@ export interface ElectricalSequenceStoreState {
   setSequenceConduitMaterial: (material: ConduitMaterial) => void;
   setSequenceConduitDiameterMM: (diameterMM: number) => void;
   setSequenceRoutingMode: (mode: ConduitRoutingMode) => void;
+  setSequenceRoutingPlane: (plane: ConduitRoutingPlane) => void;
   setLastPlacedElementId: (elementId: string | null) => void;
   resetSequence: () => void;
 }
@@ -70,6 +75,7 @@ export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((
   sequenceConduitMaterial: 'hierro_semipesado_rs',
   sequenceConduitDiameterMM: 19,
   sequenceRoutingMode: 'orthogonal',
+  sequenceRoutingPlane: 'ceiling_slab',
   lastPlacedElementId: null,
 
   setSequencePrefix: (sequencePrefix) => set({ sequencePrefix }),
@@ -88,6 +94,7 @@ export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((
   setSequenceConduitMaterial: (sequenceConduitMaterial) => set({ sequenceConduitMaterial }),
   setSequenceConduitDiameterMM: (sequenceConduitDiameterMM) => set({ sequenceConduitDiameterMM }),
   setSequenceRoutingMode: (sequenceRoutingMode) => set({ sequenceRoutingMode }),
+  setSequenceRoutingPlane: (sequenceRoutingPlane) => set({ sequenceRoutingPlane }),
   setLastPlacedElementId: (lastPlacedElementId) => set({ lastPlacedElementId }),
   resetSequence: () => set({ lastPlacedElementId: null })
 }));
@@ -146,7 +153,8 @@ export function placeElectricalElementInStore(
   const ceilingH = containingSpace ? containingSpace.ceilingHeight : 2.70;
 
   const activePrefix = overridePrefix !== undefined ? overridePrefix : sequenceStore.sequencePrefix;
-  const label = generateNextUniqueLabel(activePrefix, project.electricalElements);
+  const activeCircuitId = overrideCircuitId !== undefined ? overrideCircuitId : sequenceStore.sequenceCircuitId;
+  const label = generateNextUniqueLabelInCircuit(activePrefix, activeCircuitId, project.electricalElements);
 
   const powerW =
     symbolId.includes('toma') || symbolId.includes('enchufe')
@@ -156,8 +164,6 @@ export function placeElectricalElementInStore(
       : symbolId.includes('aplique')
       ? AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_APLIQUE_W
       : 0;
-
-  const activeCircuitId = overrideCircuitId !== undefined ? overrideCircuitId : sequenceStore.sequenceCircuitId;
 
   const isPanel =
     symbolId.includes('tablero') ||
@@ -235,7 +241,8 @@ export function placeElectricalElementInStore(
         material: sequenceStore.sequenceConduitMaterial,
         isVerticalRiser,
         conductors,
-        routingMode: sequenceStore.sequenceRoutingMode
+        routingMode: sequenceStore.sequenceRoutingMode,
+        routingPlane: sequenceStore.sequenceRoutingPlane
       });
     }
   }
@@ -258,7 +265,9 @@ export function useElectricalViewModel() {
     addCableType,
     removeCableType,
     addBoxType,
-    removeBoxType
+    removeBoxType,
+    labelDisplayMode,
+    setLabelDisplayMode
   } = useProjectStore();
 
   const sequenceStore = useElectricalSequenceStore();
@@ -293,16 +302,25 @@ export function useElectricalViewModel() {
     return project.electricalElements.find((e) => e.id === selectedConduit.toElementId) || null;
   }, [selectedConduit, project.electricalElements]);
 
-  // Desglose métrico ortogonal 3D calculado en el ViewModel
+  // Desglose métrico 3D calculado en el ViewModel contemplando vía de tendido, waypoints y montantes
   const conduitBreakdown = useMemo<ConduitLengthBreakdown | null>(() => {
     if (!conduitFromElement || !conduitToElement) return null;
+    const space = project.spaces.find(
+      (s) => s.id === conduitFromElement.spaceId || s.id === conduitToElement.spaceId
+    );
+    const ceilingHeightM = space ? space.ceilingHeight : 2.70;
+
     return getConduitLengthBreakdown({
       fromElement: conduitFromElement,
       toElement: conduitToElement,
       levelsMap,
-      isOrthogonalRouting: true
+      isOrthogonalRouting: selectedConduit?.routingMode !== 'schematic_arc',
+      routingPlane: selectedConduit?.routingPlane || 'wall',
+      ceilingHeightM,
+      waypoints: selectedConduit?.waypoints,
+      additionalLengthM: selectedConduit?.additionalLengthM
     });
-  }, [conduitFromElement, conduitToElement, levelsMap]);
+  }, [conduitFromElement, conduitToElement, levelsMap, selectedConduit, project.spaces]);
 
   // Factor de ocupación reglamentario AEA calculado en el ViewModel
   const conduitOccupancy = useMemo(() => {
@@ -542,10 +560,14 @@ export function useElectricalViewModel() {
     [deleteConduit, setSelectedEntity]
   );
 
-  // Próxima etiqueta sugerida única para el prefijo de secuencia activo
+  // Próxima etiqueta sugerida única para el prefijo y circuito activo
   const nextSuggestedLabel = useMemo(() => {
-    return generateNextUniqueLabel(sequenceStore.sequencePrefix, project.electricalElements);
-  }, [sequenceStore.sequencePrefix, project.electricalElements]);
+    return generateNextUniqueLabelInCircuit(
+      sequenceStore.sequencePrefix,
+      sequenceStore.sequenceCircuitId,
+      project.electricalElements
+    );
+  }, [sequenceStore.sequencePrefix, sequenceStore.sequenceCircuitId, project.electricalElements]);
 
   /**
    * Emplaza una boca eléctrica con resolución de dominio arquitectónico (espacio, altura,
@@ -570,11 +592,49 @@ export function useElectricalViewModel() {
     [project.conduits, updateConduit]
   );
 
+  const setConduitRoutingPlane = useCallback(
+    (conduitId: string, routingPlane: ConduitRoutingPlane) => {
+      updateConduit(conduitId, { routingPlane });
+    },
+    [updateConduit]
+  );
+
+  const setConduitRiserTerminal = useCallback(
+    (
+      conduitId: string,
+      isRiserTerminal: boolean,
+      additionalLengthM?: number,
+      targetDescription?: string
+    ) => {
+      updateConduit(conduitId, { isRiserTerminal, additionalLengthM, targetDescription });
+    },
+    [updateConduit]
+  );
+
   const setConduitWaypoints = useCallback(
-    (conduitId: string, waypoints: Array<{ x: number; y: number }>) => {
+    (conduitId: string, waypoints: ConduitWaypoint[]) => {
       updateConduit(conduitId, { waypoints });
     },
     [updateConduit]
+  );
+
+  /** Formatea la etiqueta de la boca según el modo de visualización configurado */
+  const getFormattedElementLabel = useCallback(
+    (element: ElectricalElement): string => {
+      const circ = element.circuitId
+        ? project.circuits.find((c) => c.id === element.circuitId)
+        : null;
+      const panel = circ
+        ? project.panels.find((p) => p.id === circ.panelId)
+        : project.panels[0] || null;
+      return formatElementLabel({
+        elementLabel: element.label,
+        circuit: circ,
+        panel,
+        mode: labelDisplayMode
+      });
+    },
+    [project.circuits, project.panels, labelDisplayMode]
   );
 
   return {
@@ -588,6 +648,9 @@ export function useElectricalViewModel() {
     conduitOccupancy,
     conduitAvailableSizes,
     circuits: project.circuits,
+    labelDisplayMode,
+    setLabelDisplayMode,
+    getFormattedElementLabel,
 
     // Secuencia de inserción continua y ruteo
     sequence: {
@@ -598,6 +661,7 @@ export function useElectricalViewModel() {
       conduitMaterial: sequenceStore.sequenceConduitMaterial,
       conduitDiameterMM: sequenceStore.sequenceConduitDiameterMM,
       routingMode: sequenceStore.sequenceRoutingMode,
+      routingPlane: sequenceStore.sequenceRoutingPlane,
       lastPlacedElementId: sequenceStore.lastPlacedElementId,
       nextSuggestedLabel,
       setPrefix: sequenceStore.setSequencePrefix,
@@ -608,6 +672,7 @@ export function useElectricalViewModel() {
       setConduitMaterial: sequenceStore.setSequenceConduitMaterial,
       setConduitDiameterMM: sequenceStore.setSequenceConduitDiameterMM,
       setRoutingMode: sequenceStore.setSequenceRoutingMode,
+      setRoutingPlane: sequenceStore.setSequenceRoutingPlane,
       setLastPlacedElementId: sequenceStore.setLastPlacedElementId,
       resetSequence: sequenceStore.resetSequence
     },
@@ -662,6 +727,8 @@ export function useElectricalViewModel() {
     removeConduit,
     toggleConduitCircuit,
     toggleConduitRoutingMode,
+    setConduitRoutingPlane,
+    setConduitRiserTerminal,
     setConduitWaypoints
   };
 }

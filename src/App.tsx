@@ -46,7 +46,12 @@ export function App() {
     deleteDimensionLine
   } = useProjectStore();
 
-  const { placeElectricalElement, sequence } = useElectricalViewModel();
+  const {
+    placeElectricalElement,
+    sequence,
+    labelDisplayMode,
+    setLabelDisplayMode
+  } = useElectricalViewModel();
 
   const {
     relativeTurn,
@@ -407,18 +412,49 @@ export function App() {
                 <span className="text-slate-300 text-[11px]">Enlazar</span>
               </label>
 
-              {/* Selector de Ruteo (Ortogonal / Arco) */}
+              {/* Selector de Vía de Tendido (Losa, Contrapiso, Pared) */}
               {sequence.autoConnectConduits && (
+                <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
+                  <select
+                    value={sequence.routingPlane}
+                    onChange={(e) => sequence.setRoutingPlane(e.target.value as any)}
+                    className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                    title="Vía física de tendido de cañería (Norma AEA 90364-771)"
+                  >
+                    <option value="ceiling_slab">☁ Losa Techo</option>
+                    <option value="floor_slab">👣 Contrapiso</option>
+                    <option value="wall">🧱 Por Pared</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Selector de Ruteo (Ortogonal / Arco en Pared) */}
+              {sequence.autoConnectConduits && sequence.routingPlane === 'wall' && (
                 <select
                   value={sequence.routingMode}
                   onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
                   className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
-                  title="Modo de trazado de cañería"
+                  title="Modo de trazado de cañería en pared"
                 >
                   <option value="orthogonal">📐 90° Ortogonal</option>
                   <option value="schematic_arc">⌒ Arco AEA</option>
                 </select>
               )}
+
+              {/* Selector de Modo de Visualización de Etiquetas */}
+              <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
+                <span className="text-slate-400 text-[11px]">Etq:</span>
+                <select
+                  value={labelDisplayMode}
+                  onChange={(e) => setLabelDisplayMode(e.target.value as any)}
+                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                  title="Modo de visualización de etiquetas en plano"
+                >
+                  <option value="full">TP_C1_B1</option>
+                  <option value="circuit_element">C1_B1</option>
+                  <option value="element_only">B1</option>
+                </select>
+              </div>
 
               {/* Botón Salir / Terminar */}
               <button

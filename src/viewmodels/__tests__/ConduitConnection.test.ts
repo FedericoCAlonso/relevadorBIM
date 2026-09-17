@@ -249,7 +249,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       symbolId: 'sym-planta-boca-techo'
     });
 
-    expect(el3.label).toBe('B3');
+    expect(el3.label).toBe('B1'); // Primera boca en el nuevo circuito C1
     expect(el3.circuitId).toBe('circ-c1');
 
     const conduitsAfter3 = useProjectStore.getState().project.conduits;
@@ -262,7 +262,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     expect(cond2to3.conductors[0].sectionMM2).toBe(1.5);
     expect(cond2to3.conductors[0].circuitId).toBe('circ-c1');
 
-    // 4. Resetear la secuencia e insertar una cuarta boca: NO debe encadenar con B3
+    // 4. Resetear la secuencia e insertar una cuarta boca: NO debe encadenar con B1 pero sigue en C1 -> B2
     seqStore.resetSequence();
     const el4 = placeElectricalElementInStore({
       worldX: 8.0,
@@ -270,7 +270,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       symbolId: 'sym-planta-boca-techo'
     });
 
-    expect(el4.label).toBe('B4');
+    expect(el4.label).toBe('B2'); // Segunda boca en el circuito C1
     // La cantidad de cañerías no debe haber aumentado
     expect(useProjectStore.getState().project.conduits).toHaveLength(2);
   });

@@ -21,7 +21,8 @@ import type {
   Panel,
   ConduitTypeDefinition,
   CableTypeDefinition,
-  BoxTypeDefinition
+  BoxTypeDefinition,
+  LabelDisplayMode
 } from '../models/electrical/ElectricalModel';
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
@@ -144,6 +145,8 @@ interface ProjectStoreState {
   showDimensions: boolean;
   setShowDimensions: (show: boolean) => void;
   toggleDimensions: () => void;
+  labelDisplayMode: LabelDisplayMode;
+  setLabelDisplayMode: (mode: LabelDisplayMode) => void;
 }
 
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
@@ -151,9 +154,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   selectedEntity: null,
   activeAnchorVertexId: null,
   showDimensions: true,
+  labelDisplayMode: 'full',
 
   setShowDimensions: (show) => set({ showDimensions: show }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
+  setLabelDisplayMode: (labelDisplayMode) => set({ labelDisplayMode }),
 
   updateProjectMeta: (patch) =>
     set((state) => ({

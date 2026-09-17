@@ -21,7 +21,8 @@ import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetec
 import {
   generateRoundedPolylineSvgPath,
   computeOrthogonalConduitPoints,
-  getConduitVerticalTransitions
+  getConduitVerticalTransitions,
+  formatElementLabel
 } from '../../../models/electrical/calculations';
 
 export type { WallPlacementSnap };
@@ -150,7 +151,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     setActiveAnchorVertexId,
     showDimensions,
     toggleDimensions,
-    deleteDimensionLine
+    deleteDimensionLine,
+    labelDisplayMode
   } = useProjectStore();
 
   // Escala y transformación de vista (Pan y Zoom)
@@ -1221,16 +1223,26 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const dist = Math.hypot(dx, dy);
       if (dist < 1) return null;
 
-      const isOrthogonal = conduit.routingMode !== 'schematic_arc';
+      const routingPlane = conduit.routingPlane || 'wall';
+      const isSlabOrFloor = routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab';
+      const isOrthogonal = !isSlabOrFloor && conduit.routingMode !== 'schematic_arc';
       let pathD: string;
       let midX: number;
       let midY: number;
 
-      if (isOrthogonal) {
-        const waypointsPx = conduit.waypoints?.map((wp) => ({
-          x: wp.x * zoom,
-          y: wp.y * zoom
-        }));
+      const waypointsPx = conduit.waypoints?.map((wp) => ({
+        x: wp.x * zoom,
+        y: wp.y * zoom
+      }));
+
+      if (isSlabOrFloor) {
+        // En losa o contrapiso: trazo directo / diagonal entre extremos o waypoints
+        const pts = [p1, ...(waypointsPx || []), p2];
+        pathD = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} ` + pts.slice(1).map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+        const midIdx = Math.max(1, Math.floor(pts.length / 2));
+        midX = (pts[midIdx - 1].x + pts[midIdx].x) / 2;
+        midY = (pts[midIdx - 1].y + pts[midIdx].y) / 2;
+      } else if (isOrthogonal) {
         const orthoPoints = computeOrthogonalConduitPoints(p1, p2, waypointsPx);
         const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
         pathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
@@ -1256,12 +1268,15 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const assignedCircuitId = conduit.circuitId || conduit.circuitIds?.[0];
       const circ = assignedCircuitId ? project.circuits.find((c) => c.id === assignedCircuitId) : null;
       const strokeColor = isSelected ? '#2563eb' : circ?.color || '#ea580c';
+      const planeGlyph = routingPlane === 'ceiling_slab' ? '☁' : routingPlane === 'floor_slab' ? '👣' : '🧱';
       const labelText = circ
         ? `${circ.name.split(' ')[0]} · Ø${conduit.diameterMM}mm`
         : conduit.label || `Ø${conduit.diameterMM}mm`;
 
-      // Verificación de desnivel vertical (subidas ▲ y bajadas ▼ según AEA)
-      const vertTrans = getConduitVerticalTransitions(elFrom.heightZ, elTo.heightZ);
+      // Verificación de desnivel vertical (subidas ▲ y bajadas ▼ según AEA y vía de tendido)
+      const space = project.spaces.find((s) => s.id === elFrom.spaceId || s.id === elTo.spaceId);
+      const ceilingH = space ? space.ceilingHeight : 2.70;
+      const vertTrans = getConduitVerticalTransitions(elFrom.heightZ, elTo.heightZ, 0.30, routingPlane, ceilingH);
 
       return (
         <g
@@ -1279,7 +1294,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           {/* Hit area amplia */}
           <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
-          {/* Cañería continua con esquinas redondeadas o arco */}
+          {/* Cañería continua con esquinas redondeadas, arco o diagonal de losa */}
           <path
             d={pathD}
             fill="none"
@@ -1289,7 +1304,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* Diámetro y circuito de la cañería */}
+          {/* Diámetro, vía de tendido y circuito de la cañería */}
           <text
             x={midX}
             y={midY - 5}
@@ -1298,9 +1313,34 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             fill={isSelected ? '#1d4ed8' : strokeColor}
             className="font-mono font-bold pointer-events-none select-none"
           >
-            {labelText}
+            {planeGlyph} {labelText}
           </text>
-          {/* Indicador de cota vertical de subida o bajada en pared */}
+
+          {/* Indicador de cota vertical en ORIGEN (subida o bajada hacia losa/piso) */}
+          {vertTrans.hasTransition && vertTrans.glyphTextFrom && (
+            <g transform={`translate(${p1.x + 8}, ${p1.y + (vertTrans.fromType === 'bajada' ? 12 : -8)})`} className="pointer-events-none">
+              <rect
+                x={-2}
+                y={-8}
+                width={vertTrans.glyphTextFrom.length * 5.6 + 6}
+                height={11}
+                rx={2.5}
+                fill="#0f172a"
+                fillOpacity={0.85}
+              />
+              <text
+                x={1}
+                y={0.5}
+                fontSize={7.5}
+                fill={vertTrans.fromType === 'bajada' ? '#38bdf8' : '#fbbf24'}
+                className="font-mono font-bold select-none"
+              >
+                {vertTrans.glyphTextFrom}
+              </text>
+            </g>
+          )}
+
+          {/* Indicador de cota vertical en DESTINO (bajada o subida desde losa/piso) */}
           {vertTrans.hasTransition && vertTrans.glyphTextTo && (
             <g transform={`translate(${p2.x + 8}, ${p2.y + (vertTrans.toType === 'bajada' ? 12 : -8)})`} className="pointer-events-none">
               <rect
@@ -1320,6 +1360,30 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 className="font-mono font-bold select-none"
               >
                 {vertTrans.glyphTextTo}
+              </text>
+            </g>
+          )}
+
+          {/* Indicador de Montante Vertical / Pase de losa restante */}
+          {(conduit.isRiserTerminal || (typeof conduit.additionalLengthM === 'number' && conduit.additionalLengthM > 0)) && (
+            <g transform={`translate(${p2.x + 8}, ${p2.y + 22})`} className="pointer-events-none">
+              <rect
+                x={-2}
+                y={-8}
+                width={Math.max(60, ((conduit.targetDescription || '').length + 10) * 5.5)}
+                height={12}
+                rx={3}
+                fill="#b45309"
+                fillOpacity={0.9}
+              />
+              <text
+                x={1}
+                y={0.5}
+                fontSize={7.5}
+                fill="#ffffff"
+                className="font-mono font-bold select-none"
+              >
+                ⌖ +{(conduit.additionalLengthM || 0).toFixed(2)}m {conduit.targetDescription ? `· ${conduit.targetDescription}` : ''}
               </text>
             </g>
           )}
@@ -1350,7 +1414,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const isSelected = selectedEntity?.type === 'electrical_element' && selectedEntity.id === element.id;
         const isPendingStart = pendingConduitStartId === element.id;
         const circ = element.circuitId ? project.circuits.find((c) => c.id === element.circuitId) : null;
+        const panel = circ ? project.panels.find((p) => p.id === circ.panelId) : project.panels[0] || null;
         const circuitLabel = circ ? circ.name.split(' ')[0] : undefined;
+        const formattedLabel = formatElementLabel({
+          elementLabel: element.label,
+          circuit: circ,
+          panel,
+          mode: labelDisplayMode
+        });
 
         return (
           <g
@@ -1427,6 +1498,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               isSelected={isSelected || isPendingStart}
               elementLabel={element.label}
               circuitLabel={circuitLabel}
+              formattedLabel={formattedLabel}
               returnRef={element.returnRef}
               rotationDeg={element.rotation || 0}
             />
@@ -1471,6 +1543,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   }, [
     project.electricalElements,
     project.circuits,
+    project.panels,
+    labelDisplayMode,
     project.activeLevelId,
     zoom,
     selectedEntity,

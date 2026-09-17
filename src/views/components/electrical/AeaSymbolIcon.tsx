@@ -82,9 +82,18 @@ export const AeaCanvasSymbol: React.FC<{
   isSelected?: boolean;
   elementLabel?: string;
   circuitLabel?: string;
+  formattedLabel?: string;
   returnRef?: string;
   rotationDeg?: number;
-}> = ({ symbolId, isSelected = false, elementLabel, circuitLabel, returnRef, rotationDeg = 0 }) => {
+}> = ({
+  symbolId,
+  isSelected = false,
+  elementLabel,
+  circuitLabel,
+  formattedLabel,
+  returnRef,
+  rotationDeg = 0
+}) => {
   const symDef = getSymbolById(symbolId);
   const isTablero =
     symbolId.includes('tablero') ||
@@ -95,6 +104,11 @@ export const AeaCanvasSymbol: React.FC<{
   // Escala visual normalizada para el canvas CAD
   const scale = 18;
   const strokeColor = isSelected ? '#2563eb' : '#0f172a';
+
+  // Texto a mostrar: si hay formattedLabel (ej: TP_C1_B1, C1_B1, B1), usarlo directamente
+  const displayLabel = formattedLabel !== undefined
+    ? formattedLabel
+    : `${circuitLabel ? `[${circuitLabel}] ` : ''}${elementLabel || ''}`;
 
   return (
     <g className="select-none" transform={`rotate(${rotationDeg})`}>
@@ -143,7 +157,7 @@ export const AeaCanvasSymbol: React.FC<{
       </g>
 
       {/* Rótulo identificatorio puro (sin cajas ni fondos), compensado para mantenerse horizontal */}
-      {(elementLabel || circuitLabel || returnRef) && (
+      {(displayLabel || returnRef) && (
         <text
           x={16}
           y={4}
@@ -153,8 +167,7 @@ export const AeaCanvasSymbol: React.FC<{
           fill={isSelected ? '#2563eb' : '#334155'}
           className="font-mono select-none pointer-events-none"
         >
-          {circuitLabel ? `[${circuitLabel}] ` : ''}
-          {elementLabel || ''}
+          {displayLabel}
           {returnRef ? ` (${returnRef})` : ''}
         </text>
       )}

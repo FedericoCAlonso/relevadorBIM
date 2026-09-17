@@ -39,7 +39,8 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
     updateElementAttribute,
     removeElementAttribute,
     removeElement,
-    toggleElementPassingCircuit
+    toggleElementPassingCircuit,
+    getFormattedElementLabel
   } = useElectricalViewModel();
 
   if (!isOpen || !element) return null;
@@ -79,12 +80,17 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
           {/* 1. Rótulo y Circuito */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Rótulo / Nombre:</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-700">Rótulo Local:</label>
+                <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200" title="Nombre jerárquico completo en plano (Tablero_Circuito_Boca)">
+                  {getFormattedElementLabel(element)}
+                </span>
+              </div>
               <input
                 type="text"
                 value={element.label || ''}
                 onChange={(e) => setElementProperties(element.id, { label: e.target.value })}
-                placeholder="Ej: Boca 1, Toma Cocina, Llave A"
+                placeholder="Ej: B1"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
               />
             </div>

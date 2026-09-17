@@ -327,6 +327,141 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
             </div>
           </div>
 
+          {/* Vía Física de Tendido (Norma AEA 90364-771) */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-800 text-xs">
+                Vía de Tendido del Conducto:
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {conduit.routingPlane === 'ceiling_slab' ? '☁ Losa Techo' : conduit.routingPlane === 'floor_slab' ? '👣 Contrapiso' : '🧱 En Pared'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setConduitProperties(conduit.id, { routingPlane: 'ceiling_slab' })}
+                className={`p-2 rounded-xl text-xs font-bold border text-center transition-all ${
+                  (conduit.routingPlane || 'wall') === 'ceiling_slab'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                ☁ Losa Techo
+              </button>
+              <button
+                type="button"
+                onClick={() => setConduitProperties(conduit.id, { routingPlane: 'floor_slab' })}
+                className={`p-2 rounded-xl text-xs font-bold border text-center transition-all ${
+                  conduit.routingPlane === 'floor_slab'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                👣 Contrapiso
+              </button>
+              <button
+                type="button"
+                onClick={() => setConduitProperties(conduit.id, { routingPlane: 'wall' })}
+                className={`p-2 rounded-xl text-xs font-bold border text-center transition-all ${
+                  (conduit.routingPlane || 'wall') === 'wall'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                🧱 En Pared
+              </button>
+            </div>
+            {conduit.routingPlane === 'wall' && (
+              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-600 border-t border-slate-200">
+                <span>Geometría en pared:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConduitProperties(conduit.id, {
+                      routingMode: conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal'
+                    })
+                  }
+                  className="px-2 py-0.5 rounded-md bg-white border border-slate-300 font-bold hover:bg-slate-100"
+                >
+                  {conduit.routingMode === 'schematic_arc' ? '⌒ Arco Curvo' : '📐 90° Ortogonal'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Montante Vertical / Pase de Losa (Remate a Distancia) */}
+          <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={Boolean(conduit.isRiserTerminal || (conduit.additionalLengthM && conduit.additionalLengthM > 0))}
+                  onChange={(e) => {
+                    const active = e.target.checked;
+                    setConduitProperties(conduit.id, {
+                      isRiserTerminal: active,
+                      additionalLengthM: active ? (conduit.additionalLengthM || 3.0) : undefined
+                    });
+                  }}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-0 bg-white border-amber-300"
+                />
+                <span className="font-bold text-amber-950 text-xs">
+                  ⌖ Remate en Montante Vertical / Pase de Losa
+                </span>
+              </label>
+              {Boolean(conduit.isRiserTerminal || (conduit.additionalLengthM && conduit.additionalLengthM > 0)) && (
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded">
+                  +{(conduit.additionalLengthM || 0).toFixed(2)}m
+                </span>
+              )}
+            </div>
+
+            {Boolean(conduit.isRiserTerminal || (conduit.additionalLengthM && conduit.additionalLengthM > 0)) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-amber-200 animate-in fade-in duration-100">
+                <div>
+                  <label className="text-[10px] font-bold text-amber-900 block mb-0.5">
+                    METROS VERTICALES RESTANTES (+ΔZ):
+                  </label>
+                  <div className="flex items-center gap-1 bg-white border border-amber-300 rounded-xl px-2 py-1">
+                    <span className="text-amber-700 font-mono font-bold">+</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.1"
+                      value={conduit.additionalLengthM ?? 3.0}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setConduitProperties(conduit.id, {
+                          additionalLengthM: isNaN(val) ? 0 : val
+                        });
+                      }}
+                      className="w-full bg-transparent font-mono font-bold text-amber-950 outline-none text-xs"
+                    />
+                    <span className="text-amber-600 text-xs font-mono">m</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-amber-900 block mb-0.5">
+                    DESTINO / ETIQUETA DE MONTANTE:
+                  </label>
+                  <input
+                    type="text"
+                    value={conduit.targetDescription || ''}
+                    onChange={(e) =>
+                      setConduitProperties(conduit.id, {
+                        targetDescription: e.target.value
+                      })
+                    }
+                    placeholder="Ej: A Tablero Subsuelo"
+                    className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-1 text-xs font-semibold text-amber-950 outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Circuitos en tránsito / compartidos por el conducto */}
           {circuits.length > 0 && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
@@ -368,30 +503,51 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
           {conduitBreakdown && (
             <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-blue-950">
-                <span>Desglose Métrico de Cañería:</span>
-                <span className="font-mono text-blue-800">{conduitBreakdown.totalLengthM.toFixed(2)} m</span>
+                <span>Desglose Métrico 3D (Norma AEA 90364-771):</span>
+                <span className="font-mono text-blue-800 font-bold">{conduitBreakdown.totalLengthM.toFixed(2)} m</span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px] font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] font-mono">
                 <div className="bg-white p-2 rounded-xl border border-blue-100">
-                  <span className="text-[10px] text-slate-400 block font-sans">1. Planta Ortogonal (dx+dy):</span>
-                  <strong className="text-slate-900">{conduitBreakdown.distPlantaOrthogonal.toFixed(2)} m</strong>
+                  <span className="text-[10px] text-slate-500 block font-sans font-semibold">
+                    {conduit.routingPlane === 'ceiling_slab'
+                      ? '1. Losa (Diagonal)'
+                      : conduit.routingPlane === 'floor_slab'
+                      ? '1. Piso (Diagonal)'
+                      : '1. Pared (Ortogonal)'}
+                  </span>
+                  <strong className="text-slate-900">{conduitBreakdown.distPlantaHorizontal.toFixed(2)} m</strong>
                   <span className="text-[9px] text-slate-400 block font-sans">
-                    dx:{conduitBreakdown.dx}m + dy:{conduitBreakdown.dy}m
+                    dx:{conduitBreakdown.dx}m · dy:{conduitBreakdown.dy}m
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-xl border border-blue-100">
-                  <span className="text-[10px] text-slate-400 block font-sans">2. Desnivel Z (|Δh|):</span>
+                  <span className="text-[10px] text-slate-500 block font-sans font-semibold">
+                    {conduit.routingPlane === 'ceiling_slab'
+                      ? '2. Pared a Losa (Sub/Baj)'
+                      : conduit.routingPlane === 'floor_slab'
+                      ? '2. Pared a Piso (Baj/Sub)'
+                      : '2. Desnivel Z (|Δh|)'}
+                  </span>
                   <strong className="text-slate-900">{conduitBreakdown.dzLocal.toFixed(2)} m</strong>
                   <span className="text-[9px] text-slate-400 block font-sans">
                     z1:{conduitFromElement?.heightZ.toFixed(2)}m ➔ z2:{conduitToElement?.heightZ.toFixed(2)}m
                   </span>
                 </div>
-                <div className="bg-white p-2 rounded-xl border border-blue-100 col-span-2 sm:col-span-1">
-                  <span className="text-[10px] text-slate-400 block font-sans">3. Curvas & Desperdicio:</span>
-                  <strong className="text-slate-900">
-                    {(conduitBreakdown.totalLengthM - (conduitBreakdown.distPlantaOrthogonal + conduitBreakdown.dzLocal + conduitBreakdown.dzNiveles)).toFixed(2)} m
+                <div className="bg-white p-2 rounded-xl border border-blue-100">
+                  <span className="text-[10px] text-slate-500 block font-sans font-semibold">3. Montante / Pase:</span>
+                  <strong className="text-amber-800">
+                    +{conduitBreakdown.additionalLengthM.toFixed(2)} m
                   </strong>
-                  <span className="text-[9px] text-slate-400 block font-sans">+10% curvas y holgura</span>
+                  <span className="text-[9px] text-slate-400 block font-sans">
+                    {conduit.targetDescription || 'A nivel/remate'}
+                  </span>
+                </div>
+                <div className="bg-white p-2 rounded-xl border border-blue-100">
+                  <span className="text-[10px] text-slate-500 block font-sans font-semibold">4. Curvas (+10%):</span>
+                  <strong className="text-slate-900">
+                    {Number(((conduitBreakdown.distPlantaHorizontal + conduitBreakdown.dzLocal + conduitBreakdown.dzNiveles + conduitBreakdown.additionalLengthM) * 0.10).toFixed(2))} m
+                  </strong>
+                  <span className="text-[9px] text-slate-400 block font-sans">Holgura reglamentaria</span>
                 </div>
               </div>
             </div>

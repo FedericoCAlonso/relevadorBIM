@@ -15,8 +15,14 @@ interface TopStatusBarProps {
 }
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu }) => {
-  const { project, showDimensions, toggleDimensions } = useProjectStore();
+  const { project, showDimensions, toggleDimensions, labelDisplayMode, setLabelDisplayMode } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const cycleLabelMode = () => {
+    if (labelDisplayMode === 'full') setLabelDisplayMode('circuit_element');
+    else if (labelDisplayMode === 'circuit_element') setLabelDisplayMode('element_only');
+    else setLabelDisplayMode('full');
+  };
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -81,6 +87,23 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu }) => {
 
       {/* Extremo Derecho: Herramientas de visualización de dibujo (Cotas y Pantalla Completa) */}
       <div className="flex items-center gap-1.5">
+        {/* Selector de Rótulo de Bocas (1 Toque) */}
+        <button
+          type="button"
+          onClick={cycleLabelMode}
+          className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-mono font-bold transition-colors cursor-pointer"
+          title={`Formato de etiquetas en plano: ${
+            labelDisplayMode === 'full'
+              ? 'Completo (Tablero_Circuito_Boca)'
+              : labelDisplayMode === 'circuit_element'
+              ? 'Circuito y Boca (C1_B1)'
+              : 'Solo Boca (B1)'
+          }. Toca para cambiar.`}
+        >
+          <span className="text-[10px]">🏷️</span>
+          <span>{labelDisplayMode === 'full' ? 'TP_C1_B1' : labelDisplayMode === 'circuit_element' ? 'C1_B1' : 'B1'}</span>
+        </button>
+
         <button
           type="button"
           onClick={toggleDimensions}

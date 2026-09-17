@@ -9,9 +9,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   generateNextUniqueLabel,
+  generateNextUniqueLabelInCircuit,
+  formatElementLabel,
   generateRoundedPolylineSvgPath,
   computeOrthogonalConduitPoints,
-  getConduitVerticalTransitions
+  getConduitVerticalTransitions,
+  getConduitLengthBreakdown
 } from '../calculations';
 
 describe('generateNextUniqueLabel (Unicidad determinista)', () => {
@@ -148,5 +151,191 @@ describe('getConduitVerticalTransitions (Desniveles verticales y glifos AEA)', (
     expect(trans.dzLocal).toBe(0.90);
     expect(trans.toType).toBe('subida');
     expect(trans.glyphTextTo).toBe('▲ S. 0.90m');
+  });
+
+  it('soporta transiciones simultáneas de subida y bajada por losa de techo (ceiling_slab)', () => {
+    // Conecta dos tomas a 0.30m por losa a 2.60m: sube 2.30m en origen y baja 2.30m en destino
+    const trans = getConduitVerticalTransitions(0.30, 0.30, 0.30, 'ceiling_slab', 2.60);
+    expect(trans.hasTransition).toBe(true);
+    expect(trans.fromType).toBe('subida');
+    expect(trans.toType).toBe('bajada');
+    expect(trans.glyphTextFrom).toBe('▲ S. 2.30m');
+    expect(trans.glyphTextTo).toBe('▼ B. 2.30m');
+    expect(trans.dzLocal).toBe(4.60);
+  });
+
+  it('soporta transiciones simultáneas de bajada y subida por contrapiso (floor_slab)', () => {
+    // Conecta dos tomas a 1.20m por piso (Z=0): baja 1.20m en origen y sube 1.20m en destino
+    const trans = getConduitVerticalTransitions(1.20, 1.20, 0.30, 'floor_slab');
+    expect(trans.hasTransition).toBe(true);
+    expect(trans.fromType).toBe('bajada');
+    expect(trans.toType).toBe('subida');
+    expect(trans.glyphTextFrom).toBe('▼ B. 1.20m');
+    expect(trans.glyphTextTo).toBe('▲ S. 1.20m');
+    expect(trans.dzLocal).toBe(2.40);
+  });
+});
+
+describe('generateNextUniqueLabelInCircuit (Unicidad por circuito)', () => {
+  it('aísla los números entre circuitos distintos', () => {
+    const existing = [
+      { label: 'B1', circuitId: 'circ-1' },
+      { label: 'B2', circuitId: 'circ-1' },
+      { label: 'B1', circuitId: 'circ-2' }
+    ];
+
+    // Para circ-1, el próximo es B3
+    expect(generateNextUniqueLabelInCircuit('B', 'circ-1', existing)).toBe('B3');
+    // Para circ-2, el próximo es B2
+    expect(generateNextUniqueLabelInCircuit('B', 'circ-2', existing)).toBe('B2');
+    // Para un circuito nuevo circ-3, el próximo es B1
+    expect(generateNextUniqueLabelInCircuit('B', 'circ-3', existing)).toBe('B1');
+  });
+
+  it('aísla las bocas sin circuito asignado (null o undefined)', () => {
+    const existing = [
+      { label: 'B1', circuitId: null },
+      { label: 'B1', circuitId: 'circ-1' }
+    ];
+    expect(generateNextUniqueLabelInCircuit('B', null, existing)).toBe('B2');
+  });
+});
+
+describe('formatElementLabel (Modelo relacional Tablero -> Circuito -> Boca)', () => {
+  const panel = { name: 'Tablero Principal (TP)' };
+  const circuit = { name: 'C1 - Iluminación Uso General' };
+
+  it('formatea en modo completo Tablero_Circuito_Boca', () => {
+    expect(
+      formatElementLabel({
+        elementLabel: 'B1',
+        circuit,
+        panel,
+        mode: 'full'
+      })
+    ).toBe('TP_C1_B1');
+  });
+
+  it('formatea en modo circuito y boca C1_B1', () => {
+    expect(
+      formatElementLabel({
+        elementLabel: 'B2',
+        circuit,
+        panel,
+        mode: 'circuit_element'
+      })
+    ).toBe('C1_B2');
+  });
+
+  it('formatea en modo boca pura B1', () => {
+    expect(
+      formatElementLabel({
+        elementLabel: 'B3',
+        circuit,
+        panel,
+        mode: 'element_only'
+      })
+    ).toBe('B3');
+  });
+
+  it('maneja bocas sin circuito o sin tablero con elegancia', () => {
+    expect(
+      formatElementLabel({
+        elementLabel: 'B1',
+        circuit: null,
+        panel: null,
+        mode: 'full'
+      })
+    ).toBe('B1');
+
+    expect(
+      formatElementLabel({
+        elementLabel: 'B1',
+        circuit,
+        panel: null,
+        mode: 'full'
+      })
+    ).toBe('C1_B1');
+  });
+});
+
+describe('getConduitLengthBreakdown (Vías de tendido y waypoints)', () => {
+  const levelsMap = new Map();
+  const elA = {
+    id: 'el-1',
+    symbolId: 'toma',
+    levelId: 'lvl-1',
+    spaceId: 's-1',
+    placement: 'wall' as const,
+    x: 0,
+    y: 0,
+    heightZ: 0.30
+  };
+  const elB = {
+    id: 'el-2',
+    symbolId: 'toma',
+    levelId: 'lvl-1',
+    spaceId: 's-1',
+    placement: 'wall' as const,
+    x: 3,
+    y: 4,
+    heightZ: 0.30
+  };
+
+  it('calcula tendido por losa (ceiling_slab): diagonal en planta + subida y bajada por pared', () => {
+    // dx=3, dy=4 -> distPlanta = 5 (diagonal libre permitida por losa)
+    // ceilingHeight = 2.60m. Subida = 2.30m, Bajada = 2.30m -> dzLocal = 4.60m
+    // Suma cruda = 5 + 4.60 = 9.60m
+    // Con factor de curvas 1.10 = 9.60 * 1.10 = 10.56m
+    const breakdown = getConduitLengthBreakdown({
+      fromElement: elA,
+      toElement: elB,
+      levelsMap,
+      routingPlane: 'ceiling_slab',
+      ceilingHeightM: 2.60
+    });
+
+    expect(breakdown.distPlantaHorizontal).toBe(5.0);
+    expect(breakdown.dzLocal).toBe(4.60);
+    expect(breakdown.totalLengthM).toBe(10.56);
+  });
+
+  it('calcula tendido por pared (wall): ortogonal en planta a 90°', () => {
+    // dx=3, dy=4 -> distPlanta = 3 + 4 = 7m
+    // Mismo nivel Z=0.30 -> dzLocal = 0
+    // Total = 7 * 1.10 = 7.70m
+    const breakdown = getConduitLengthBreakdown({
+      fromElement: elA,
+      toElement: elB,
+      levelsMap,
+      routingPlane: 'wall'
+    });
+
+    expect(breakdown.distPlantaHorizontal).toBe(7.0);
+    expect(breakdown.dzLocal).toBe(0.0);
+    expect(breakdown.totalLengthM).toBe(7.70);
+  });
+
+  it('incluye waypoints intermedios y longitud adicional de montante', () => {
+    const waypoints = [{ x: 3, y: 0, heightZ: 2.60, dzLocal: 0.50 }];
+    const breakdown = getConduitLengthBreakdown({
+      fromElement: elA,
+      toElement: elB,
+      levelsMap,
+      routingPlane: 'ceiling_slab',
+      ceilingHeightM: 2.60,
+      waypoints,
+      additionalLengthM: 10.0
+    });
+
+    // Tramo 1: (0,0) a (3,0) = 3m. Tramo 2: (3,0) a (3,4) = 4m. Total planta = 7m
+    // dzLocal = 4.60 (subida y bajada) + 0.50 (wp) = 5.10m
+    // additionalLengthM = 10m
+    // Suma cruda = 7 + 5.10 + 10 = 22.10m
+    // Total = 22.10 * 1.10 = 24.31m
+    expect(breakdown.distPlantaHorizontal).toBe(7.0);
+    expect(breakdown.dzLocal).toBe(5.10);
+    expect(breakdown.additionalLengthM).toBe(10.0);
+    expect(breakdown.totalLengthM).toBe(24.31);
   });
 });

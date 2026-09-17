@@ -6,7 +6,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import type { ElectricalElement, ConductorLine, ConduitMaterial } from './ElectricalModel';
+import type {
+  ElectricalElement,
+  ConductorLine,
+  ConduitMaterial,
+  ConduitRoutingPlane,
+  LabelDisplayMode,
+  ConduitWaypoint
+} from './ElectricalModel';
 import type { Level } from '../architecture/Level';
 import { AEA_CALCULATION_CONSTANTS, getSizesForConduitMaterial } from './electricalStandards';
 
@@ -15,16 +22,19 @@ export const CONDUCTIVIDAD_COBRE = AEA_CALCULATION_CONSTANTS.COPPER_CONDUCTIVITY
 
 /**
  * Calcula la longitud 3D real de una cañería entre dos bocas eléctricas.
- * Contempla la distancia ortogonal en planta más las bajadas/subidas de pared y techo,
- * y la altura entre pisos si atraviesa niveles (montante vertical).
+ * Contempla la distancia en planta (ortogonal en pared o diagonal/libre en losa de techo o contrapiso),
+ * las subidas y bajadas de pared hacia la losa o contrapiso,
+ * waypoints intermedios, altura entre pisos si atraviesa niveles (montante) y longitudes adicionales de pase.
  */
 export interface ConduitLengthBreakdown {
   dx: number;
   dy: number;
-  distPlantaOrthogonal: number; // dx + dy
-  dzLocal: number;              // |z1 - z2|
-  dzNiveles: number;           // si atraviesa losas entre niveles
-  totalLengthM: number;        // (dx + dy + dzLocal + dzNiveles) * factor curvas
+  distPlantaHorizontal: number; // Distancia real en planta según vía de tendido y waypoints
+  distPlantaOrthogonal: number; // Mantenido para retrocompatibilidad con tests existentes
+  dzLocal: number;              // Desniveles verticales locales (subidas + bajadas de pared)
+  dzNiveles: number;           // Si atraviesa losas entre niveles
+  additionalLengthM: number;   // Metros adicionales restantes (montante / pase)
+  totalLengthM: number;        // (distPlanta + dzLocal + dzNiveles + additionalLengthM) * 1.10
 }
 
 export function getConduitLengthBreakdown(params: {
@@ -32,18 +42,78 @@ export function getConduitLengthBreakdown(params: {
   toElement: ElectricalElement;
   levelsMap: Map<string, Level>;
   isOrthogonalRouting?: boolean;
+  routingPlane?: ConduitRoutingPlane;
+  ceilingHeightM?: number;
+  waypoints?: ConduitWaypoint[];
+  additionalLengthM?: number;
 }): ConduitLengthBreakdown {
-  const { fromElement, toElement, levelsMap, isOrthogonalRouting = true } = params;
+  const {
+    fromElement,
+    toElement,
+    levelsMap,
+    isOrthogonalRouting = true,
+    routingPlane = 'wall',
+    ceilingHeightM = 2.70,
+    waypoints = [],
+    additionalLengthM = 0
+  } = params;
 
-  // 1. Distancia en planta ortogonal según norma AEA (dx + dy)
   const dx = Math.abs(toElement.x - fromElement.x);
   const dy = Math.abs(toElement.y - fromElement.y);
-  const distPlantaOrthogonal = isOrthogonalRouting ? dx + dy : Math.hypot(dx, dy);
 
-  // 2. Desnivel en Z entre alturas de las bocas (|h1 - h2|)
-  const dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
+  // 1. Distancia en planta horizontal según vía de tendido
+  // Por losa de techo ('ceiling_slab') o contrapiso ('floor_slab'), la norma AEA 90364-771
+  // permite recorridos en diagonal libre sin obligar a ruteo en escuadra.
+  // Por pared ('wall'), rige el ruteo ortogonal estricto a 90°.
+  const allPoints: Array<{ x: number; y: number }> = [
+    { x: fromElement.x, y: fromElement.y },
+    ...(waypoints || []).map((w) => ({ x: w.x, y: w.y })),
+    { x: toElement.x, y: toElement.y }
+  ];
 
-  // 3. Desnivel entre plantas si es montante vertical
+  let distPlantaHorizontal = 0;
+  for (let i = 0; i < allPoints.length - 1; i++) {
+    const segDx = Math.abs(allPoints[i + 1].x - allPoints[i].x);
+    const segDy = Math.abs(allPoints[i + 1].y - allPoints[i].y);
+
+    if (routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab') {
+      // En losa o contrapiso: diagonal euclidiana libre
+      distPlantaHorizontal += Math.hypot(segDx, segDy);
+    } else {
+      // En pared ('wall'): ortogonal si isOrthogonalRouting es true, sino hipotenusa
+      distPlantaHorizontal += isOrthogonalRouting ? segDx + segDy : Math.hypot(segDx, segDy);
+    }
+  }
+
+  // 2. Desniveles verticales locales (subidas y bajadas por pared)
+  let dzLocal = 0;
+  if (routingPlane === 'ceiling_slab') {
+    // Cruza por losa superior a cota Z_ceiling.
+    // Sube en boca de inicio desde su altura hasta el techo: max(0, Z_ceiling - h1)
+    // Baja en boca de destino desde el techo hasta su altura: max(0, Z_ceiling - h2)
+    const subidaOrigen = Math.max(0, ceilingHeightM - fromElement.heightZ);
+    const bajadaDestino = Math.max(0, ceilingHeightM - toElement.heightZ);
+    dzLocal = subidaOrigen + bajadaDestino;
+  } else if (routingPlane === 'floor_slab') {
+    // Cruza por contrapiso / losa de piso a cota Z = 0.00.
+    // Baja en boca de inicio hasta el piso: max(0, h1)
+    // Sube en boca de destino desde el piso: max(0, h2)
+    dzLocal = Math.max(0, fromElement.heightZ) + Math.max(0, toElement.heightZ);
+  } else {
+    // Por pared a cota de montaje: desnivel directo entre bocas
+    dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
+  }
+
+  // Sumar desniveles explícitos en waypoints intermedios si existen
+  if (waypoints && waypoints.length > 0) {
+    for (const wp of waypoints) {
+      if (typeof wp.dzLocal === 'number' && wp.dzLocal > 0) {
+        dzLocal += wp.dzLocal;
+      }
+    }
+  }
+
+  // 3. Desnivel entre plantas si es montante vertical que atraviesa losas entre niveles
   let dzNiveles = 0;
   if (fromElement.levelId !== toElement.levelId) {
     const lvlFrom = levelsMap.get(fromElement.levelId);
@@ -53,15 +123,18 @@ export function getConduitLengthBreakdown(params: {
     }
   }
 
-  const rawSum = distPlantaOrthogonal + dzLocal + dzNiveles;
+  const extraM = Math.max(0, additionalLengthM || 0);
+  const rawSum = distPlantaHorizontal + dzLocal + dzNiveles + extraM;
   const totalLengthM = Number((rawSum * AEA_CALCULATION_CONSTANTS.CONDUIT_CURVE_MARGIN_FACTOR).toFixed(2));
 
   return {
     dx: Number(dx.toFixed(2)),
     dy: Number(dy.toFixed(2)),
-    distPlantaOrthogonal: Number(distPlantaOrthogonal.toFixed(2)),
+    distPlantaHorizontal: Number(distPlantaHorizontal.toFixed(2)),
+    distPlantaOrthogonal: Number(distPlantaHorizontal.toFixed(2)),
     dzLocal: Number(dzLocal.toFixed(2)),
     dzNiveles: Number(dzNiveles.toFixed(2)),
+    additionalLengthM: Number(extraM.toFixed(2)),
     totalLengthM
   };
 }
@@ -71,6 +144,10 @@ export function calculateConduitRealLength(params: {
   toElement: ElectricalElement;
   levelsMap: Map<string, Level>;
   isOrthogonalRouting?: boolean;
+  routingPlane?: ConduitRoutingPlane;
+  ceilingHeightM?: number;
+  waypoints?: ConduitWaypoint[];
+  additionalLengthM?: number;
 }): number {
   return getConduitLengthBreakdown(params).totalLengthM;
 }
@@ -209,6 +286,86 @@ export function generateNextUniqueLabel(
 }
 
 /**
+ * Genera la próxima etiqueta única para un circuito determinado.
+ * Garantiza que la numeración sea independiente y única por cada circuito
+ * (ej: C1 tiene B1, B2... y C2 tiene B1, B2...).
+ * Si circuitId es null o undefined, numera dentro de las bocas sin circuito.
+ */
+export function generateNextUniqueLabelInCircuit(
+  prefix: string,
+  circuitId: string | null | undefined,
+  existingElements: Array<{ label?: string; circuitId?: string | null }>,
+  startNumber: number = 1
+): string {
+  const filtered = existingElements.filter((el) => {
+    if (!circuitId) {
+      return !el.circuitId;
+    }
+    return el.circuitId === circuitId;
+  });
+
+  return generateNextUniqueLabel(prefix, filtered, startNumber);
+}
+
+/**
+ * Formatea dinámicamente la etiqueta compuesta de una boca eléctrica
+ * según el modelo relacional (Tablero -> Circuito -> Boca).
+ * Modos:
+ * - 'full': "TP_C1_B1" (Tablero_Circuito_Boca)
+ * - 'circuit_element': "C1_B1" (Circuito_Boca)
+ * - 'element_only': "B1" (Solo Boca)
+ */
+export function formatElementLabel(params: {
+  elementLabel?: string;
+  circuit?: { name: string } | null;
+  panel?: { name: string } | null;
+  mode?: LabelDisplayMode;
+}): string {
+  const { elementLabel, circuit, panel, mode = 'full' } = params;
+  const cleanEl = (elementLabel || '').trim();
+
+  if (mode === 'element_only' || (!circuit && !panel)) {
+    return cleanEl;
+  }
+
+  // Extraer identificador corto del circuito (ej: "C1" de "C1 - Tomas Uso General")
+  let circShort = '';
+  if (circuit?.name) {
+    const match = circuit.name.trim().match(/^([a-zA-Z0-9]+)/);
+    circShort = match ? match[1] : circuit.name.trim().split(' ')[0];
+  }
+
+  if (mode === 'circuit_element') {
+    if (circShort && cleanEl) {
+      if (cleanEl.toLowerCase().startsWith(circShort.toLowerCase() + '_')) {
+        return cleanEl;
+      }
+      return `${circShort}_${cleanEl}`;
+    }
+    return circShort || cleanEl;
+  }
+
+  // mode === 'full': Tablero_Circuito_Boca
+  let panelShort = '';
+  if (panel?.name) {
+    const parenMatch = panel.name.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+      panelShort = parenMatch[1].trim();
+    } else {
+      const match = panel.name.trim().match(/^([a-zA-Z0-9]+)/);
+      panelShort = match ? match[1] : panel.name.trim().split(' ')[0];
+    }
+  }
+
+  const parts: string[] = [];
+  if (panelShort) parts.push(panelShort);
+  if (circShort) parts.push(circShort);
+  if (cleanEl) parts.push(cleanEl);
+
+  return parts.join('_');
+}
+
+/**
  * Convierte una secuencia de puntos ortogonales [P0, P1, ..., Pn] en una cadena SVG de trazado `d`
  * con esquinas redondeadas continuas (arcos Bézier cuadráticos tangentes de radio técnico a 90°).
  */
@@ -324,12 +481,51 @@ export interface ConduitVerticalTransition {
 /**
  * Analiza el desnivel vertical entre dos bocas eléctricas y genera las cotas
  * y glifos normalizados IRAM/AEA de subida (▲) o bajada (▼).
+ * Soporta vías de tendido:
+ * - 'ceiling_slab': subida en pared en origen hasta losa de techo, bajada en pared en destino desde losa.
+ * - 'floor_slab': bajada en pared en origen hasta contrapiso, subida en pared en destino desde contrapiso.
+ * - 'wall': desnivel directo entre bocas montadas en pared.
  */
 export function getConduitVerticalTransitions(
   fromHeightZ: number,
   toHeightZ: number,
-  thresholdM: number = 0.30
+  thresholdM: number = 0.30,
+  routingPlane: ConduitRoutingPlane = 'wall',
+  ceilingHeightM: number = 2.70
 ): ConduitVerticalTransition {
+  if (routingPlane === 'ceiling_slab') {
+    const subidaOrigen = ceilingHeightM - fromHeightZ;
+    const bajadaDestino = ceilingHeightM - toHeightZ;
+    const hasFrom = subidaOrigen >= thresholdM;
+    const hasTo = bajadaDestino >= thresholdM;
+
+    return {
+      hasTransition: hasFrom || hasTo,
+      dzLocal: Number((Math.max(0, subidaOrigen) + Math.max(0, bajadaDestino)).toFixed(2)),
+      fromType: hasFrom ? 'subida' : 'none',
+      toType: hasTo ? 'bajada' : 'none',
+      glyphTextFrom: hasFrom ? `▲ S. ${subidaOrigen.toFixed(2)}m` : undefined,
+      glyphTextTo: hasTo ? `▼ B. ${bajadaDestino.toFixed(2)}m` : undefined
+    };
+  }
+
+  if (routingPlane === 'floor_slab') {
+    const bajadaOrigen = fromHeightZ;
+    const subidaDestino = toHeightZ;
+    const hasFrom = bajadaOrigen >= thresholdM;
+    const hasTo = subidaDestino >= thresholdM;
+
+    return {
+      hasTransition: hasFrom || hasTo,
+      dzLocal: Number((Math.max(0, bajadaOrigen) + Math.max(0, subidaDestino)).toFixed(2)),
+      fromType: hasFrom ? 'bajada' : 'none',
+      toType: hasTo ? 'subida' : 'none',
+      glyphTextFrom: hasFrom ? `▼ B. ${bajadaOrigen.toFixed(2)}m` : undefined,
+      glyphTextTo: hasTo ? `▲ S. ${subidaDestino.toFixed(2)}m` : undefined
+    };
+  }
+
+  // Vía de tendido por pared ('wall') a cota directa:
   const dz = Math.abs(fromHeightZ - toHeightZ);
   if (dz < thresholdM) {
     return {

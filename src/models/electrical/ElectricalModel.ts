@@ -139,6 +139,19 @@ export interface ProjectMaterialCatalog {
   boxTypes: BoxTypeDefinition[];
 }
 
+export type ConduitRoutingPlane = 'ceiling_slab' | 'floor_slab' | 'wall';
+
+export type LabelDisplayMode = 'full' | 'circuit_element' | 'element_only';
+
+export interface ConduitWaypoint {
+  x: number;
+  y: number;
+  heightZ?: number;
+  isVerticalTransition?: boolean;
+  transitionType?: 'none' | 'subida' | 'bajada';
+  dzLocal?: number;
+}
+
 export type ConduitRoutingMode = 'orthogonal' | 'schematic_arc';
 
 export interface Conduit {
@@ -157,15 +170,20 @@ export interface Conduit {
   label?: string;           // Referencia o rótulo en plano (ej: "C1", "X1")
   defaultCableStandard?: CableStandard; // Norma de conductor principal
   routingMode?: ConduitRoutingMode; // Ruteo en escuadra ortogonal ('orthogonal') o arco unifilar ('schematic_arc')
-  waypoints?: Array<{ x: number; y: number }>; // Puntos intermedios para sortear obstáculos o interferencias
+  routingPlane?: ConduitRoutingPlane; // Vía de tendido: 'ceiling_slab' (losa techo), 'floor_slab' (contrapiso), 'wall' (pared)
+  waypoints?: ConduitWaypoint[]; // Puntos intermedios 2D/3D
+  isRiserTerminal?: boolean; // Termina en montante vertical / pase de losa
+  additionalLengthM?: number; // Metros adicionales restantes cargados a mano (ej: hasta subsuelo o azotea)
+  targetDescription?: string; // Descripción del destino de montante (ej: "A Tablero General")
   notes?: string;
 }
 
-export type CircuitType = 'IUG' | 'IUE' | 'TUG' | 'TUE' | 'FM' | 'ACU' | 'OTRO';
+export type CircuitType = 'IUG' | 'IUE' | 'TUG' | 'TUE' | 'FM' | 'ACU' | 'LP' | 'LS' | 'OTRO';
 
 export interface Circuit {
   id: string;
   panelId: string;          // Tablero alimentador
+  targetPanelId?: string | null; // Tablero receptor alimentado si es LP o LS
   name: string;             // Ej: "C1 - IUG Planta Baja"
   type: CircuitType;
   voltageV: number;         // 220 o 380
