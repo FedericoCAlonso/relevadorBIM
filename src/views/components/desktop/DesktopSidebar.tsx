@@ -1917,6 +1917,33 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </div>
                       </div>
 
+                      {/* Waypoints del Recorrido Arbitrario */}
+                      {selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
+                        <div className="p-2.5 bg-amber-100/60 border border-amber-300 rounded-xl space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-950">
+                              Quiebres del recorrido:
+                            </span>
+                            <span className="font-mono font-bold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded text-[11px]">
+                              {selectedConduit.waypoints.length} puntos
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-amber-200/80">
+                            <span className="text-[10px] text-amber-800">
+                              Trazo multipunto personalizado
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateConduit(selectedConduit.id, { waypoints: undefined })}
+                              className="px-2 py-0.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-[10px] font-bold transition-colors shadow-2xs cursor-pointer"
+                              title="Quitar quiebres intermedios y volver a trazado directo"
+                            >
+                              Restablecer trazo
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Factor de Ocupación */}
                       <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
                         <div className="flex items-center justify-between text-xs">

@@ -313,4 +313,114 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     const revertedCond = useProjectStore.getState().project.conduits.find((c) => c.id === cond.id);
     expect(revertedCond?.routingMode).toBe('schematic_arc');
   });
+
+  it('debe permitir trazar un recorrido arbitrario de conducto con waypoints y calcular su longitud total real', () => {
+    const { addElectricalElement, addConduit } = useProjectStore.getState();
+
+    // 1. Boca 1 (Toma a 0.30m)
+    addElectricalElement({
+      id: 'el-toma-1',
+      symbolId: 'sym-planta-toma-doble',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'wall',
+      x: 0,
+      y: 0,
+      heightZ: 0.30,
+      wallId: 'wall-1',
+      rotation: 0,
+      circuitId: 'circ-1',
+      status: 'existente',
+      powerW: 150,
+      phases: 1,
+      isPanel: false,
+      label: 'TUG1',
+      attributes: []
+    });
+
+    // 2. Boca 2 (Toma a 0.30m en otra pared opuesta)
+    addElectricalElement({
+      id: 'el-toma-2',
+      symbolId: 'sym-planta-toma-doble',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'wall',
+      x: 6.0,
+      y: 8.0,
+      heightZ: 0.30,
+      wallId: 'wall-2',
+      rotation: 0,
+      circuitId: 'circ-1',
+      status: 'existente',
+      powerW: 150,
+      phases: 1,
+      isPanel: false,
+      label: 'TUG2',
+      attributes: []
+    });
+
+    // 3. Trazado arbitrario por losa pasando por 2 quiebres intermedios (waypoints)
+    const waypoints = [
+      { x: 2.0, y: 0.0 }, // Quiebre 1 en esquina
+      { x: 2.0, y: 8.0 }  // Quiebre 2 hacia el otro extremo
+    ];
+
+    addConduit({
+      id: 'cond-arbitrario',
+      circuitId: 'circ-1',
+      circuitIds: ['circ-1'],
+      fromElementId: 'el-toma-1',
+      toElementId: 'el-toma-2',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 19,
+      material: 'hierro_semipesado_rs',
+      isVerticalRiser: false,
+      routingMode: 'orthogonal',
+      routingPlane: 'ceiling_slab',
+      waypoints,
+      conductors: [
+        { role: 'fase', sectionMM2: 2.5, color: '#991b1b' },
+        { role: 'neutro', sectionMM2: 2.5, color: '#2563eb' },
+        { role: 'pe', sectionMM2: 2.5, color: '#16a34a' }
+      ]
+    });
+
+    const cond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-arbitrario');
+    expect(cond).toBeDefined();
+    expect(cond?.waypoints).toHaveLength(2);
+    expect(cond?.waypoints?.[0]).toEqual({ x: 2.0, y: 0.0 });
+    expect(cond?.waypoints?.[1]).toEqual({ x: 2.0, y: 8.0 });
+
+    // 4. Verificar el cómputo métrico exacto:
+    // Tramo 1: (0,0) -> (2,0) = 2.0m
+    // Tramo 2: (2,0) -> (2,8) = 8.0m
+    // Tramo 3: (2,8) -> (6,8) = 4.0m
+    // Total horizontal planta = 14.0m
+    // Subida desde Toma 1 (h: 0.30) a losa (2.60): 2.60 - 0.30 = 2.30m
+    // Bajada desde losa a Toma 2 (h: 0.30): 2.60 - 0.30 = 2.30m
+    // Total Z = 4.60m
+    // Suma cruda = 14.0 + 4.60 = 18.60m
+    // Con factor 1.10 (curvas y holgura): 18.60 * 1.10 = 20.46m
+    const fromEl = useProjectStore.getState().project.electricalElements.find((e) => e.id === 'el-toma-1')!;
+    const toEl = useProjectStore.getState().project.electricalElements.find((e) => e.id === 'el-toma-2')!;
+
+    const breakdown = getConduitLengthBreakdown({
+      fromElement: fromEl,
+      toElement: toEl,
+      levelsMap: new Map([['level-1', createDefaultLevel('level-1', 'PB', 0)]]),
+      routingPlane: 'ceiling_slab',
+      ceilingHeightM: 2.60,
+      waypoints
+    });
+
+    expect(breakdown.distPlantaHorizontal).toBe(14.0);
+    expect(breakdown.dzLocal).toBe(4.60);
+    expect(breakdown.totalLengthM).toBeCloseTo(20.46, 2);
+
+    // 5. Permite restablecer los quiebres a trazo directo
+    useProjectStore.getState().updateConduit('cond-arbitrario', { waypoints: undefined });
+    const clearedCond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-arbitrario');
+    expect(clearedCond?.waypoints).toBeUndefined();
+  });
 });

@@ -386,6 +386,18 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                 <span>{conduit.routingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco Curvo AEA'}</span>
               </button>
             </div>
+            {conduit.waypoints && conduit.waypoints.length > 0 && (
+              <div className="flex items-center justify-between pt-1.5 text-[11px] text-amber-900 border-t border-slate-200">
+                <span className="font-semibold">Quiebres intermedios: {conduit.waypoints.length} puntos</span>
+                <button
+                  type="button"
+                  onClick={() => setConduitProperties(conduit.id, { waypoints: undefined })}
+                  className="px-2 py-0.5 rounded-md bg-white border border-red-300 text-red-700 font-bold hover:bg-red-50 text-xs cursor-pointer transition-colors"
+                >
+                  Restablecer a directo
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Montante Vertical / Pase de Losa (Remate a Distancia) */}

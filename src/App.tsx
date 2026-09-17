@@ -66,6 +66,9 @@ export function App() {
     isConnectingConduit,
     setIsConnectingConduit,
     pendingConduitStartId,
+    pendingConduitWaypoints,
+    addConduitWaypoint,
+    undoLastConduitWaypoint,
     cancelConduitConnection,
     commitWall,
     handleElectricalElementClick,
@@ -306,6 +309,9 @@ export function App() {
     }
 
     if (isConnectingConduit) {
+      if (pendingConduitStartId) {
+        addConduitWaypoint({ x: worldX, y: worldY });
+      }
       return;
     }
 
@@ -585,6 +591,8 @@ export function App() {
             selectedSymbolId={selectedSymbolId}
             isConnectingConduit={isConnectingConduit}
             pendingConduitStartId={pendingConduitStartId}
+            pendingConduitWaypoints={pendingConduitWaypoints}
+            onUndoConduitWaypoint={undoLastConduitWaypoint}
             onCancelConnectingConduit={cancelConduitConnection}
             underlaySheet={activeUnderlay}
             isCalibratingUnderlay={isCalibratingUnderlay}

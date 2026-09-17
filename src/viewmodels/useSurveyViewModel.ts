@@ -16,6 +16,7 @@ import {
   DEFAULT_CONDUIT_DIAMETER_MM,
   AEA_CONDUCTOR_COLORS
 } from '../models/electrical/electricalStandards';
+import type { ConduitWaypoint } from '../models/electrical/ElectricalModel';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -29,6 +30,15 @@ export function useSurveyViewModel() {
   const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
   const [isConnectingConduit, setIsConnectingConduit] = useState(false);
   const [pendingConduitStartId, setPendingConduitStartId] = useState<string | null>(null);
+  const [pendingConduitWaypoints, setPendingConduitWaypoints] = useState<ConduitWaypoint[]>([]);
+
+  const addConduitWaypoint = useCallback((point: { x: number; y: number }) => {
+    setPendingConduitWaypoints((prev) => [...prev, { x: Number(point.x.toFixed(3)), y: Number(point.y.toFixed(3)) }]);
+  }, []);
+
+  const undoLastConduitWaypoint = useCallback(() => {
+    setPendingConduitWaypoints((prev) => prev.slice(0, -1));
+  }, []);
 
   // Modales contextuales para empalmes y aberturas
   const [showTeeModal, setShowTeeModal] = useState(false);
@@ -157,6 +167,7 @@ export function useSurveyViewModel() {
       const next = typeof connecting === 'function' ? connecting(prev) : connecting;
       if (!next) {
         setPendingConduitStartId(null);
+        setPendingConduitWaypoints([]);
       } else {
         setIsAddingDimension(false);
         setDimensionP1(null);
@@ -168,6 +179,7 @@ export function useSurveyViewModel() {
   const cancelConduitConnection = useCallback(() => {
     setIsConnectingConduit(false);
     setPendingConduitStartId(null);
+    setPendingConduitWaypoints([]);
   }, []);
 
   // ─── ESTADO DE ACOTACIÓN MÉTRICA LIBRE ───
@@ -180,6 +192,7 @@ export function useSurveyViewModel() {
     setShowDimensions(true);
     setIsConnectingConduit(false);
     setPendingConduitStartId(null);
+    setPendingConduitWaypoints([]);
     setSelectedSymbolId(null);
   }, [setShowDimensions]);
 
@@ -225,6 +238,7 @@ export function useSurveyViewModel() {
         } else if (pendingConduitStartId === elementId) {
           // Deseleccionar si hace clic sobre el mismo elemento inicial
           setPendingConduitStartId(null);
+          setPendingConduitWaypoints([]);
         } else {
           const fromEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
           const toEl = project.electricalElements.find((e) => e.id === elementId);
@@ -252,6 +266,7 @@ export function useSurveyViewModel() {
             isVerticalRiser: false,
             routingMode: seqMode,
             routingPlane: seqPlane,
+            waypoints: pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
             conductors: [
               { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
               { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },
@@ -259,6 +274,7 @@ export function useSurveyViewModel() {
             ]
           });
           setPendingConduitStartId(null);
+          setPendingConduitWaypoints([]);
           setSelectedEntity({ type: 'conduit', id: newConduitId });
         }
       } else {
@@ -268,6 +284,7 @@ export function useSurveyViewModel() {
     [
       isConnectingConduit,
       pendingConduitStartId,
+      pendingConduitWaypoints,
       addConduit,
       project.activeLevelId,
       project.electricalElements,
@@ -290,6 +307,9 @@ export function useSurveyViewModel() {
     setIsConnectingConduit: handleSetIsConnectingConduit,
     pendingConduitStartId,
     setPendingConduitStartId,
+    pendingConduitWaypoints,
+    addConduitWaypoint,
+    undoLastConduitWaypoint,
     cancelConduitConnection,
     showTeeModal,
     setShowTeeModal,

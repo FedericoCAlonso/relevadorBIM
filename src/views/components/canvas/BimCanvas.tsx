@@ -34,6 +34,8 @@ interface BimCanvasProps {
   selectedSymbolId?: string | null;
   isConnectingConduit?: boolean;
   pendingConduitStartId?: string | null;
+  pendingConduitWaypoints?: Array<{ x: number; y: number }>;
+  onUndoConduitWaypoint?: () => void;
   onCancelConnectingConduit?: () => void;
   underlaySheet?: UnderlaySheet | null;
   isCalibratingUnderlay?: boolean;
@@ -98,6 +100,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   selectedSymbolId,
   isConnectingConduit = false,
   pendingConduitStartId = null,
+  pendingConduitWaypoints = [],
+  onUndoConduitWaypoint,
   onCancelConnectingConduit,
   underlaySheet = null,
   isCalibratingUnderlay = false,
@@ -157,6 +161,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   } = useProjectStore();
 
   const sequenceRoutingMode = useElectricalSequenceStore((s) => s.sequenceRoutingMode);
+  const sequenceRoutingPlane = useElectricalSequenceStore((s) => s.sequenceRoutingPlane);
   const setSequenceRoutingMode = useElectricalSequenceStore((s) => s.setSequenceRoutingMode);
 
   // Escala y transformación de vista (Pan y Zoom)
@@ -738,7 +743,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       }
 
       if (isConnectingConduit) {
-        // En modo conexión de conductos, no activar inserción de muros ni clics residuales en fondo vacío
+        if (pendingConduitStartId) {
+          onCanvasClick(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+        }
         return;
       }
 
@@ -2284,28 +2291,39 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             const startEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
             if (!startEl) return null;
             const p1 = { x: startEl.x * zoom, y: startEl.y * zoom };
-            const p2 = { x: hoverWorldPos.x * zoom, y: hoverWorldPos.y * zoom };
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < 1) return null;
+            const pEnd = { x: hoverWorldPos.x * zoom, y: hoverWorldPos.y * zoom };
+            const waypointsPx = (pendingConduitWaypoints || []).map((wp) => ({
+              x: wp.x * zoom,
+              y: wp.y * zoom
+            }));
 
-            const isArc = sequenceRoutingMode === 'schematic_arc';
+            const hasWp = waypointsPx.length > 0;
+            const isArc = sequenceRoutingMode === 'schematic_arc' && !hasWp;
             let guidePathD: string;
 
             if (isArc) {
+              const dx = pEnd.x - p1.x;
+              const dy = pEnd.y - p1.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist < 1) return null;
               const normalX = -dy / dist;
               const normalY = dx / dist;
               const curveOffset = Math.min(dist * 0.18, 28);
-              const midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
-              const midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
-              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+              const midX = (p1.x + pEnd.x) / 2 + normalX * curveOffset;
+              const midY = (p1.y + pEnd.y) / 2 + normalY * curveOffset;
+              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${pEnd.x.toFixed(1)} ${pEnd.y.toFixed(1)}`;
+            } else if (sequenceRoutingMode === 'orthogonal' && sequenceRoutingPlane === 'wall') {
+              const orthoPoints = computeOrthogonalConduitPoints(p1, pEnd, waypointsPx);
+              const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
+              guidePathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
             } else {
-              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} L ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+              const allPts = [p1, ...waypointsPx, pEnd];
+              guidePathD = `M ${allPts[0].x.toFixed(1)} ${allPts[0].y.toFixed(1)} ` + allPts.slice(1).map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
             }
 
             return (
               <g pointerEvents="none">
+                {/* Trazo elástico de la cañería */}
                 <path
                   d={guidePathD}
                   fill="none"
@@ -2313,9 +2331,41 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   strokeWidth={2.5}
                   strokeDasharray="6 4"
                 />
+                {/* Marcadores visuales para cada vértice intermedio ya fijado */}
+                {waypointsPx.map((wp, idx) => (
+                  <g key={`pending-wp-${idx}`}>
+                    <circle
+                      cx={wp.x}
+                      cy={wp.y}
+                      r={5}
+                      fill="#f59e0b"
+                      stroke="#ffffff"
+                      strokeWidth={1.8}
+                    />
+                    <rect
+                      x={wp.x + 6}
+                      y={wp.y - 14}
+                      width={18}
+                      height={12}
+                      rx={3}
+                      fill="#0f172a"
+                      fillOpacity={0.85}
+                    />
+                    <text
+                      x={wp.x + 9}
+                      y={wp.y - 5}
+                      fontSize={8}
+                      fill="#fbbf24"
+                      className="font-mono font-bold select-none"
+                    >
+                      P{idx + 1}
+                    </text>
+                  </g>
+                ))}
+                {/* Punto cursor objetivo */}
                 <circle
-                  cx={hoverWorldPos.x * zoom}
-                  cy={hoverWorldPos.y * zoom}
+                  cx={pEnd.x}
+                  cy={pEnd.y}
                   r={6}
                   fill="#f59e0b"
                   opacity={0.8}
@@ -2346,7 +2396,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 rotationDeg={hoverRotationDeg}
               />
               {isSnappedToPatternMatch && (
-                <circle r={22} fill="none" stroke="#06b6d4" strokeWidth={2.5} strokeDasharray="4 2" className="animate-pulse" />
+                <circle r={22} fill="none" stroke="#06b6d4" strokeWidth={2.5} strokeDasharray="5 3" />
               )}
               {activeSnapInfo && !isSnappedToPatternMatch && (
                 <circle r={18} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="3 3" />
@@ -2364,11 +2414,27 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-3.5 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
           <span className="truncate max-w-[280px] sm:max-w-none">
-            {pendingConduitStartId
-              ? '⚡ 1° Extremo fijado · Tocá la boca de destino'
-              : '⚡ Trazar Cañería: Tocá la primera boca o tablero'}
+            {!pendingConduitStartId
+              ? '⚡ Trazar Cañería: Tocá la primera boca o tablero'
+              : (pendingConduitWaypoints?.length || 0) === 0
+              ? '⚡ 1° Extremo fijado · Clic en plano para quiebre o en boca para cerrar'
+              : `⚡ Recorrido (${pendingConduitWaypoints?.length} quiebres) · Clic para sumar quiebre o en boca final`}
           </span>
           <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
+            {(pendingConduitWaypoints?.length || 0) > 0 && onUndoConduitWaypoint && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUndoConduitWaypoint();
+                }}
+                className="px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-600 hover:bg-amber-800 text-amber-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1"
+                title="Deshacer último quiebre del recorrido"
+              >
+                <span>↶ Deshacer</span>
+                <span className="bg-amber-800/80 px-1 rounded text-[10px]">{pendingConduitWaypoints?.length}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={(e) => {
