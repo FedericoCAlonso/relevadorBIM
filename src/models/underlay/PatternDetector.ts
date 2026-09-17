@@ -22,6 +22,7 @@ import {
   computeGramSvdConsensus,
   calculateMultiRotationWeightedZNCC
 } from './GramSvd';
+import { extractWarpedPatchBilinear } from './EccAlignment';
 
 export interface ImageMoments {
   m00: number; // Área / masa (cantidad de píxeles oscuros)
@@ -613,14 +614,27 @@ export function createPatternExemplar(
   binaryMask: Uint8Array,
   imgWidth: number,
   box: BoundingBoxPx,
-  isNegative: boolean = false
+  isNegative: boolean = false,
+  imgHeight?: number
 ): PatternExemplar | null {
   const tightBox = tightenBoundingBox(binaryMask, imgWidth, box);
   const moments = calculateImageMoments(binaryMask, imgWidth, tightBox);
   const signature = calculateEigenSignature(moments, tightBox.width, tightBox.height);
   if (!signature) return null;
 
-  const patch = extractNormalizedPatch(binaryMask, imgWidth, tightBox);
+  const resolvedHeight = imgHeight ?? (imgWidth > 0 ? Math.floor(binaryMask.length / imgWidth) : 0);
+  const patch =
+    resolvedHeight > 0
+      ? extractWarpedPatchBilinear(
+          binaryMask,
+          imgWidth,
+          resolvedHeight,
+          { x: tightBox.x + tightBox.width / 2, y: tightBox.y + tightBox.height / 2 },
+          { width: tightBox.width, height: tightBox.height },
+          0
+        )
+      : extractNormalizedPatch(binaryMask, imgWidth, tightBox);
+
   return {
     id: `ex-${Date.now()}-${Math.round(tightBox.x)}_${Math.round(tightBox.y)}`,
     boxPx: tightBox,

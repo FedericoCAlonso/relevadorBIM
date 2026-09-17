@@ -13,7 +13,6 @@ import {
   createPatternExemplar,
   calculateImageMoments,
   calculateEigenSignature,
-  extractNormalizedPatch,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
   type DetectedPatternMatch,
@@ -22,9 +21,9 @@ import {
 import {
   computeGramSvdConsensus,
   magneticSubpixelSnap,
-  rotateNormalizedPatch,
   type SvdConsensusResult
 } from '../models/underlay/GramSvd';
+import { alignPatchEccEuclidean } from '../models/underlay/EccAlignment';
 import { getUnderlayBinaryMask } from '../services/imageProcessingService';
 
 export function usePatternDetectorViewModel() {
@@ -156,7 +155,7 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        const newExemplar = createPatternExemplar(mask, width, boxPx, false);
+        const newExemplar = createPatternExemplar(mask, width, boxPx, false, height);
         if (!newExemplar) {
           throw new Error('La región seleccionada no contiene suficiente tinta negra para extraer un símbolo.');
         }
@@ -234,7 +233,7 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        // 1. Auto-centrado milimétrico por micro-snap magnético
+        // 1. Auto-centrado milimétrico por micro-snap magnético discreto (búsqueda gruesa +/- 4 px)
         const snapResult = magneticSubpixelSnap(
           mask,
           width,
@@ -247,22 +246,36 @@ export function usePatternDetectorViewModel() {
           4
         );
 
-        // 2. Extraer parche y rotar a la orientación de referencia neutra (0°)
-        const rawPatch = extractNormalizedPatch(mask, width, snapResult.boxPx);
-        const unrotateDeg = ((360 - stencilRotationDeg) % 360) as 0 | 90 | 180 | 270;
-        const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+        // 2. Alineación fina continua euclídea por ECC (SE(2)) e interpolación bilineal
+        const initialAngleRad = (stencilRotationDeg * Math.PI) / 180;
+        const eccResult = alignPatchEccEuclidean(
+          mask,
+          width,
+          height,
+          snapResult.centerPx,
+          { width: baseBox.width, height: baseBox.height },
+          positiveExemplars[0].patch,
+          initialAngleRad
+        );
 
-        // 3. Obtener firma espectral
-        const moments = calculateImageMoments(mask, width, snapResult.boxPx);
+        const refinedBox: BoundingBoxPx = {
+          x: Math.round(eccResult.refinedCenterPx.x - targetBoxWidth / 2),
+          y: Math.round(eccResult.refinedCenterPx.y - targetBoxHeight / 2),
+          width: targetBoxWidth,
+          height: targetBoxHeight
+        };
+
+        // 3. Obtener firma espectral sobre el recuadro refinado
+        const moments = calculateImageMoments(mask, width, refinedBox);
         const signature =
-          calculateEigenSignature(moments, snapResult.boxPx.width, snapResult.boxPx.height) ||
+          calculateEigenSignature(moments, refinedBox.width, refinedBox.height) ||
           positiveExemplars[0].signature;
 
         const newExemplar: PatternExemplar = {
-          id: `ex-${Date.now()}-${Math.round(snapResult.boxPx.x)}_${Math.round(snapResult.boxPx.y)}`,
-          boxPx: snapResult.boxPx,
+          id: `ex-${Date.now()}-${Math.round(eccResult.refinedCenterPx.x)}_${Math.round(eccResult.refinedCenterPx.y)}`,
+          boxPx: refinedBox,
           signature,
-          patch: alignedPatch,
+          patch: eccResult.alignedPatch,
           isNegative: false
         };
 
@@ -350,7 +363,7 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        const negExemplar = createPatternExemplar(mask, width, targetMatch.boxPx, true);
+        const negExemplar = createPatternExemplar(mask, width, targetMatch.boxPx, true, height);
         if (negExemplar) {
           const nextNegatives = [...negativeExemplars, negExemplar];
           setNegativeExemplars(nextNegatives);
