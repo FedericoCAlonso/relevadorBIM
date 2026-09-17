@@ -35,7 +35,8 @@ import {
   X,
   Cable,
   ArrowLeftRight,
-  ArrowUpDown
+  ArrowUpDown,
+  Layers
 } from 'lucide-react';
 
 interface ThumbSurveyDockProps {
@@ -50,6 +51,7 @@ interface ThumbSurveyDockProps {
   onSelectSymbol?: (symbolId: string | null) => void;
   isConnectingConduit?: boolean;
   onToggleConnectConduit?: () => void;
+  onOpenCircuits?: () => void;
 }
 
 export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
@@ -63,7 +65,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   selectedSymbolId,
   onSelectSymbol,
   isConnectingConduit,
-  onToggleConnectConduit
+  onToggleConnectConduit,
+  onOpenCircuits
 }) => {
   const {
     activeAnchorVertexId,
@@ -566,18 +569,31 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             </span>
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onToggleConnectConduit}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
-              isConnectingConduit
-                ? 'bg-amber-600 text-white animate-pulse shadow-sm'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Zap size={12} className={isConnectingConduit ? 'text-white' : 'text-amber-600'} />
-            <span>{isConnectingConduit ? 'Unir 2 bocas' : 'Trazar Caño'}</span>
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {onOpenCircuits && (
+              <button
+                type="button"
+                onClick={onOpenCircuits}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs"
+                title="Gestionar circuitos y tableros"
+              >
+                <Layers size={12} className="text-blue-600" />
+                <span>Circuitos ({project.circuits?.length ?? 0})</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onToggleConnectConduit}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                isConnectingConduit
+                  ? 'bg-amber-600 text-white animate-pulse shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <Zap size={12} className={isConnectingConduit ? 'text-white' : 'text-amber-600'} />
+              <span>{isConnectingConduit ? 'Unir 2 bocas' : 'Trazar Caño'}</span>
+            </button>
+          </div>
         )}
       </div>
 

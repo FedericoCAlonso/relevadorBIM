@@ -23,6 +23,7 @@ import { ProjectSettingsModal } from './views/components/menu/ProjectSettingsMod
 import { ExportModal } from './views/components/menu/ExportModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
+import { CircuitsModal } from './views/components/electrical/CircuitsModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
@@ -115,6 +116,7 @@ export function App() {
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [showElementModal, setShowElementModal] = useState(false);
   const [showConduitModal, setShowConduitModal] = useState(false);
+  const [showCircuitsModal, setShowCircuitsModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
   // Entidades eléctricas seleccionadas para modales
@@ -530,6 +532,7 @@ export function App() {
           onSelectSymbol={setSelectedSymbolId}
           isConnectingConduit={isConnectingConduit}
           onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
+          onOpenCircuits={() => setShowCircuitsModal(true)}
         />
       )}
 
@@ -560,6 +563,7 @@ export function App() {
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenExport={() => setShowExportModal(true)}
         onOpenComputo={() => setShowComputoModal(true)}
+        onOpenCircuits={() => setShowCircuitsModal(true)}
         hasUnderlay={Boolean(activeUnderlay)}
         onLoadUnderlay={handleLoadUnderlayFile}
         onStartUnderlayCalibration={startUnderlayCalibration}
@@ -623,6 +627,12 @@ export function App() {
         conduit={selectedConduit || null}
         isOpen={showConduitModal && !!selectedConduit}
         onClose={() => setShowConduitModal(false)}
+      />
+
+      {/* 9. Modal de Gestión de Circuitos y Tableros (Móvil y Menú Global) */}
+      <CircuitsModal
+        isOpen={showCircuitsModal}
+        onClose={() => setShowCircuitsModal(false)}
       />
     </div>
   );

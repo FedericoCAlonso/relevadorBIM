@@ -21,7 +21,8 @@ import {
   ChevronRight,
   FileImage,
   Ruler,
-  Trash2
+  Trash2,
+  Layers
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -30,6 +31,7 @@ interface MainMenuModalProps {
   onOpenSettings: () => void;
   onOpenExport: () => void;
   onOpenComputo: () => void;
+  onOpenCircuits?: () => void;
   hasUnderlay?: boolean;
   onLoadUnderlay?: (file: File) => void;
   onStartUnderlayCalibration?: () => void;
@@ -42,6 +44,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onOpenSettings,
   onOpenExport,
   onOpenComputo,
+  onOpenCircuits,
   hasUnderlay = false,
   onLoadUnderlay,
   onStartUnderlayCalibration,
@@ -305,6 +308,30 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
               ⚙️ Configuración y Catálogo
             </span>
+
+            {onOpenCircuits && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenCircuits();
+                }}
+                className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 transition-all text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white text-blue-600 rounded-xl border border-slate-200 shadow-xs">
+                    <Layers size={16} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">Circuitos y Tableros</div>
+                    <div className="text-[11px] text-slate-500">
+                      {project.circuits?.length ?? 0} circuito(s) configurado(s)
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400" />
+              </button>
+            )}
 
             <button
               type="button"
