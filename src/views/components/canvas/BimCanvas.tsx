@@ -227,6 +227,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     moved: boolean;
   } | null>(null);
 
+  // Registro de último toque para deduplicar clics sintéticos del navegador móvil
+  const lastTouchTapTimeRef = useRef<number>(0);
+  const isRecentTouch = () => Date.now() - lastTouchTapTimeRef.current < 450;
+
   // Estados locales para arrastre y redimensión del recuadro provisional de Muestra #1
   type AdjustHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;
   const [activeAdjustHandle, setActiveAdjustHandle] = useState<AdjustHandle>(null);
@@ -697,7 +701,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
     if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
@@ -714,7 +718,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
     if (touchStateRef.current && touchStateRef.current.type === 'single' && !touchStateRef.current.moved) {
       // Tap limpio sin arrastre en móvil: emplazar o seleccionar
+      lastTouchTapTimeRef.current = Date.now();
       triggerPlacement(touchStateRef.current.startX, touchStateRef.current.startY);
+      if (e.cancelable) {
+        e.preventDefault();
+      }
     }
     touchStateRef.current = null;
   };
@@ -792,6 +800,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isRecentTouch()) return;
     if (justCompletedSamplingRef.current) {
       justCompletedSamplingRef.current = false;
       return;
@@ -821,6 +830,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={space.id}
             onClick={(e) => {
+              if (isRecentTouch()) return;
               if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
@@ -904,6 +914,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseEnter={() => setHoveredWallId(wall.id)}
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
+              if (isRecentTouch()) return;
               if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
                 // Modo inserción de elemento eléctrico o conexión de cañerías
                 triggerPlacement(e.clientX, e.clientY);
@@ -1044,6 +1055,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={opening.id}
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
+            if (isRecentTouch()) return;
             if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
               triggerPlacement(e.clientX, e.clientY);
               return;
@@ -1318,6 +1330,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <g
           key={conduit.id}
           onClick={(e) => {
+            if (isRecentTouch()) return;
             if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
               triggerPlacement(e.clientX, e.clientY);
               return;
@@ -1561,6 +1574,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
             onClick={(e) => {
+              if (isRecentTouch()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
@@ -1569,6 +1583,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               onElectricalElementClick?.(element.id);
             }}
             onDoubleClick={(e) => {
+              if (isRecentTouch()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
                 triggerPlacement(e.clientX, e.clientY);
                 return;
@@ -1581,6 +1596,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
+            {/* Zona táctil expandida (64px de diámetro) para toque certero con pulgar en celular */}
+            <circle r={32} fill="transparent" pointerEvents="all" className="cursor-pointer" />
+
             {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
             {isPendingStart && (
               <g pointerEvents="none">

@@ -164,14 +164,14 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   if (editingConduitRouteId && selectedConduit) {
     return (
       <footer
-        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span className="font-bold text-amber-300">✏️ Quiebres en Cañería</span>
-            <span className="text-[11px] font-mono text-slate-400">
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5 w-full min-w-0">
+          <div className="flex items-center gap-1.5 truncate min-w-0">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <span className="font-bold text-amber-300 truncate">✏️ Quiebres en Cañería</span>
+            <span className="text-[11px] font-mono text-slate-400 shrink-0">
               ({selectedConduit.waypoints?.length || 0} pts)
             </span>
           </div>
@@ -179,33 +179,33 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             <button
               type="button"
               onClick={onFinishEditingConduitRoute}
-              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors cursor-pointer shrink-0 ml-2"
             >
               ✓ Listo
             </button>
           )}
         </div>
-        <p className="text-[11px] text-slate-300">
-          Tocá el plano para sumar quiebres o arrastrá los círculos naranjas P1, P2...
+        <p className="text-[11px] text-slate-300 truncate w-full">
+          Tocá el plano para sumar quiebres o arrastrá los círculos P1, P2...
         </p>
-        <div className="flex items-center gap-2 pt-0.5">
+        <div className="flex items-center gap-2 pt-0.5 w-full min-w-0">
           {(selectedConduit.waypoints?.length || 0) > 0 && onUndoEditingConduitWaypoint && (
             <button
               type="button"
               onClick={onUndoEditingConduitWaypoint}
-              className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
+              className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer truncate"
             >
-              <Undo2 size={13} />
-              <span>Deshacer quiebre</span>
+              <Undo2 size={13} className="shrink-0" />
+              <span className="truncate">Deshacer quiebre</span>
             </button>
           )}
           {onStartRedesigningConduitRoute && (
             <button
               type="button"
               onClick={() => onStartRedesigningConduitRoute(selectedConduit.id)}
-              className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
             >
-              <RotateCw size={13} />
+              <RotateCw size={13} className="shrink-0" />
               <span>Rediseñar</span>
             </button>
           )}
@@ -221,27 +221,27 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     const isArc = sequenceRoutingMode === 'schematic_arc';
     return (
       <footer
-        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5 w-full min-w-0">
+          <div className="flex items-center gap-1.5 truncate min-w-0">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
             <span className="font-bold text-amber-300 truncate">
               {!pendingConduitStartId
-                ? 'Paso 1: Tocá 1° boca o tablero en plano'
+                ? 'Paso 1: Tocá 1° boca en plano'
                 : isArc
-                ? 'Paso 2: Tocá boca de destino (Arco AEA)'
+                ? 'Paso 2: Tocá boca final (Arco)'
                 : (pendingConduitWaypoints?.length || 0) === 0
-                ? 'Paso 2: Clics para quiebres o tocá boca final'
-                : `Recorrido (${pendingConduitWaypoints?.length} quiebres) · Tocá boca final`}
+                ? 'Paso 2: Quiebres o boca final'
+                : `Recorrido (${pendingConduitWaypoints?.length} pts) · Boca final`}
             </span>
           </div>
           {onCancelConnectingConduit && (
             <button
               type="button"
               onClick={onCancelConnectingConduit}
-              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer shrink-0 ml-1"
               title="Cancelar trazado (Esc)"
             >
               <X size={16} />
@@ -250,7 +250,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         </div>
 
         {/* Fila de Controles Ergonómicos en el Pulgar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
           {/* Conmutador Geometría */}
           <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
             <button
@@ -311,16 +311,16 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     const sym = getSymbolById(selectedSymbolId);
     return (
       <footer
-        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-sky-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-sky-500/60 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="text-sky-400 font-bold">⚡</span>
-            <span className="font-bold text-sky-200 truncate max-w-[160px]">
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5 w-full min-w-0">
+          <div className="flex items-center gap-1.5 truncate min-w-0">
+            <span className="text-sky-400 font-bold shrink-0">⚡</span>
+            <span className="font-bold text-sky-200 truncate max-w-[140px] sm:max-w-[180px]">
               {sym?.label || 'Boca Eléctrica'}
             </span>
-            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-700 px-1.5 py-0.5 rounded font-bold">
+            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-700 px-1.5 py-0.5 rounded font-bold shrink-0">
               {nextSuggestedLabel}
             </span>
           </div>
@@ -328,7 +328,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             <button
               type="button"
               onClick={onClosePlacingSymbol}
-              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer shrink-0 ml-1"
               title="Finalizar colocación (Esc)"
             >
               <X size={16} />
@@ -337,7 +337,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         </div>
 
         {/* Fila de Configuración en el Pulgar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
           <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700 shrink-0">
             <span className="text-[10px] text-slate-400">Pref:</span>
             <input
@@ -401,7 +401,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit) {
     return (
       <footer
-        className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150"
+        className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* ── Inspector de Muro ── */}
@@ -409,24 +409,24 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
           const wallLen = getWallLength(selectedWall, verticesMap);
           return (
             <>
-              <div className="flex items-center justify-between text-xs px-1">
-                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate">
-                  <Ruler size={14} className="text-blue-600 flex-shrink-0" />
-                  <span className="font-bold">Muro:</span>
-                  <span className="font-mono font-bold text-blue-950">{wallLen.toFixed(2)}m</span>
-                  <span className="text-slate-400 text-[11px]">({Math.round(selectedWall.thickness * 100)}cm)</span>
+              <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                  <Ruler size={14} className="text-blue-600 shrink-0" />
+                  <span className="font-bold shrink-0">Muro:</span>
+                  <span className="font-mono font-bold text-blue-950 shrink-0">{wallLen.toFixed(2)}m</span>
+                  <span className="text-slate-400 text-[11px] truncate">({Math.round(selectedWall.thickness * 100)}cm)</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedEntity(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
                   title="Cerrar selección"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('open-wall-edit-modal'))}
@@ -487,22 +487,22 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         {/* ── Inspector de Abertura (Puerta / Ventana) ── */}
         {selectedOpening && (
           <>
-            <div className="flex items-center justify-between text-xs px-1">
-              <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate">
-                <DoorOpen size={14} className="text-blue-600 flex-shrink-0" />
-                <span className="font-bold">{selectedOpening.type === 'door' ? 'Puerta' : 'Ventana'}:</span>
-                <span className="font-mono font-bold text-blue-950">{selectedOpening.width.toFixed(2)}m</span>
+            <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+              <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                <DoorOpen size={14} className="text-blue-600 shrink-0" />
+                <span className="font-bold shrink-0">{selectedOpening.type === 'door' ? 'Puerta' : 'Ventana'}:</span>
+                <span className="font-mono font-bold text-blue-950 truncate">{selectedOpening.width.toFixed(2)}m</span>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedEntity(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
               {selectedOpening.type === 'door' && (
                 <>
                   <button
@@ -579,22 +579,22 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
           return (
             <>
-              <div className="flex items-center justify-between text-xs px-1">
-                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate">
-                  <Zap size={14} className="text-amber-500 flex-shrink-0" />
+              <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                  <Zap size={14} className="text-amber-500 shrink-0" />
                   <span className="font-bold truncate">{selectedElectricalElement.label || 'Boca'}</span>
-                  <span className="text-slate-400 text-[11px]">({selectedElectricalElement.heightZ.toFixed(2)}m)</span>
+                  <span className="text-slate-400 text-[11px] shrink-0">({selectedElectricalElement.heightZ.toFixed(2)}m)</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedEntity(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
                 {/* Modal Propiedades Completas */}
                 <button
                   type="button"
@@ -727,13 +727,13 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
           return (
             <>
-              <div className="flex items-center justify-between text-xs px-1">
-                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate">
-                  <Cable size={14} className="text-amber-500 flex-shrink-0" />
-                  <span className="font-bold">Cañería:</span>
-                  <span className="font-mono font-bold text-amber-700">Ø{selectedConduit.diameterMM}mm</span>
+              <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                  <Cable size={14} className="text-amber-500 shrink-0" />
+                  <span className="font-bold shrink-0">Cañería:</span>
+                  <span className="font-mono font-bold text-amber-700 shrink-0">Ø{selectedConduit.diameterMM}mm</span>
                   {selectedConduit.routingMode === 'orthogonal' && (
-                    <span className="bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    <span className="bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
                       90° {selectedConduit.waypoints?.length ? `· ${selectedConduit.waypoints.length} pts` : ''}
                     </span>
                   )}
@@ -741,13 +741,13 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedEntity(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer shrink-0 ml-1"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
                 {/* Conmutador Geometría */}
                 <button
                   type="button"
@@ -867,19 +867,19 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
   return (
     <footer
-      className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation"
+      className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation w-full max-w-full overflow-hidden"
       style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
     >
       {/* ─── PESTAÑAS DE MODO PRINCIPAL + BLUETOOTH / ACCIONES ─── */}
-      <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+      <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-100 w-full min-w-0">
+        <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
           <button
             type="button"
             onClick={() => {
               setDockMode('survey');
               if (selectedSymbolId) onSelectSymbol?.(null);
             }}
-            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all ${
               dockMode === 'survey' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -889,7 +889,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
           <button
             type="button"
             onClick={() => setDockMode('electrical')}
-            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1 px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all ${
               dockMode === 'electrical' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -902,7 +902,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
           <button
             type="button"
             onClick={status.isConnected ? disconnect : connect}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors flex-shrink-0 ${
+            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors shrink-0 ${
               status.isConnected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
             title={status.isConnected ? 'Desconectar distanciómetro' : 'Conectar distanciómetro Bluetooth'}
@@ -913,29 +913,32 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             </span>
           </button>
         ) : (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             {onOpenCircuits && (
               <button
                 type="button"
                 onClick={onOpenCircuits}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs"
+                className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs shrink-0"
                 title="Gestionar circuitos y tableros"
               >
                 <Layers size={12} className="text-blue-600" />
-                <span>Tableros & Circ ({project.circuits?.length ?? 0})</span>
+                <span className="hidden sm:inline">Tableros & Circ</span>
+                <span className="sm:hidden">Circs</span>
+                <span>({project.circuits?.length ?? 0})</span>
               </button>
             )}
             <button
               type="button"
               onClick={onToggleConnectConduit}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 ${
                 isConnectingConduit
                   ? 'bg-amber-600 text-white animate-pulse shadow-sm'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               <Zap size={12} className={isConnectingConduit ? 'text-white' : 'text-amber-600'} />
-              <span>{isConnectingConduit ? 'Unir 2 bocas' : 'Trazar Caño'}</span>
+              <span className="hidden sm:inline">{isConnectingConduit ? 'Unir 2 bocas' : 'Trazar Caño'}</span>
+              <span className="sm:hidden">{isConnectingConduit ? 'Unir' : 'Caño'}</span>
             </button>
           </div>
         )}
@@ -1082,13 +1085,13 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
       {dockMode === 'electrical' && (
         <>
           {/* Categorías AEA */}
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
             {SYMBOL_CATEGORIES.slice(0, 5).map((cat) => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCategory(cat.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors shrink-0 ${
                   activeCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -1098,7 +1101,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
           </div>
 
           {/* Tira horizontal de símbolos */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5 w-full min-w-0">
             {symbols.map((sym) => {
               const isSelected = selectedSymbolId === sym.id;
               return (
@@ -1106,7 +1109,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   key={sym.id}
                   type="button"
                   onClick={() => onSelectSymbol?.(isSelected ? null : sym.id)}
-                  className={`flex flex-col items-center justify-center p-1.5 min-w-[62px] max-w-[68px] rounded-xl border transition-all flex-shrink-0 ${
+                  className={`flex flex-col items-center justify-center p-1.5 min-w-[58px] max-w-[66px] rounded-xl border transition-all shrink-0 ${
                     isSelected
                       ? 'bg-blue-50 border-blue-500 shadow-sm ring-2 ring-blue-200'
                       : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
@@ -1115,7 +1118,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 >
                   <AeaSymbolIcon
                     symbolId={sym.id}
-                    size={24}
+                    size={22}
                     color={isSelected ? '#2563eb' : '#334155'}
                     isSelected={isSelected}
                   />
@@ -1129,14 +1132,14 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
           {/* Banner de estado al seleccionar una boca */}
           {selectedSymbolId && (
-            <div className="flex items-center justify-between gap-2 p-1.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
-              <span className="truncate text-[11px] font-medium">
+            <div className="flex items-center justify-between gap-2 p-1.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 w-full min-w-0">
+              <span className="truncate text-[11px] font-medium min-w-0">
                 📍 Tocá el plano para emplazar: <strong>{selectedSymDef?.label || 'Boca'}</strong>
               </span>
               <button
                 type="button"
                 onClick={() => onSelectSymbol?.(null)}
-                className="px-2 py-0.5 bg-blue-200 hover:bg-blue-300 text-blue-900 rounded-lg text-[10px] font-bold flex-shrink-0"
+                className="px-2 py-0.5 bg-blue-200 hover:bg-blue-300 text-blue-900 rounded-lg text-[10px] font-bold shrink-0 ml-1"
               >
                 ✕ Cancelar
               </button>
