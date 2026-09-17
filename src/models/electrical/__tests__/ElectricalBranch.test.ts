@@ -45,6 +45,19 @@ describe('Modelo de Ramas del Grafo Eléctrico (electricalBranch)', () => {
     type: 'principal',
     levelId: 'level-1',
     spaceId: 'space-1',
+    x: 0,
+    y: 0,
+    heightZ: 1.4,
+    isPlaced: true,
+    incomings: [
+      {
+        id: 'inc-tp',
+        name: 'Red Distribuidora',
+        sourceType: 'grid_meter',
+        voltageV: 220,
+        phases: 1
+      }
+    ],
     elementId: 'elem-tp',
     isThreePhase: false,
     mainBreakerAmperageA: 32,

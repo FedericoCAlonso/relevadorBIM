@@ -7,7 +7,7 @@
  */
 
 import type {
-  ElectricalElement,
+  SpatialElectricalNode,
   ConductorLine,
   ConduitMaterial,
   ConduitRoutingPlane,
@@ -38,8 +38,8 @@ export interface ConduitLengthBreakdown {
 }
 
 export function getConduitLengthBreakdown(params: {
-  fromElement: ElectricalElement;
-  toElement: ElectricalElement;
+  fromElement: SpatialElectricalNode;
+  toElement: SpatialElectricalNode;
   levelsMap: Map<string, Level>;
   isOrthogonalRouting?: boolean;
   routingPlane?: ConduitRoutingPlane;
@@ -140,8 +140,8 @@ export function getConduitLengthBreakdown(params: {
 }
 
 export function calculateConduitRealLength(params: {
-  fromElement: ElectricalElement;
-  toElement: ElectricalElement;
+  fromElement: SpatialElectricalNode;
+  toElement: SpatialElectricalNode;
   levelsMap: Map<string, Level>;
   isOrthogonalRouting?: boolean;
   routingPlane?: ConduitRoutingPlane;

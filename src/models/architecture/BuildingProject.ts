@@ -72,10 +72,26 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
       type: 'principal',
       levelId: defaultLevel.id,
       spaceId: 'espacio-principal',
-      elementId: '',
+      x: 0,
+      y: 0,
+      heightZ: 1.40,
+      symbolId: 'sym-planta-tablero-principal',
       isThreePhase: false,
       mainBreakerAmperageA: 32,
-      mainDifferentialAmperageA: 40
+      mainDifferentialAmperageA: 40,
+      hasEarthBar: true,
+      incomings: [
+        {
+          id: `inc-${now}-grid`,
+          sourceType: 'grid_meter',
+          name: 'Acometida Red (Distribuidora)',
+          voltageV: 220,
+          phases: 1,
+          mainBreakerAmperageA: 32,
+          mainDifferentialAmperageA: 40,
+          isDefaultActive: true
+        }
+      ]
     }
   ];
 

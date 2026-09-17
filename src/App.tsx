@@ -570,6 +570,23 @@ export function App() {
                 handleElectricalElementClick(elementId);
               }
             }}
+            onPanelClick={(panelId) => {
+              if (isConnectingConduit) {
+                handleElectricalElementClick(panelId);
+              } else if (selectedEntity?.type === 'panel' && selectedEntity.id === panelId) {
+                setShowCircuitsModal(true);
+              } else {
+                handleElectricalElementClick(panelId);
+              }
+            }}
+            onPanelDoubleClick={(panelId) => {
+              if (!isConnectingConduit) {
+                handleElectricalElementClick(panelId);
+                setShowCircuitsModal(true);
+              } else {
+                handleElectricalElementClick(panelId);
+              }
+            }}
             onCanvasClick={handleCanvasClick}
             isArchitectureLocked={isArchitectureLocked}
             onToggleLockArchitecture={() => setIsArchitectureLocked((prev) => !prev)}

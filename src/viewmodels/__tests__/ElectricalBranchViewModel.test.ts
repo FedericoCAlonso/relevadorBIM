@@ -43,9 +43,14 @@ describe('Gestión de Ramas del Grafo Eléctrico en ViewModel (Store)', () => {
       levelId: 'level-1',
       spaceId: 'space-1',
       elementId: 'el-tp',
+      x: 0,
+      y: 0,
+      heightZ: 1.40,
+      isPlaced: true,
       isThreePhase: false,
       mainBreakerAmperageA: 32,
-      mainDifferentialAmperageA: 40
+      mainDifferentialAmperageA: 40,
+      incomings: []
     };
     store.addPanel(panelData);
 

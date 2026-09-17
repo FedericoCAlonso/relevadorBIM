@@ -118,7 +118,7 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
               </h3>
               <p className="text-[11px] text-slate-500">
                 {elementsCount} {elementsCount === 1 ? 'boca' : 'bocas'} · {conduitsCount} {conduitsCount === 1 ? 'tramo' : 'tramos'} de cañería
-                {boundaryPanel ? ` · Tablero: ${boundaryPanel.label || 'Extremo'}` : ''}
+                {boundaryPanel ? ` · Tablero: ${(boundaryPanel as any).name || (boundaryPanel as any).label || 'Extremo'}` : ''}
               </p>
             </div>
           </div>

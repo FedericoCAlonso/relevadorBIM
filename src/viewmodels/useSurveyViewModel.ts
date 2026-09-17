@@ -301,22 +301,31 @@ export function useSurveyViewModel() {
   );
 
   /**
-   * Conexión de cañerías entre bocas eléctricas y tableros.
+   * Conexión de cañerías entre bocas eléctricas y tableros distribuidores.
    */
   const handleElectricalElementClick = useCallback(
     (elementId: string) => {
+      const isPanel = project.panels.some((p) => p.id === elementId);
+
       if (isConnectingConduit) {
         if (!pendingConduitStartId) {
           setPendingConduitStartId(elementId);
-          setSelectedEntity({ type: 'electrical_element', id: elementId });
+          setSelectedEntity({ type: isPanel ? 'panel' : 'electrical_element', id: elementId });
         } else if (pendingConduitStartId === elementId) {
           // Deseleccionar si hace clic deliberado sobre el mismo elemento inicial
           setPendingConduitStartId(null);
           setPendingConduitWaypoints([]);
         } else {
-          const fromEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
-          const toEl = project.electricalElements.find((e) => e.id === elementId);
-          const inheritedCircuitId = fromEl?.circuitId || toEl?.circuitId || project.circuits[0]?.id || null;
+          const fromEl =
+            project.electricalElements.find((e) => e.id === pendingConduitStartId) ||
+            project.panels.find((p) => p.id === pendingConduitStartId);
+          const toEl =
+            project.electricalElements.find((e) => e.id === elementId) ||
+            project.panels.find((p) => p.id === elementId);
+
+          const fromCircuitId = fromEl && 'circuitId' in fromEl ? (fromEl as any).circuitId : null;
+          const toCircuitId = toEl && 'circuitId' in toEl ? (toEl as any).circuitId : null;
+          const inheritedCircuitId = fromCircuitId || toCircuitId || project.circuits[0]?.id || null;
           const circ = project.circuits.find((c) => c.id === inheritedCircuitId);
           const wireSec = circ?.wireSectionBaseMM2 || 2.5;
 
@@ -368,7 +377,7 @@ export function useSurveyViewModel() {
           setSelectedEntity({ type: 'conduit', id: newConduitId });
         }
       } else {
-        setSelectedEntity({ type: 'electrical_element', id: elementId });
+        setSelectedEntity({ type: isPanel ? 'panel' : 'electrical_element', id: elementId });
       }
     },
     [

@@ -30,7 +30,7 @@ export interface ElectricalBranch {
   /** Tramos de cañería que forman parte de la rama */
   conduits: Conduit[];
   /** Tableros eléctricos conectados en los extremos de la rama */
-  boundaryPanels: ElectricalElement[];
+  boundaryPanels: Array<ElectricalElement | Panel>;
   /** IDs de todas las bocas */
   elementIds: string[];
   /** IDs de todas las cañerías */
@@ -38,7 +38,7 @@ export interface ElectricalBranch {
   /** IDs de los tableros límite */
   boundaryPanelIds: string[];
   /** Tablero límite primario si existe alguno conectado */
-  primaryBoundaryPanel: ElectricalElement | null;
+  primaryBoundaryPanel: ElectricalElement | Panel | null;
   /** Circuito predominante detectado en la rama si existe */
   predominantCircuitId: string | null;
   /** Material predominante detectado en las cañerías de la rama */
@@ -78,11 +78,11 @@ export function isPanelElement(
   panels: readonly Panel[] = []
 ): boolean {
   if (element.isPanel) return true;
-  return panels.some((p) => p.elementId === element.id);
+  return panels.some((p) => p.elementId === element.id || p.id === element.id);
 }
 
 /**
- * Encuentra la rama interconectada a partir de una boca o cañería dada.
+ * Encuentra la rama interconectada a partir de una boca, cañería o tablero dado.
  *
  * Propiedades del recorrido:
  * 1. Es conexo: agrupa todos los tramos de cañería y bocas interconectadas.
@@ -92,17 +92,18 @@ export function isPanelElement(
  * 3. Preserva la naturaleza de los tableros en los extremos.
  */
 export function findConnectedBranch(params: {
-  startEntity: { type: 'electrical_element' | 'conduit'; id: string };
+  startEntity: { type: 'electrical_element' | 'conduit' | 'panel'; id: string };
   elements: readonly ElectricalElement[];
   conduits: readonly Conduit[];
   panels?: readonly Panel[];
 }): ElectricalBranch | null {
   const { startEntity, elements, conduits, panels = [] } = params;
 
+  const panelsMap = new Map<string, Panel>(panels.map((p) => [p.id, p]));
   const elementsMap = new Map<string, ElectricalElement>(elements.map((e) => [e.id, e]));
   const conduitsMap = new Map<string, Conduit>(conduits.map((c) => [c.id, c]));
 
-  // Índice de adyacencia de elementos a conductos
+  // Índice de adyacencia de elementos/tableros a conductos
   const elementToConduits = new Map<string, Conduit[]>();
   for (const c of conduits) {
     const listFrom = elementToConduits.get(c.fromElementId) || [];
@@ -118,7 +119,7 @@ export function findConnectedBranch(params: {
   const visitedElementIds = new Set<string>();
   const branchElements: ElectricalElement[] = [];
   const branchConduits: Conduit[] = [];
-  const boundaryPanels: ElectricalElement[] = [];
+  const boundaryPanels: Array<ElectricalElement | Panel> = [];
 
   const queue: string[] = [];
 
@@ -134,12 +135,26 @@ export function findConnectedBranch(params: {
 
     visitedElementIds.add(startConduit.toElementId);
     queue.push(startConduit.toElementId);
+  } else if (startEntity.type === 'panel') {
+    const startPanel = panelsMap.get(startEntity.id);
+    if (!startPanel) return null;
+
+    visitedElementIds.add(startPanel.id);
+    queue.push(startPanel.id);
   } else if (startEntity.type === 'electrical_element') {
     const startElement = elementsMap.get(startEntity.id);
-    if (!startElement) return null;
-
-    visitedElementIds.add(startElement.id);
-    queue.push(startElement.id);
+    if (!startElement) {
+      const fallbackPanel = panelsMap.get(startEntity.id);
+      if (fallbackPanel) {
+        visitedElementIds.add(fallbackPanel.id);
+        queue.push(fallbackPanel.id);
+      } else {
+        return null;
+      }
+    } else {
+      visitedElementIds.add(startElement.id);
+      queue.push(startElement.id);
+    }
   } else {
     return null;
   }
@@ -147,20 +162,17 @@ export function findConnectedBranch(params: {
   // BFS para recorrer toda la red conexa
   while (queue.length > 0) {
     const currentId = queue.shift()!;
-    const currentElement = elementsMap.get(currentId);
-    if (!currentElement) continue;
 
-    const isPanel = isPanelElement(currentElement, panels);
-
-    if (isPanel) {
-      // Si llegamos a un tablero: es un extremo de la rama.
-      if (!boundaryPanels.some((p) => p.id === currentElement.id)) {
-        boundaryPanels.push(currentElement);
+    // 1. Verificar si el nodo es un Panel autónomo
+    const currentPanel = panelsMap.get(currentId);
+    if (currentPanel) {
+      if (!boundaryPanels.some((p) => p.id === currentPanel.id)) {
+        boundaryPanels.push(currentPanel);
       }
-      // CRÍTICO: NO expandir a través del tablero hacia otros circuitos o ramas
-      // salvo si fue la entidad de inicio y la rama aún no tiene cañerías.
-      if (startEntity.type === 'electrical_element' && startEntity.id === currentElement.id && branchConduits.length === 0) {
-        // Si el usuario seleccionó un tablero directamente, expande a sus cañerías conectadas inmediatas
+      if (
+        (startEntity.type === 'panel' || startEntity.id === currentPanel.id) &&
+        branchConduits.length === 0
+      ) {
         const connectedConduits = elementToConduits.get(currentId) || [];
         for (const c of connectedConduits) {
           if (!visitedConduitIds.has(c.id)) {
@@ -177,7 +189,41 @@ export function findConnectedBranch(params: {
       continue;
     }
 
-    // Es una boca común
+    // 2. Verificar si es un ElectricalElement
+    const currentElement = elementsMap.get(currentId);
+    if (!currentElement) continue;
+
+    const isPanel = isPanelElement(currentElement, panels);
+
+    if (isPanel) {
+      // Si llegamos a un tablero legacy: es un extremo de la rama.
+      if (!boundaryPanels.some((p) => p.id === currentElement.id)) {
+        boundaryPanels.push(currentElement);
+      }
+      // CRÍTICO: NO expandir a través del tablero hacia otros circuitos o ramas
+      // salvo si fue la entidad de inicio y la rama aún no tiene cañerías.
+      if (
+        (startEntity.type === 'electrical_element' || startEntity.type === 'panel') &&
+        startEntity.id === currentElement.id &&
+        branchConduits.length === 0
+      ) {
+        const connectedConduits = elementToConduits.get(currentId) || [];
+        for (const c of connectedConduits) {
+          if (!visitedConduitIds.has(c.id)) {
+            visitedConduitIds.add(c.id);
+            branchConduits.push(c);
+            const neighborId = c.fromElementId === currentId ? c.toElementId : c.fromElementId;
+            if (!visitedElementIds.has(neighborId)) {
+              visitedElementIds.add(neighborId);
+              queue.push(neighborId);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    // 3. Es una boca común
     if (!branchElements.some((e) => e.id === currentElement.id)) {
       branchElements.push(currentElement);
     }

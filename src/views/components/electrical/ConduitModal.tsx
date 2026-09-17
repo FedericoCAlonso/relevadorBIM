@@ -54,8 +54,8 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
   if (!isOpen || !conduit) return null;
 
-  const symFrom = conduitFromElement ? getSymbolById(conduitFromElement.symbolId) : null;
-  const symTo = conduitToElement ? getSymbolById(conduitToElement.symbolId) : null;
+  const symFrom = conduitFromElement && 'symbolId' in conduitFromElement && conduitFromElement.symbolId ? getSymbolById(conduitFromElement.symbolId) : null;
+  const symTo = conduitToElement && 'symbolId' in conduitToElement && conduitToElement.symbolId ? getSymbolById(conduitToElement.symbolId) : null;
 
   const handleCreateConduitType = () => {
     if (!newMaterialName.trim()) return;
@@ -103,7 +103,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                 Configurar Tramo de Cañería
               </h3>
               <p className="text-[11px] text-slate-500">
-                {conduitFromElement?.label || symFrom?.label || 'Boca A'} ➔ {conduitToElement?.label || symTo?.label || 'Boca B'}
+                {(conduitFromElement as any)?.label || (conduitFromElement as any)?.name || symFrom?.label || 'Boca A'} ➔ {(conduitToElement as any)?.label || (conduitToElement as any)?.name || symTo?.label || 'Boca B'}
               </p>
             </div>
           </div>
@@ -133,7 +133,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                     <span className="text-[10px] text-blue-800">
                       {selectedBranch.conduits.length} {selectedBranch.conduits.length === 1 ? 'cañería' : 'cañerías'} · {selectedBranch.elements.length} {selectedBranch.elements.length === 1 ? 'boca' : 'bocas'}
                       {selectedBranch.primaryBoundaryPanel
-                        ? ` · Tablero: ${selectedBranch.primaryBoundaryPanel.label || 'Extremo'}`
+                        ? ` · Tablero: ${(selectedBranch.primaryBoundaryPanel as any).name || (selectedBranch.primaryBoundaryPanel as any).label || 'Extremo'}`
                         : ''}
                     </span>
                   </div>

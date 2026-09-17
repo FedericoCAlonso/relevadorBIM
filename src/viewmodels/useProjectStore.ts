@@ -37,7 +37,7 @@ export function generateUniqueId(prefix = 'id'): string {
 }
 
 export interface SelectedEntity {
-  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit' | 'dimension';
+  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit' | 'dimension' | 'panel';
   id: string;
 }
 
@@ -852,10 +852,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       }
       const remainingPanels = state.project.panels.filter((p) => p.id !== panelId);
       const fallbackPanelId = remainingPanels[0].id;
+      const remainingConduits = state.project.conduits.filter(
+        (c) => c.fromElementId !== panelId && c.toElementId !== panelId
+      );
       return {
+        selectedEntity: state.selectedEntity?.id === panelId ? null : state.selectedEntity,
         project: {
           ...state.project,
           panels: remainingPanels,
+          conduits: remainingConduits,
           circuits: state.project.circuits.map((c) => ({
             ...c,
             panelId: c.panelId === panelId ? fallbackPanelId : c.panelId,
@@ -878,10 +883,27 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         type: 'principal',
         levelId: project.activeLevelId,
         spaceId: 'espacio-principal',
-        elementId: '',
+        x: 0,
+        y: 0,
+        heightZ: 1.40,
+        isPlaced: false,
+        symbolId: 'sym-planta-tablero-principal',
         isThreePhase: false,
         mainBreakerAmperageA: 32,
-        mainDifferentialAmperageA: 40
+        mainDifferentialAmperageA: 40,
+        hasEarthBar: true,
+        incomings: [
+          {
+            id: `inc-${now}-grid`,
+            sourceType: 'grid_meter',
+            name: 'Acometida Red (Distribuidora)',
+            voltageV: 220,
+            phases: 1,
+            mainBreakerAmperageA: 32,
+            mainDifferentialAmperageA: 40,
+            isDefaultActive: true
+          }
+        ]
       }
     ];
     const newCircuits: Circuit[] = [
@@ -1001,17 +1023,82 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       selectedEntity: state.selectedEntity?.id === dimensionId ? null : state.selectedEntity
     })),
 
-  loadProject: (project) =>
+  loadProject: (project) => {
+    // Migración transparente de tableros legacy (elementId -> entidad autónoma en project.panels)
+    const elementIdToPanelId = new Map<string, string>();
+    for (const p of project.panels || []) {
+      if (p.elementId) {
+        elementIdToPanelId.set(p.elementId, p.id);
+      }
+    }
+
+    const migratedPanels: Panel[] = (project.panels || []).map((p) => {
+      const legacyEl = p.elementId
+        ? project.electricalElements.find((e) => e.id === p.elementId)
+        : null;
+
+      const hasIncomings = p.incomings && p.incomings.length > 0;
+      const defaultIncomings = hasIncomings
+        ? p.incomings
+        : [
+            {
+              id: `inc-${p.id}-grid`,
+              sourceType: p.type === 'principal' ? ('grid_meter' as const) : ('upstream_panel' as const),
+              name: p.type === 'principal' ? 'Acometida Red (Distribuidora)' : 'Alimentador Seccional',
+              voltageV: p.isThreePhase ? 380 : 220,
+              phases: (p.isThreePhase ? 3 : 1) as 1 | 3,
+              mainBreakerAmperageA: p.mainBreakerAmperageA || 32,
+              mainDifferentialAmperageA: p.mainDifferentialAmperageA || 40,
+              isDefaultActive: true
+            }
+          ];
+
+      return {
+        ...p,
+        x: p.x ?? legacyEl?.x ?? 0,
+        y: p.y ?? legacyEl?.y ?? 0,
+        heightZ: p.heightZ ?? legacyEl?.heightZ ?? 1.40,
+        levelId: p.levelId || legacyEl?.levelId || project.activeLevelId || 'level-1',
+        spaceId: p.spaceId || legacyEl?.spaceId || 'espacio-principal',
+        wallId: p.wallId ?? legacyEl?.wallId ?? null,
+        wallOffset: p.wallOffset ?? legacyEl?.wallOffset,
+        rotation: p.rotation ?? legacyEl?.rotation ?? 0,
+        side: p.side ?? legacyEl?.side,
+        isPlaced: p.isPlaced !== undefined ? p.isPlaced : Boolean(legacyEl || (p.x !== undefined && p.x !== 0)),
+        symbolId:
+          p.symbolId ||
+          legacyEl?.symbolId ||
+          (p.type === 'principal' ? 'sym-planta-tablero-principal' : 'sym-planta-tablero-seccional'),
+        hasEarthBar: p.hasEarthBar ?? true,
+        incomings: defaultIncomings
+      };
+    });
+
+    const migratedConduits = (project.conduits || []).map((c) => ({
+      ...c,
+      fromElementId: elementIdToPanelId.get(c.fromElementId) || c.fromElementId,
+      toElementId: elementIdToPanelId.get(c.toElementId) || c.toElementId
+    }));
+
+    // Excluir elementos marcados como paneles de la lista de bocas físicas puras
+    const migratedElements = (project.electricalElements || []).filter(
+      (el) => !el.isPanel && !elementIdToPanelId.has(el.id)
+    );
+
     set({
       project: {
         ...project,
+        panels: migratedPanels,
+        conduits: migratedConduits,
+        electricalElements: migratedElements,
         materialCatalog: project.materialCatalog || createDefaultMaterialCatalog(),
         underlaySheets: project.underlaySheets || {},
         dimensions: project.dimensions || []
       },
       selectedEntity: null,
       activeAnchorVertexId: null
-    }),
+    });
+  },
 
   resetProject: () => set({ project: createEmptyProject(), selectedEntity: null, activeAnchorVertexId: null })
 }));

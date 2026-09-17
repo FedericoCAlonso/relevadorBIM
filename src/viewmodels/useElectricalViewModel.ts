@@ -11,6 +11,9 @@ import { create } from 'zustand';
 import { useProjectStore } from './useProjectStore';
 import type {
   ElectricalElement,
+  SpatialElectricalNode,
+  Panel,
+  PanelType,
   Conduit,
   ConduitRoutingMode,
   ConduitRoutingPlane,
@@ -133,7 +136,7 @@ export function placeElectricalElementInStore(
   params: PlaceElectricalElementInput,
   projectStore: ReturnType<typeof useProjectStore.getState> = useProjectStore.getState(),
   sequenceStore: ElectricalSequenceStoreState = useElectricalSequenceStore.getState()
-): ElectricalElement {
+): SpatialElectricalNode {
   const {
     worldX,
     worldY,
@@ -144,7 +147,7 @@ export function placeElectricalElementInStore(
     overrideCircuitId
   } = params;
 
-  const { project, addElectricalElement, addConduit } = projectStore;
+  const { project, addElectricalElement, addConduit, addPanel, updatePanel } = projectStore;
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
 
   const isCeiling = symbolId.includes('techo') || symbolId.includes('ventilador');
@@ -195,8 +198,107 @@ export function placeElectricalElementInStore(
     ? 0.30
     : 1.20;
 
-  const newElementId = `el-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const elementRotation = snapInfo?.rotationDeg ?? rotationDeg ?? 0;
+
+  // CASO 1: Es un Tablero Eléctrico -> Entidad autónoma en project.panels (Distribuidor de Circuitos)
+  if (isPanel) {
+    const existingUnplacedPanel = project.panels.find((p) => !p.isPlaced);
+    const panelId = existingUnplacedPanel
+      ? existingUnplacedPanel.id
+      : `pan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const panelName = symbolId.includes('ts')
+      ? 'Tablero Seccional (TS)'
+      : symbolId.includes('medidor')
+      ? 'Gabinete Medidor'
+      : existingUnplacedPanel?.name || 'Tablero Principal (TP)';
+    const panelType: PanelType = symbolId.includes('ts') ? 'seccional' : 'principal';
+
+    const placedPanel: Panel = {
+      id: panelId,
+      name: panelName,
+      type: existingUnplacedPanel ? existingUnplacedPanel.type : panelType,
+      levelId: project.activeLevelId,
+      spaceId: containingSpace?.id || project.spaces[0]?.id || 'espacio-principal',
+      x: Number(worldX.toFixed(3)),
+      y: Number(worldY.toFixed(3)),
+      heightZ,
+      wallId: snapInfo?.wallId || null,
+      wallOffset: snapInfo?.wallOffset,
+      rotation: elementRotation,
+      side: snapInfo?.side,
+      isPlaced: true,
+      symbolId,
+      isThreePhase: existingUnplacedPanel?.isThreePhase ?? false,
+      mainBreakerAmperageA: existingUnplacedPanel?.mainBreakerAmperageA ?? 32,
+      mainDifferentialAmperageA: existingUnplacedPanel?.mainDifferentialAmperageA ?? 40,
+      hasEarthBar: true,
+      incomings:
+        existingUnplacedPanel?.incomings && existingUnplacedPanel.incomings.length > 0
+          ? existingUnplacedPanel.incomings
+          : [
+              {
+                id: `inc-${Date.now()}-1`,
+                sourceType: panelType === 'principal' ? 'grid_meter' : 'upstream_panel',
+                name: panelType === 'principal' ? 'Acometida Red (Distribuidora)' : 'Alimentador Seccional',
+                voltageV: existingUnplacedPanel?.isThreePhase ? 380 : 220,
+                phases: existingUnplacedPanel?.isThreePhase ? 3 : 1,
+                mainBreakerAmperageA: existingUnplacedPanel?.mainBreakerAmperageA ?? 32,
+                mainDifferentialAmperageA: existingUnplacedPanel?.mainDifferentialAmperageA ?? 40,
+                isDefaultActive: true
+              }
+            ]
+    };
+
+    if (existingUnplacedPanel) {
+      updatePanel(existingUnplacedPanel.id, placedPanel);
+    } else {
+      addPanel(placedPanel);
+    }
+
+    if (sequenceStore.autoConnectConduits && sequenceStore.lastPlacedElementId) {
+      const prevElement =
+        project.electricalElements.find((e) => e.id === sequenceStore.lastPlacedElementId) ||
+        project.panels.find((p) => p.id === sequenceStore.lastPlacedElementId);
+      if (prevElement) {
+        const circ = activeCircuitId ? project.circuits.find((c) => c.id === activeCircuitId) : null;
+        const section = circ?.wireSectionBaseMM2 || 2.5;
+
+        const conductors: ConductorLine[] = [
+          { role: 'fase', sectionMM2: section, color: '#991b1b', circuitId: activeCircuitId || undefined },
+          { role: 'neutro', sectionMM2: section, color: '#2563eb', circuitId: activeCircuitId || undefined },
+          { role: 'pe', sectionMM2: section, color: '#16a34a', circuitId: activeCircuitId || undefined }
+        ];
+
+        const isVerticalRiser = prevElement.levelId !== placedPanel.levelId;
+        const circuitIds = activeCircuitId
+          ? [activeCircuitId, ...sequenceStore.sequencePassingCircuitIds]
+          : [...sequenceStore.sequencePassingCircuitIds];
+
+        const conduitId = `cond-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        addConduit({
+          id: conduitId,
+          circuitId: activeCircuitId,
+          circuitIds,
+          fromElementId: prevElement.id,
+          toElementId: placedPanel.id,
+          fromLevelId: prevElement.levelId,
+          toLevelId: placedPanel.levelId,
+          diameterMM: sequenceStore.sequenceConduitDiameterMM,
+          material: sequenceStore.sequenceConduitMaterial,
+          isVerticalRiser,
+          conductors,
+          routingMode: sequenceStore.sequenceRoutingMode,
+          routingPlane: sequenceStore.sequenceRoutingPlane
+        });
+      }
+    }
+
+    sequenceStore.setLastPlacedElementId(placedPanel.id);
+    return placedPanel;
+  }
+
+  // CASO 2: Es una Boca de Consumo o Comando -> ElectricalElement puro
+  const newElementId = `el-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
   const newElement: ElectricalElement = {
     id: newElementId,
@@ -216,7 +318,7 @@ export function placeElectricalElementInStore(
     status: 'proyectado',
     powerW,
     phases: 1,
-    isPanel,
+    isPanel: false,
     label,
     attributes: []
   };
@@ -224,9 +326,9 @@ export function placeElectricalElementInStore(
   addElectricalElement(newElement);
 
   if (sequenceStore.autoConnectConduits && sequenceStore.lastPlacedElementId) {
-    const prevElement = project.electricalElements.find(
-      (e) => e.id === sequenceStore.lastPlacedElementId
-    );
+    const prevElement =
+      project.electricalElements.find((e) => e.id === sequenceStore.lastPlacedElementId) ||
+      project.panels.find((p) => p.id === sequenceStore.lastPlacedElementId);
     if (prevElement) {
       const circ = activeCircuitId
         ? project.circuits.find((c) => c.id === activeCircuitId)
@@ -298,6 +400,11 @@ export function useElectricalViewModel() {
     return project.electricalElements.find((e) => e.id === selectedEntity.id) || null;
   }, [selectedEntity, project.electricalElements]);
 
+  const selectedPanel = useMemo(() => {
+    if (selectedEntity?.type !== 'panel') return null;
+    return project.panels.find((p) => p.id === selectedEntity.id) || null;
+  }, [selectedEntity, project.panels]);
+
   const selectedConduit = useMemo(() => {
     if (selectedEntity?.type !== 'conduit') return null;
     return project.conduits.find((c) => c.id === selectedEntity.id) || null;
@@ -311,16 +418,24 @@ export function useElectricalViewModel() {
     return new Map(project.levels.map((l) => [l.id, l]));
   }, [project.levels]);
 
-  // Elementos de extremo para la cañería activa
+  // Elementos de extremo para la cañería activa (bocas o tableros de distribución)
   const conduitFromElement = useMemo(() => {
     if (!selectedConduit) return null;
-    return project.electricalElements.find((e) => e.id === selectedConduit.fromElementId) || null;
-  }, [selectedConduit, project.electricalElements]);
+    return (
+      project.electricalElements.find((e) => e.id === selectedConduit.fromElementId) ||
+      project.panels.find((p) => p.id === selectedConduit.fromElementId) ||
+      null
+    );
+  }, [selectedConduit, project.electricalElements, project.panels]);
 
   const conduitToElement = useMemo(() => {
     if (!selectedConduit) return null;
-    return project.electricalElements.find((e) => e.id === selectedConduit.toElementId) || null;
-  }, [selectedConduit, project.electricalElements]);
+    return (
+      project.electricalElements.find((e) => e.id === selectedConduit.toElementId) ||
+      project.panels.find((p) => p.id === selectedConduit.toElementId) ||
+      null
+    );
+  }, [selectedConduit, project.electricalElements, project.panels]);
 
   // Desglose métrico 3D calculado en el ViewModel contemplando vía de tendido, waypoints y montantes
   const conduitBreakdown = useMemo<ConduitLengthBreakdown | null>(() => {
@@ -667,7 +782,7 @@ export function useElectricalViewModel() {
    * traza automáticamente la cañería lógica entre ambas con el circuito y sección asignados.
    */
   const placeElectricalElement = useCallback(
-    (params: PlaceElectricalElementInput): ElectricalElement => {
+    (params: PlaceElectricalElementInput): SpatialElectricalNode => {
       return placeElectricalElementInStore(params);
     },
     []
@@ -732,6 +847,7 @@ export function useElectricalViewModel() {
   return {
     // Estado del modelo reactivo
     selectedElement,
+    selectedPanel,
     selectedConduit,
     elementWall,
     conduitFromElement,

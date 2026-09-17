@@ -33,9 +33,13 @@ describe('Gestión de Tableros Eléctricos en Store (ViewModel)', () => {
       levelId: 'level-1',
       spaceId: 'space-pasillo',
       elementId: 'elem-ts-pa',
+      x: 0,
+      y: 0,
+      heightZ: 1.40,
       isThreePhase: false,
       mainBreakerAmperageA: 25,
-      mainDifferentialAmperageA: 25
+      mainDifferentialAmperageA: 25,
+      incomings: []
     };
 
     addPanel(newPanel);
@@ -88,9 +92,13 @@ describe('Gestión de Tableros Eléctricos en Store (ViewModel)', () => {
       levelId: 'level-1',
       spaceId: 'space-1',
       elementId: 'elem-1',
+      x: 0,
+      y: 0,
+      heightZ: 1.40,
       isThreePhase: false,
       mainBreakerAmperageA: 25,
-      mainDifferentialAmperageA: 25
+      mainDifferentialAmperageA: 25,
+      incomings: []
     };
     addPanel(subPanel);
 

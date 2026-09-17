@@ -314,21 +314,91 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
       type: panelType,
       levelId: project.activeLevelId || project.levels[0]?.id || 'level-1',
       spaceId: 'espacio-principal',
-      elementId: '',
+      x: 0,
+      y: 0,
+      heightZ: 1.40,
+      isPlaced: false,
+      symbolId: panelType === 'principal' ? 'sym-planta-tablero-principal' : 'sym-planta-tablero-seccional',
       isThreePhase: panelIsThreePhase,
       mainBreakerAmperageA: panelBreakerA,
-      mainDifferentialAmperageA: panelDiffA
+      mainDifferentialAmperageA: panelDiffA,
+      hasEarthBar: true,
+      incomings: [
+        {
+          id: `inc-${Date.now()}-1`,
+          sourceType: panelType === 'principal' ? 'grid_meter' : 'upstream_panel',
+          name: panelType === 'principal' ? 'Acometida Red (Distribuidora)' : 'Alimentador Seccional',
+          voltageV: panelIsThreePhase ? 380 : 220,
+          phases: panelIsThreePhase ? 3 : 1,
+          mainBreakerAmperageA: panelBreakerA,
+          mainDifferentialAmperageA: panelDiffA,
+          isDefaultActive: true
+        }
+      ]
     };
     addPanel(newPanel);
     setIsCreatingPanel(false);
     setPanelName('');
   };
 
+  const handleAddEmergencyIncoming = (pId: string) => {
+    const p = project.panels.find((item) => item.id === pId);
+    if (!p) return;
+    const currentIncomings =
+      p.incomings && p.incomings.length > 0
+        ? [...p.incomings]
+        : [
+            {
+              id: `inc-${p.id}-grid`,
+              sourceType: p.type === 'principal' ? ('grid_meter' as const) : ('upstream_panel' as const),
+              name: p.type === 'principal' ? 'Acometida Red (Distribuidora)' : 'Alimentador Seccional',
+              voltageV: p.isThreePhase ? 380 : 220,
+              phases: (p.isThreePhase ? 3 : 1) as 1 | 3,
+              mainBreakerAmperageA: p.mainBreakerAmperageA || 32,
+              mainDifferentialAmperageA: p.mainDifferentialAmperageA || 40,
+              isDefaultActive: true
+            }
+          ];
+
+    const hasGen = currentIncomings.some((inc) => inc.sourceType === 'generator');
+    if (hasGen) return;
+
+    const newIncoming = {
+      id: `inc-${Date.now()}-ge`,
+      sourceType: 'generator' as const,
+      name: 'Entrada Emergencia / Grupo Electrógeno (GE)',
+      voltageV: p.isThreePhase ? 380 : 220,
+      phases: (p.isThreePhase ? 3 : 1) as 1 | 3,
+      mainBreakerAmperageA: p.mainBreakerAmperageA || 32,
+      isDefaultActive: false
+    };
+
+    updatePanel(pId, {
+      incomings: [...currentIncomings, newIncoming],
+      transferSwitch: {
+        hasMultipleIncomings: true,
+        type: 'manual',
+        interlocked: true,
+        notes: 'Conmutadora manual con enclavamiento mecánico Red-0-GE'
+      }
+    });
+  };
+
+  const handleRemoveIncoming = (pId: string, incId: string) => {
+    const p = project.panels.find((item) => item.id === pId);
+    if (!p || !p.incomings || p.incomings.length <= 1) return;
+    const remaining = p.incomings.filter((inc) => inc.id !== incId);
+    updatePanel(pId, {
+      incomings: remaining,
+      transferSwitch: remaining.length > 1 ? p.transferSwitch : undefined
+    });
+  };
+
   const handleStartEditPanel = (p: Panel) => {
     setEditingPanelId(p.id);
     setPanelName(p.name);
     setPanelType(p.type);
-    setPanelIsThreePhase(p.isThreePhase);
+    setPanelIsThreePhase(p.isThreePhase ?? false);
     setPanelBreakerA(p.mainBreakerAmperageA || 25);
     setPanelDiffA(p.mainDifferentialAmperageA || 25);
     setIsCreatingPanel(false);
@@ -690,6 +760,90 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                             <Trash2 size={14} />
                           </button>
                         </div>
+                      </div>
+
+                      {/* Entradas de Alimentación (Distribuidor) */}
+                      <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          <span>📥 Entradas de Alimentación ({p.incomings?.length || 1})</span>
+                          {!p.incomings?.some((inc) => inc.sourceType === 'generator') && (
+                            <button
+                              type="button"
+                              onClick={() => handleAddEmergencyIncoming(p.id)}
+                              className="text-[10px] font-bold text-amber-700 hover:text-amber-900 cursor-pointer"
+                            >
+                              ＋ Entrada Emergencia / GE
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          {(p.incomings && p.incomings.length > 0
+                            ? p.incomings
+                            : [
+                                {
+                                  id: `inc-${p.id}-grid`,
+                                  sourceType: p.type === 'principal' ? ('grid_meter' as const) : ('upstream_panel' as const),
+                                  name: p.type === 'principal' ? 'Acometida Red' : 'Alimentador Seccional',
+                                  voltageV: p.isThreePhase ? 380 : 220,
+                                  phases: (p.isThreePhase ? 3 : 1) as 1 | 3,
+                                  mainBreakerAmperageA: p.mainBreakerAmperageA || 32,
+                                  mainDifferentialAmperageA: p.mainDifferentialAmperageA || 40,
+                                  isDefaultActive: true
+                                }
+                              ]
+                          ).map((inc) => (
+                            <div
+                              key={inc.id}
+                              className="flex items-center justify-between text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/60"
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-xs shrink-0">
+                                  {inc.sourceType === 'grid_meter'
+                                    ? '⚡'
+                                    : inc.sourceType === 'generator'
+                                    ? '⛽'
+                                    : inc.sourceType === 'solar_inverter'
+                                    ? '☀️'
+                                    : '🔄'}
+                                </span>
+                                <span className="font-semibold text-slate-800 truncate">
+                                  {inc.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 shrink-0 font-mono">
+                                  {inc.phases === 3 ? '3x380V' : '1x220V'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {inc.mainBreakerAmperageA && (
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    TM {inc.mainBreakerAmperageA}A
+                                  </span>
+                                )}
+                                {inc.sourceType === 'generator' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveIncoming(p.id, inc.id)}
+                                    className="text-slate-400 hover:text-red-500 p-0.5 cursor-pointer"
+                                    title="Quitar entrada de emergencia"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {p.transferSwitch && (
+                          <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50/80 px-2 py-1 rounded-md border border-amber-200/60">
+                            <span>🔄</span>
+                            <span>
+                              Conmutación {p.transferSwitch.type === 'automatic_ats' ? 'Automática (ATS)' : 'Manual'} con Enclavamiento
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Fila 2: Protecciones de Cabecera y Métricas */}

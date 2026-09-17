@@ -99,7 +99,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                     <span className="text-[10px] text-blue-800">
                       {selectedBranch.elements.length} {selectedBranch.elements.length === 1 ? 'boca' : 'bocas'} · {selectedBranch.conduits.length} {selectedBranch.conduits.length === 1 ? 'cañería' : 'cañerías'}
                       {selectedBranch.primaryBoundaryPanel
-                        ? ` · Tablero: ${selectedBranch.primaryBoundaryPanel.label || 'Extremo'}`
+                        ? ` · Tablero: ${(selectedBranch.primaryBoundaryPanel as any).name || (selectedBranch.primaryBoundaryPanel as any).label || 'Extremo'}`
                         : ''}
                     </span>
                   </div>

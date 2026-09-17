@@ -1388,7 +1388,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 setEditingPanelId(panel.id);
                                 setPanelName(panel.name);
                                 setPanelType(panel.type);
-                                setPanelIsThreePhase(panel.isThreePhase);
+                                setPanelIsThreePhase(panel.isThreePhase ?? false);
                                 setPanelBreakerA(panel.mainBreakerAmperageA || 25);
                                 setPanelDiffA(panel.mainDifferentialAmperageA || 25);
                                 setIsCreatingPanel(false);
@@ -1655,10 +1655,27 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               type: panelType,
                               levelId: project.activeLevelId || project.levels[0]?.id || 'level-1',
                               spaceId: 'espacio-principal',
-                              elementId: '',
+                              x: 0,
+                              y: 0,
+                              heightZ: 1.40,
+                              isPlaced: false,
+                              symbolId: panelType === 'principal' ? 'sym-planta-tablero-principal' : 'sym-planta-tablero-seccional',
                               isThreePhase: panelIsThreePhase,
                               mainBreakerAmperageA: panelBreakerA,
-                              mainDifferentialAmperageA: panelDiffA
+                              mainDifferentialAmperageA: panelDiffA,
+                              hasEarthBar: true,
+                              incomings: [
+                                {
+                                  id: `inc-${Date.now()}-1`,
+                                  sourceType: panelType === 'principal' ? 'grid_meter' : 'upstream_panel',
+                                  name: panelType === 'principal' ? 'Acometida Red (Distribuidora)' : 'Alimentador Seccional',
+                                  voltageV: panelIsThreePhase ? 380 : 220,
+                                  phases: panelIsThreePhase ? 3 : 1,
+                                  mainBreakerAmperageA: panelBreakerA,
+                                  mainDifferentialAmperageA: panelDiffA,
+                                  isDefaultActive: true
+                                }
+                              ]
                             });
                           } else if (editingPanelId) {
                             updatePanel(editingPanelId, {
@@ -1735,7 +1752,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 setEditingPanelId(p.id);
                                 setPanelName(p.name);
                                 setPanelType(p.type);
-                                setPanelIsThreePhase(p.isThreePhase);
+                                setPanelIsThreePhase(p.isThreePhase ?? false);
                                 setPanelBreakerA(p.mainBreakerAmperageA || 25);
                                 setPanelDiffA(p.mainDifferentialAmperageA || 25);
                                 setIsCreatingPanel(false);

@@ -25,6 +25,7 @@ import {
   formatElementLabel
 } from '../../../models/electrical/calculations';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
+import type { SpatialElectricalNode } from '../../../models/electrical/ElectricalModel';
 
 export type { WallPlacementSnap };
 
@@ -80,6 +81,8 @@ interface BimCanvasProps {
   onSpaceClick?: (spaceId: string) => void;
   onElectricalElementClick?: (elementId: string) => void;
   onElectricalElementDoubleClick?: (elementId: string) => void;
+  onPanelClick?: (panelId: string) => void;
+  onPanelDoubleClick?: (panelId: string) => void;
   onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap, rotationDeg?: number) => void;
   isArchitectureLocked?: boolean;
   onToggleLockArchitecture?: () => void;
@@ -148,6 +151,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onSpaceClick,
   onElectricalElementClick,
   onElectricalElementDoubleClick,
+  onPanelClick,
+  onPanelDoubleClick,
   onCanvasClick,
   isArchitectureLocked = false,
   onToggleLockArchitecture,
@@ -1201,10 +1206,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     );
   }, [activeAnchorVertex, previewDistanceM, currentDirectionDeg, zoom]);
 
-  // 6. Cañerías de enlace entre bocas eléctricas
+  // 6. Cañerías de enlace entre bocas eléctricas y tableros distribuidores
   const elementsMap = useMemo(() => {
-    return new Map(project.electricalElements.map((el) => [el.id, el]));
-  }, [project.electricalElements]);
+    const map = new Map<string, SpatialElectricalNode>();
+    project.electricalElements.forEach((el) => map.set(el.id, el));
+    (project.panels || []).forEach((pan) => map.set(pan.id, pan));
+    return map;
+  }, [project.electricalElements, project.panels]);
 
   const renderedConduits = useMemo(() => {
     return project.conduits.map((conduit) => {
@@ -1656,6 +1664,163 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     onElectricalElementDoubleClick
   ]);
 
+  // 7b. Tableros Eléctricos Autónomos (Distribuidores de Circuitos)
+  const renderedPanels = useMemo(() => {
+    return (project.panels || [])
+      .filter((panel) => panel.isPlaced && panel.levelId === project.activeLevelId)
+      .map((panel) => {
+        const pxX = panel.x * zoom;
+        const pxY = panel.y * zoom;
+        const isSelected = selectedEntity?.type === 'panel' && selectedEntity.id === panel.id;
+        const isPendingStart = pendingConduitStartId === panel.id;
+        const panelCircuits = project.circuits.filter((c) => c.panelId === panel.id);
+        const symbolId =
+          panel.symbolId ||
+          (panel.type === 'principal' ? 'sym-planta-tablero-principal' : 'sym-planta-tablero-seccional');
+
+        return (
+          <g
+            key={panel.id}
+            transform={`translate(${pxX}, ${pxY})`}
+            onClick={(e) => {
+              if (wasDraggingRecently()) return;
+              if (isCalibratingUnderlay || isAddingDimension) {
+                triggerPlacement(e.clientX, e.clientY);
+                return;
+              }
+              e.stopPropagation();
+              if (isConnectingConduit) {
+                onElectricalElementClick?.(panel.id);
+              } else if (onPanelClick) {
+                onPanelClick(panel.id);
+              } else {
+                onElectricalElementClick?.(panel.id);
+              }
+            }}
+            onDoubleClick={(e) => {
+              if (wasDraggingRecently()) return;
+              if (isCalibratingUnderlay || isAddingDimension) {
+                triggerPlacement(e.clientX, e.clientY);
+                return;
+              }
+              e.stopPropagation();
+              if (isConnectingConduit) {
+                onElectricalElementClick?.(panel.id);
+              } else if (onPanelDoubleClick) {
+                onPanelDoubleClick(panel.id);
+              } else {
+                onElectricalElementDoubleClick?.(panel.id);
+              }
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            className="cursor-pointer"
+          >
+            {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
+            {isPendingStart && (
+              <g pointerEvents="none">
+                <circle
+                  r={36}
+                  fill="rgba(245, 158, 11, 0.25)"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  strokeDasharray="4 2"
+                  className="animate-pulse"
+                />
+                <g transform="translate(0, -42)">
+                  <rect
+                    x="-48"
+                    y="-10"
+                    width={96}
+                    height={20}
+                    rx="10"
+                    fill="#d97706"
+                    className="shadow-md"
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="9"
+                    fontWeight="bold"
+                    className="font-sans select-none"
+                  >
+                    ⚡ Tablero Origen
+                  </text>
+                </g>
+              </g>
+            )}
+
+            <AeaCanvasSymbol
+              symbolId={symbolId}
+              zoom={zoom}
+              isSelected={isSelected || isPendingStart}
+              elementLabel={panel.name}
+              circuitLabel={`${panelCircuits.length} circ`}
+              formattedLabel={`${panel.name} (${panelCircuits.length} C)`}
+              rotationDeg={panel.rotation || 0}
+            />
+
+            {/* Botón contextual flotante al seleccionar el tablero */}
+            {isSelected && !isConnectingConduit && (
+              <g
+                transform="translate(0, -38)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onPanelDoubleClick) {
+                    onPanelDoubleClick(panel.id);
+                  } else {
+                    onElectricalElementDoubleClick?.(panel.id);
+                  }
+                }}
+                className="cursor-pointer group"
+              >
+                <rect
+                  x="-62"
+                  y="-11"
+                  width={124}
+                  height="22"
+                  rx="11"
+                  fill="#0f172a"
+                  stroke="#f59e0b"
+                  strokeWidth="1.5"
+                  className="shadow-md group-hover:fill-amber-600 transition-colors"
+                />
+                <text
+                  x="0"
+                  y="4"
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="10"
+                  fontWeight="bold"
+                  className="select-none font-sans pointer-events-none"
+                >
+                  ⚙️ Ficha Distribuidor
+                </text>
+              </g>
+            )}
+          </g>
+        );
+      });
+  }, [
+    project.panels,
+    project.circuits,
+    project.activeLevelId,
+    zoom,
+    selectedEntity,
+    isConnectingConduit,
+    isCalibratingUnderlay,
+    isAddingDimension,
+    pendingConduitStartId,
+    onElectricalElementClick,
+    onElectricalElementDoubleClick,
+    onPanelClick,
+    onPanelDoubleClick,
+    triggerPlacement
+  ]);
+
   // 8. Cotas Métricas Libres en el Plano CAD
   const renderedDimensions = useMemo(() => {
     if (!showDimensions || !project.dimensions) return null;
@@ -1847,6 +2012,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedConduits}
           {renderedVertices}
           {renderedElements}
+          {renderedPanels}
           {renderedDimensions}
 
           {/* Símbolos detectados por autovalores sobre el mapa de bits */}
@@ -2376,7 +2542,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
           {/* Línea o arco elástico interactivo guiando al usuario hacia el segundo extremo */}
           {isConnectingConduit && pendingConduitStartId && hoverWorldPos && (() => {
-            const startEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
+            const startEl =
+              project.electricalElements.find((e) => e.id === pendingConduitStartId) ||
+              project.panels?.find((p) => p.id === pendingConduitStartId);
             if (!startEl) return null;
             const p1 = { x: startEl.x * zoom, y: startEl.y * zoom };
             const pEnd = { x: hoverWorldPos.x * zoom, y: hoverWorldPos.y * zoom };

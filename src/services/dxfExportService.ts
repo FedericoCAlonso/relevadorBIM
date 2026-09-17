@@ -32,7 +32,7 @@ export function exportProjectToDxf(project: BuildingProject): string {
   add(2, 'TABLES');
   add(0, 'TABLE');
   add(2, 'LAYER');
-  add(70, 6);
+  add(70, 7);
 
   const defineLayer = (name: string, color: number) => {
     add(0, 'LAYER');
@@ -45,6 +45,7 @@ export function exportProjectToDxf(project: BuildingProject): string {
   defineLayer('ARQ_MUROS', 7);       // 7 = Blanco / Negro
   defineLayer('ARQ_ABERTURAS', 4);   // 4 = Cian
   defineLayer('ARQ_AMBIENTES', 8);   // 8 = Gris
+  defineLayer('ELEC_TABLEROS', 3);   // 3 = Verde
   defineLayer('ELEC_BOCAS', 1);      // 1 = Rojo
   defineLayer('ELEC_CANERIAS', 30);  // 30 = Naranja
   defineLayer('COTAS_METRICAS', 2);  // 2 = Amarillo
@@ -57,7 +58,9 @@ export function exportProjectToDxf(project: BuildingProject): string {
   add(2, 'ENTITIES');
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
-  const elementsMap = new Map(project.electricalElements.map((e) => [e.id, e]));
+  const nodesMap = new Map<string, any>();
+  project.electricalElements.forEach((e) => nodesMap.set(e.id, e));
+  (project.panels || []).forEach((p) => nodesMap.set(p.id, p));
 
   // A. Exportar Muros en capa ARQ_MUROS
   for (const wall of project.walls) {
@@ -95,6 +98,7 @@ export function exportProjectToDxf(project: BuildingProject): string {
 
   // C. Exportar Bocas Eléctricas en capa ELEC_BOCAS
   for (const el of project.electricalElements) {
+    if (el.isPanel) continue;
     const sym = getSymbolById(el.symbolId);
     const label = el.label || sym?.label || 'Boca';
 
@@ -116,10 +120,29 @@ export function exportProjectToDxf(project: BuildingProject): string {
     add(1, `${label} (h=${el.heightZ.toFixed(2)}m)`);
   }
 
+  // C2. Exportar Tableros en capa ELEC_TABLEROS
+  for (const p of project.panels || []) {
+    if (p.isPlaced === false) continue;
+    add(0, 'CIRCLE');
+    add(8, 'ELEC_TABLEROS');
+    add(10, p.x);
+    add(20, -p.y);
+    add(30, p.heightZ);
+    add(40, 0.20); // Radio representativo para tablero
+
+    add(0, 'TEXT');
+    add(8, 'ELEC_TABLEROS');
+    add(10, p.x + 0.25);
+    add(20, -p.y + 0.25);
+    add(30, p.heightZ);
+    add(40, 0.18);
+    add(1, `${p.name} (h=${p.heightZ.toFixed(2)}m)`);
+  }
+
   // D. Exportar Cañerías en capa ELEC_CANERIAS
   for (const conduit of project.conduits) {
-    const el1 = elementsMap.get(conduit.fromElementId);
-    const el2 = elementsMap.get(conduit.toElementId);
+    const el1 = nodesMap.get(conduit.fromElementId);
+    const el2 = nodesMap.get(conduit.toElementId);
     if (!el1 || !el2) continue;
 
     add(0, 'LINE');

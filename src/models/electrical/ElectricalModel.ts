@@ -27,17 +27,22 @@ export interface ConductorLine {
   circuitId?: string;      // ID del circuito al que pertenece este conductor en el conducto
 }
 
-export interface ElectricalElement {
+export interface SpatialElectricalNode {
   id: string;
+  levelId: string;
+  spaceId: string;
+  x: number;
+  y: number;
+  heightZ: number;
+  wallId?: string | null;
+  wallOffset?: number;
+  rotation?: number;
+  side?: 'left' | 'right' | 'interior' | 'exterior';
+}
+
+export interface ElectricalElement extends SpatialElectricalNode {
   symbolId: string;        // ID de la biblioteca (ej: 'sym-planta-boca-techo', 'sym-planta-toma')
-  levelId: string;         // Planta donde se ubica
-  spaceId: string;         // ID del ambiente al que pertenece
   placement: ElementPlacement; // 'ceiling' (techo), 'wall' (pared), 'floor' (piso)
-  x: number;               // Coordenada X global en metros
-  y: number;               // Coordenada Y global en metros
-  heightZ: number;         // Altura Z sobre el piso del nivel en metros (ej: 0.30 para tomas, 1.20 para llaves, 2.70 para centros)
-  wallId?: string | null;  // Si está adosado a una pared específica
-  wallOffset?: number;     // Distancia a lo largo de la pared en metros
   circuitId?: string | null; // Circuito asignado que alimenta el consumo de esta boca
   passingCircuitIds?: string[]; // Circuitos adicionales que transitan o pasan por esta caja (caja de paso/derivación)
   label?: string;          // Ej: "IUG 1", "TUG 2", "B1"
@@ -194,14 +199,58 @@ export interface Circuit {
   description?: string;
 }
 
-export interface Panel {
+export type PanelType = 'principal' | 'seccional' | 'auxiliar';
+
+export type IncomingSourceType =
+  | 'grid_meter'          // Acometida de red / Medidor (para TP)
+  | 'upstream_panel'      // Línea Seccional desde otro tablero (para TS)
+  | 'generator'           // Grupo Electrógeno (Emergencia)
+  | 'solar_inverter'      // Inversor Solar Fotovoltaico
+  | 'ups_battery';        // UPS / Banco de baterías
+
+export interface PanelIncoming {
   id: string;
-  name: string;             // Ej: "Tablero Principal (TP)", "Tablero Seccional (TS1)"
-  type: 'principal' | 'seccional' | 'auxiliar';
-  levelId: string;
-  spaceId: string;
-  elementId: string;        // ID de la boca de tablero asociada
-  isThreePhase: boolean;    // Monofásico o trifásico
-  mainBreakerAmperageA: number; // Termomagnética de cabecera (ej: 32A, 40A)
-  mainDifferentialAmperageA: number; // Disyuntor cabecera (ej: 40A 30mA)
+  sourceType: IncomingSourceType;
+  name: string;                   // Ej: "Acometida Red 3x380V", "Alimentación GE Diésel 10kVA"
+  voltageV: number;               // 220 o 380
+  phases: 1 | 3;                  // Monofásica o trifásica
+  upstreamPanelId?: string | null;// Si proviene de un tablero padre
+  feederCircuitId?: string | null;// ID del circuito seccional (LS) alimentador
+  feederConduitId?: string | null;// ID de la cañería física de acometida
+  mainBreakerAmperageA?: number;  // Termomagnética / seccionador de entrada (ej: 40A)
+  mainDifferentialAmperageA?: number; // Disyuntor cabecera para esta entrada (ej: 40A 30mA)
+  isDefaultActive?: boolean;      // True para la entrada normal de red
+}
+
+export interface PanelTransferSwitch {
+  hasMultipleIncomings: boolean;
+  type: 'manual' | 'automatic_ats';
+  interlocked: boolean;           // Enclavamiento mecánico/eléctrico
+  notes?: string;
+}
+
+export interface Panel extends SpatialElectricalNode {
+  name: string;                   // Ej: "Tablero Principal (TP)", "Tablero Seccional (TS1)"
+  type: PanelType;
+  isPlaced?: boolean;             // True si está ubicado en el plano; false si es virtual/inicial no posicionado
+  symbolId?: string;              // Ej: 'sym-planta-tablero-principal', 'sym-planta-tablero-seccional'
+  gabineteBoxTypeId?: string;     // ID del catálogo de cajas / gabinetes
+
+  // ─── DISTRIBUIDOR: ENTRADAS DE ALIMENTACIÓN ───
+  incomings: PanelIncoming[];     // 1 o más entradas (Red, Emergencia GE, etc.)
+  transferSwitch?: PanelTransferSwitch;
+
+  // ─── BARRAS DE DISTRIBUCIÓN Y PROTECCIONES ───
+  busbarCapacityA?: number;       // Capacidad admisible de barras (ej: 63A, 80A, 125A)
+  hasEarthBar?: boolean;          // Barra colectora de puesta a tierra (PE)
+  earthResistanceOhms?: number;   // Medición de resistencia de jabalina asociada
+
+  // Metadatos técnicos y relevamiento libre
+  attributes?: Array<{ key: string; value: string }>;
+
+  // ─── COMPATIBILIDAD CON VISTAS EXISTENTES ───
+  elementId?: string;             // ID histórico transitorio si aplica
+  isThreePhase?: boolean;         // Monofásico o trifásico
+  mainBreakerAmperageA?: number;  // Termomagnética de cabecera general
+  mainDifferentialAmperageA?: number; // Disyuntor cabecera general
 }

@@ -11,6 +11,7 @@ import { placeElectricalElementInStore, useElectricalSequenceStore } from '../us
 import { getSymbolById } from '../../models/electrical/symbolsLib';
 import { getConduitLengthBreakdown } from '../../models/electrical/calculations';
 import { createDefaultLevel } from '../../models/architecture/Level';
+import type { ElectricalElement } from '../../models/electrical/ElectricalModel';
 
 describe('Enlace de Conductos con Tableros y Bocas', () => {
   beforeEach(() => {
@@ -211,7 +212,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       worldX: 2.0,
       worldY: 2.0,
       symbolId: 'sym-planta-boca-techo'
-    });
+    }) as ElectricalElement;
 
     expect(el1.label).toBe('B1');
     expect(el1.placement).toBe('ceiling');
@@ -222,7 +223,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       worldX: 5.0,
       worldY: 2.0,
       symbolId: 'sym-planta-boca-techo'
-    });
+    }) as ElectricalElement;
 
     expect(el2.label).toBe('B2');
     const conduitsAfter2 = useProjectStore.getState().project.conduits;
@@ -248,7 +249,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       worldX: 5.0,
       worldY: 6.0,
       symbolId: 'sym-planta-boca-techo'
-    });
+    }) as ElectricalElement;
 
     expect(el3.label).toBe('B1'); // Primera boca en el nuevo circuito C1
     expect(el3.circuitId).toBe('circ-c1');
@@ -269,7 +270,7 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
       worldX: 8.0,
       worldY: 8.0,
       symbolId: 'sym-planta-boca-techo'
-    });
+    }) as ElectricalElement;
 
     expect(el4.label).toBe('B2'); // Segunda boca en el circuito C1
     // La cantidad de cañerías no debe haber aumentado
