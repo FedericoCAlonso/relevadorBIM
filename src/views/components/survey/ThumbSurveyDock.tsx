@@ -14,6 +14,7 @@ import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { OpeningSwing } from '../../../models/architecture/Opening';
+import type { ConduitRoutingMode, ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
 import { getWallLength } from '../../../models/architecture/Wall';
 import { calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -52,6 +53,29 @@ interface ThumbSurveyDockProps {
   isConnectingConduit?: boolean;
   onToggleConnectConduit?: () => void;
   onOpenCircuits?: () => void;
+  // Control móvil unificado sin menús flotantes
+  pendingConduitStartId?: string | null;
+  pendingConduitWaypoints?: Array<{ x: number; y: number }>;
+  onUndoConduitWaypoint?: () => void;
+  onClearConduitWaypoints?: () => void;
+  onCancelConnectingConduit?: () => void;
+  sequenceRoutingMode?: ConduitRoutingMode;
+  onChangeSequenceRoutingMode?: (mode: ConduitRoutingMode) => void;
+  sequenceRoutingPlane?: ConduitRoutingPlane;
+  onChangeSequenceRoutingPlane?: (plane: ConduitRoutingPlane) => void;
+  sequencePrefix?: string;
+  onChangeSequencePrefix?: (prefix: string) => void;
+  sequenceCircuitId?: string | null;
+  onChangeSequenceCircuitId?: (id: string | null) => void;
+  autoConnectConduits?: boolean;
+  onToggleAutoConnectConduits?: (val: boolean) => void;
+  nextSuggestedLabel?: string;
+  onClosePlacingSymbol?: () => void;
+  editingConduitRouteId?: string | null;
+  onStartEditingConduitRoute?: (conduitId: string) => void;
+  onFinishEditingConduitRoute?: () => void;
+  onStartRedesigningConduitRoute?: (conduitId: string) => void;
+  onUndoEditingConduitWaypoint?: () => void;
 }
 
 export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
@@ -66,7 +90,29 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   onSelectSymbol,
   isConnectingConduit,
   onToggleConnectConduit,
-  onOpenCircuits
+  onOpenCircuits,
+  pendingConduitStartId,
+  pendingConduitWaypoints = [],
+  onUndoConduitWaypoint,
+  onClearConduitWaypoints,
+  onCancelConnectingConduit,
+  sequenceRoutingMode = 'schematic_arc',
+  onChangeSequenceRoutingMode,
+  sequenceRoutingPlane = 'ceiling_slab',
+  onChangeSequenceRoutingPlane,
+  sequencePrefix = 'B',
+  onChangeSequencePrefix,
+  sequenceCircuitId = null,
+  onChangeSequenceCircuitId,
+  autoConnectConduits = true,
+  onToggleAutoConnectConduits,
+  nextSuggestedLabel = 'B1',
+  onClosePlacingSymbol,
+  editingConduitRouteId = null,
+  onStartEditingConduitRoute,
+  onFinishEditingConduitRoute,
+  onStartRedesigningConduitRoute,
+  onUndoEditingConduitWaypoint
 }) => {
   const {
     activeAnchorVertexId,
@@ -111,6 +157,243 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     : project.vertices.length === 0
     ? '(0, 0)'
     : 'Tocá esquina';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CASO 0A: EDICIÓN ACTIVA DE QUIEBRES DE CAÑERÍA (MODO EDICIÓN AVANZADA)
+  // ═════════════════════════════════════════════════════════════════════════
+  if (editingConduitRouteId && selectedConduit) {
+    return (
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span className="font-bold text-amber-300">✏️ Quiebres en Cañería</span>
+            <span className="text-[11px] font-mono text-slate-400">
+              ({selectedConduit.waypoints?.length || 0} pts)
+            </span>
+          </div>
+          {onFinishEditingConduitRoute && (
+            <button
+              type="button"
+              onClick={onFinishEditingConduitRoute}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+            >
+              ✓ Listo
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-300">
+          Tocá el plano para sumar quiebres o arrastrá los círculos naranjas P1, P2...
+        </p>
+        <div className="flex items-center gap-2 pt-0.5">
+          {(selectedConduit.waypoints?.length || 0) > 0 && onUndoEditingConduitWaypoint && (
+            <button
+              type="button"
+              onClick={onUndoEditingConduitWaypoint}
+              className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <Undo2 size={13} />
+              <span>Deshacer quiebre</span>
+            </button>
+          )}
+          {onStartRedesigningConduitRoute && (
+            <button
+              type="button"
+              onClick={() => onStartRedesigningConduitRoute(selectedConduit.id)}
+              className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCw size={13} />
+              <span>Rediseñar</span>
+            </button>
+          )}
+        </div>
+      </footer>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CASO 0B: TRAZADO ACTIVO DE CAÑERÍA (ZONA DEL PULGAR EN MÓVIL)
+  // ═════════════════════════════════════════════════════════════════════════
+  if (isConnectingConduit) {
+    const isArc = sequenceRoutingMode === 'schematic_arc';
+    return (
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-amber-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span className="font-bold text-amber-300 truncate">
+              {!pendingConduitStartId
+                ? 'Paso 1: Tocá 1° boca o tablero en plano'
+                : isArc
+                ? 'Paso 2: Tocá boca de destino (Arco AEA)'
+                : (pendingConduitWaypoints?.length || 0) === 0
+                ? 'Paso 2: Clics para quiebres o tocá boca final'
+                : `Recorrido (${pendingConduitWaypoints?.length} quiebres) · Tocá boca final`}
+            </span>
+          </div>
+          {onCancelConnectingConduit && (
+            <button
+              type="button"
+              onClick={onCancelConnectingConduit}
+              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              title="Cancelar trazado (Esc)"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Fila de Controles Ergonómicos en el Pulgar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+          {/* Conmutador Geometría */}
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                onChangeSequenceRoutingMode?.('schematic_arc');
+                onClearConduitWaypoints?.();
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                isArc ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ⌒ Arco AEA
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeSequenceRoutingMode?.('orthogonal')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                !isArc ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📐 90° Ortogonal
+            </button>
+          </div>
+
+          {/* Selector de Vía de tendido */}
+          <select
+            value={sequenceRoutingPlane}
+            onChange={(e) => onChangeSequenceRoutingPlane?.(e.target.value as any)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-amber-500 focus:outline-none shrink-0"
+          >
+            <option value="ceiling_slab">☁ Losa</option>
+            <option value="floor_slab">👣 Piso</option>
+            <option value="wall">🧱 Pared</option>
+          </select>
+
+          {/* Deshacer último quiebre en modo ortogonal */}
+          {!isArc && (pendingConduitWaypoints?.length || 0) > 0 && onUndoConduitWaypoint && (
+            <button
+              type="button"
+              onClick={onUndoConduitWaypoint}
+              className="px-2.5 py-1 bg-amber-950/90 border border-amber-600 text-amber-300 rounded-xl text-xs font-mono font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+              title="Deshacer último quiebre"
+            >
+              <Undo2 size={12} />
+              <span>{pendingConduitWaypoints.length}</span>
+            </button>
+          )}
+        </div>
+      </footer>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CASO 0C: EMPLAZAMIENTO DE SÍMBOLO (SUSTITUYE MENÚ FLOTANTE EN MÓVIL)
+  // ═════════════════════════════════════════════════════════════════════════
+  if (selectedSymbolId) {
+    const sym = getSymbolById(selectedSymbolId);
+    return (
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-sky-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-30 touch-manipulation text-white animate-in slide-in-from-bottom duration-150"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="text-sky-400 font-bold">⚡</span>
+            <span className="font-bold text-sky-200 truncate max-w-[160px]">
+              {sym?.label || 'Boca Eléctrica'}
+            </span>
+            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-700 px-1.5 py-0.5 rounded font-bold">
+              {nextSuggestedLabel}
+            </span>
+          </div>
+          {onClosePlacingSymbol && (
+            <button
+              type="button"
+              onClick={onClosePlacingSymbol}
+              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              title="Finalizar colocación (Esc)"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Fila de Configuración en el Pulgar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+          <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700 shrink-0">
+            <span className="text-[10px] text-slate-400">Pref:</span>
+            <input
+              type="text"
+              value={sequencePrefix}
+              onChange={(e) => onChangeSequencePrefix?.(e.target.value)}
+              className="w-10 bg-transparent text-center font-mono font-bold text-white text-xs focus:outline-none"
+            />
+          </div>
+
+          <select
+            value={sequenceCircuitId || ''}
+            onChange={(e) => onChangeSequenceCircuitId?.(e.target.value || null)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none max-w-[130px] truncate shrink-0"
+          >
+            <option value="">(Sin circuito)</option>
+            {project.circuits.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          <label className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700 shrink-0 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoConnectConduits}
+              onChange={(e) => onToggleAutoConnectConduits?.(e.target.checked)}
+              className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-0 bg-slate-700 border-slate-600"
+            />
+            <span className="text-[11px] text-slate-300">Enlazar</span>
+          </label>
+
+          {autoConnectConduits && (
+            <>
+              <select
+                value={sequenceRoutingPlane}
+                onChange={(e) => onChangeSequenceRoutingPlane?.(e.target.value as any)}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
+              >
+                <option value="ceiling_slab">☁ Losa</option>
+                <option value="floor_slab">👣 Piso</option>
+                <option value="wall">🧱 Pared</option>
+              </select>
+              <select
+                value={sequenceRoutingMode}
+                onChange={(e) => onChangeSequenceRoutingMode?.(e.target.value as any)}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
+              >
+                <option value="schematic_arc">⌒ Arco</option>
+                <option value="orthogonal">📐 90°</option>
+              </select>
+            </>
+          )}
+        </div>
+      </footer>
+    );
+  }
 
   // ═════════════════════════════════════════════════════════════════════════
   // CASO 1: INSPECTOR CONTEXTUAL (Elemento Seleccionado en el Plano)
@@ -449,27 +732,88 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   <Cable size={14} className="text-amber-500 flex-shrink-0" />
                   <span className="font-bold">Cañería:</span>
                   <span className="font-mono font-bold text-amber-700">Ø{selectedConduit.diameterMM}mm</span>
+                  {selectedConduit.routingMode === 'orthogonal' && (
+                    <span className="bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      90° {selectedConduit.waypoints?.length ? `· ${selectedConduit.waypoints.length} pts` : ''}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedEntity(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                {/* Conmutador Geometría */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = selectedConduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal';
+                    updateConduit(selectedConduit.id, {
+                      routingMode: nextMode,
+                      ...(nextMode === 'schematic_arc' ? { waypoints: undefined } : {})
+                    });
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 cursor-pointer ${
+                    selectedConduit.routingMode === 'orthogonal'
+                      ? 'bg-amber-600 text-white border-amber-700'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {selectedConduit.routingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco AEA'}
+                </button>
+
+                {/* Si es ortogonal: botones de edición de quiebres y rediseño */}
+                {selectedConduit.routingMode === 'orthogonal' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onStartEditingConduitRoute?.(selectedConduit.id)}
+                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer"
+                      title="Editar quiebres directamente en el plano"
+                    >
+                      <span>✏️ Quiebres</span>
+                      {selectedConduit.waypoints?.length ? (
+                        <span className="bg-amber-200 px-1 rounded text-[10px] font-mono">{selectedConduit.waypoints.length}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onStartRedesigningConduitRoute?.(selectedConduit.id)}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer"
+                      title="Rediseñar recorrido de cañería"
+                    >
+                      <RotateCw size={12} />
+                      <span>Rediseñar</span>
+                    </button>
+                    {selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => updateConduit(selectedConduit.id, { waypoints: undefined })}
+                        className="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+                        title="Restablecer a trazado directo"
+                      >
+                        Restablecer
+                      </button>
+                    )}
+                  </>
+                )}
+
                 {/* Modal Configuración Completa */}
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('open-conduit-edit-modal'))}
-                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer"
                   title="Configuración completa de caño y cables"
                 >
-                  <SlidersHorizontal size={13} />
-                  <span>Configurar Caño</span>
+                  <SlidersHorizontal size={12} />
+                  <span>Configurar</span>
                 </button>
+
                 {/* Ciclar Diámetro */}
                 <button
                   type="button"
@@ -479,21 +823,21 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                     const nextDiam = diams[(curIdx + 1) % diams.length];
                     updateConduit(selectedConduit.id, { diameterMM: nextDiam });
                   }}
-                  className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-mono font-bold whitespace-nowrap"
+                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-mono font-bold whitespace-nowrap shrink-0 cursor-pointer"
                   title="Cambiar diámetro"
                 >
-                  Ø {selectedConduit.diameterMM} mm
+                  Ø {selectedConduit.diameterMM}
                 </button>
 
                 {/* Badge Ocupación AEA */}
                 <span
-                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono font-bold whitespace-nowrap border ${
+                  className={`px-2 py-1 rounded-xl text-[11px] font-mono font-bold whitespace-nowrap border shrink-0 ${
                     occupancy.isCompliant
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                       : 'bg-red-50 text-red-800 border-red-300 animate-pulse'
                   }`}
                 >
-                  {occupancy.isCompliant ? `✓ ${occupancy.occupancyPercent}% AEA` : `⚠️ ${occupancy.occupancyPercent}% >35%`}
+                  {occupancy.isCompliant ? `✓ ${occupancy.occupancyPercent}%` : `⚠️ ${occupancy.occupancyPercent}%`}
                 </span>
 
                 <button
@@ -502,10 +846,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                     deleteConduit(selectedConduit.id);
                     setSelectedEntity(null);
                   }}
-                  className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto flex-shrink-0"
+                  className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto shrink-0 cursor-pointer"
                   title="Eliminar cañería"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={15} />
                 </button>
               </div>
             </>

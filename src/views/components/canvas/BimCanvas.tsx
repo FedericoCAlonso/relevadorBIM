@@ -38,6 +38,10 @@ interface BimCanvasProps {
   onUndoConduitWaypoint?: () => void;
   onClearConduitWaypoints?: () => void;
   onCancelConnectingConduit?: () => void;
+  isDesktop?: boolean;
+  editingConduitRouteId?: string | null;
+  onUpdateConduitWaypoint?: (conduitId: string, index: number, point: { x: number; y: number }) => void;
+  onRemoveConduitWaypoint?: (conduitId: string, index: number) => void;
   underlaySheet?: UnderlaySheet | null;
   isCalibratingUnderlay?: boolean;
   calibrationP1?: { x: number; y: number } | null;
@@ -105,6 +109,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onUndoConduitWaypoint,
   onClearConduitWaypoints,
   onCancelConnectingConduit,
+  isDesktop = true,
+  editingConduitRouteId = null,
+  onUpdateConduitWaypoint,
+  onRemoveConduitWaypoint,
   underlaySheet = null,
   isCalibratingUnderlay = false,
   calibrationP1 = null,
@@ -209,6 +217,15 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isStencilSnapped, setIsStencilSnapped] = useState(false);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
   const justCompletedSamplingRef = useRef(false);
+  const activeWaypointDragRef = useRef<{
+    conduitId: string;
+    wpIndex: number;
+    startX: number;
+    startY: number;
+    origWpX: number;
+    origWpY: number;
+    moved: boolean;
+  } | null>(null);
 
   // Estados locales para arrastre y redimensión del recuadro provisional de Muestra #1
   type AdjustHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;
@@ -741,6 +758,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
       if (candidates.length > 0) {
         onElectricalElementClick?.(candidates[0].el.id);
+        return;
+      }
+
+      if (editingConduitRouteId) {
+        onCanvasClick(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
         return;
       }
 
@@ -1401,6 +1423,101 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               </text>
             </g>
           )}
+
+          {/* Marcadores de Quiebres Interactivos (Waypoints) cuando la cañería está seleccionada o en edición */}
+          {(isSelected || editingConduitRouteId === conduit.id) &&
+            conduit.routingMode !== 'schematic_arc' &&
+            waypointsPx &&
+            waypointsPx.length > 0 && (
+              <g className="conduit-waypoints-handles">
+                {waypointsPx.map((wp, idx) => (
+                  <g
+                    key={`wp-handle-${conduit.id}-${idx}`}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      try {
+                        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                      } catch {
+                        // Fallback
+                      }
+                      activeWaypointDragRef.current = {
+                        conduitId: conduit.id,
+                        wpIndex: idx,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        origWpX: conduit.waypoints![idx].x,
+                        origWpY: conduit.waypoints![idx].y,
+                        moved: false
+                      };
+                    }}
+                    onPointerMove={(e) => {
+                      if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
+                        e.stopPropagation();
+                        const drag = activeWaypointDragRef.current;
+                        const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+                        if (dist > 3) drag.moved = true;
+                        const dxWorld = (e.clientX - drag.startX) / zoom;
+                        const dyWorld = (e.clientY - drag.startY) / zoom;
+                        onUpdateConduitWaypoint?.(conduit.id, idx, {
+                          x: Number((drag.origWpX + dxWorld).toFixed(3)),
+                          y: Number((drag.origWpY + dyWorld).toFixed(3))
+                        });
+                      }
+                    }}
+                    onPointerUp={(e) => {
+                      if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
+                        e.stopPropagation();
+                        try {
+                          (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                        } catch {
+                          // Ignore
+                        }
+                        activeWaypointDragRef.current = null;
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveConduitWaypoint?.(conduit.id, idx);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveConduitWaypoint?.(conduit.id, idx);
+                    }}
+                    className="cursor-move"
+                  >
+                    <circle
+                      cx={wp.x}
+                      cy={wp.y}
+                      r={13}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                    />
+                    <circle
+                      cx={wp.x}
+                      cy={wp.y}
+                      r={9}
+                      fill="#f59e0b"
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      className="hover:scale-125 transition-transform"
+                    />
+                    <text
+                      x={wp.x}
+                      y={wp.y + 3}
+                      textAnchor="middle"
+                      fontSize={8}
+                      fill="#ffffff"
+                      className="font-mono font-bold select-none pointer-events-none"
+                    >
+                      P{idx + 1}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            )}
         </g>
       );
     });
@@ -1412,10 +1529,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     zoom,
     selectedEntity,
     isConnectingConduit,
+    editingConduitRouteId,
     isCalibratingUnderlay,
     isAddingDimension,
     setSelectedEntity,
-    triggerPlacement
+    triggerPlacement,
+    onUpdateConduitWaypoint
   ]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
@@ -2409,8 +2528,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </g>
       </svg>
 
-      {/* Banner / Píldora superior cuando se conecta cañería */}
-      {isConnectingConduit && (
+      {/* Banner / Píldora superior cuando se conecta cañería (visible solo en escritorio) */}
+      {isConnectingConduit && isDesktop && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-3.5 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
           <span className="truncate max-w-[280px] sm:max-w-none">

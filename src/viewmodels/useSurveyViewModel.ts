@@ -31,18 +31,8 @@ export function useSurveyViewModel() {
   const [isConnectingConduit, setIsConnectingConduit] = useState(false);
   const [pendingConduitStartId, setPendingConduitStartId] = useState<string | null>(null);
   const [pendingConduitWaypoints, setPendingConduitWaypoints] = useState<ConduitWaypoint[]>([]);
-
-  const addConduitWaypoint = useCallback((point: { x: number; y: number }) => {
-    setPendingConduitWaypoints((prev) => [...prev, { x: Number(point.x.toFixed(3)), y: Number(point.y.toFixed(3)) }]);
-  }, []);
-
-  const undoLastConduitWaypoint = useCallback(() => {
-    setPendingConduitWaypoints((prev) => prev.slice(0, -1));
-  }, []);
-
-  const clearConduitWaypoints = useCallback(() => {
-    setPendingConduitWaypoints([]);
-  }, []);
+  const [editingConduitRouteId, setEditingConduitRouteId] = useState<string | null>(null);
+  const [targetConduitIdToRedesign, setTargetConduitIdToRedesign] = useState<string | null>(null);
 
   // Modales contextuales para empalmes y aberturas
   const [showTeeModal, setShowTeeModal] = useState(false);
@@ -57,9 +47,89 @@ export function useSurveyViewModel() {
     addBranchWallFromOffset,
     addOpeningReferenced,
     addConduit,
+    updateConduit,
     addDimensionLine,
     setShowDimensions
   } = useProjectStore();
+
+  const addConduitWaypoint = useCallback(
+    (point: { x: number; y: number }) => {
+      const pt = { x: Number(point.x.toFixed(3)), y: Number(point.y.toFixed(3)) };
+      if (editingConduitRouteId) {
+        const cond = project.conduits.find((c) => c.id === editingConduitRouteId);
+        if (cond) {
+          const nextWp = [...(cond.waypoints || []), pt];
+          updateConduit(editingConduitRouteId, { waypoints: nextWp });
+        }
+        return;
+      }
+      setPendingConduitWaypoints((prev) => [...prev, pt]);
+    },
+    [editingConduitRouteId, project.conduits, updateConduit]
+  );
+
+  const undoLastConduitWaypoint = useCallback(() => {
+    setPendingConduitWaypoints((prev) => prev.slice(0, -1));
+  }, []);
+
+  const clearConduitWaypoints = useCallback(() => {
+    setPendingConduitWaypoints([]);
+  }, []);
+
+  const startEditingConduitRoute = useCallback((conduitId: string) => {
+    const cond = project.conduits.find((c) => c.id === conduitId);
+    if (!cond) return;
+    if (cond.routingMode === 'schematic_arc') {
+      updateConduit(conduitId, { routingMode: 'orthogonal' });
+    }
+    setEditingConduitRouteId(conduitId);
+    setSelectedEntity({ type: 'conduit', id: conduitId });
+  }, [project.conduits, updateConduit, setSelectedEntity]);
+
+  const finishEditingConduitRoute = useCallback(() => {
+    setEditingConduitRouteId(null);
+  }, []);
+
+  const startRedesigningConduitRoute = useCallback((conduitId: string) => {
+    const cond = project.conduits.find((c) => c.id === conduitId);
+    if (!cond) return;
+    setTargetConduitIdToRedesign(conduitId);
+    setEditingConduitRouteId(null);
+    setIsConnectingConduit(true);
+    setPendingConduitStartId(cond.fromElementId);
+    setPendingConduitWaypoints([]);
+    const seqStore = useElectricalSequenceStore.getState();
+    if (cond.routingMode) seqStore.setSequenceRoutingMode(cond.routingMode);
+    if (cond.routingPlane) seqStore.setSequenceRoutingPlane(cond.routingPlane);
+    setSelectedEntity({ type: 'conduit', id: conduitId });
+  }, [project.conduits, setSelectedEntity]);
+
+  const undoEditingConduitWaypoint = useCallback(() => {
+    if (!editingConduitRouteId) return;
+    const cond = project.conduits.find((c) => c.id === editingConduitRouteId);
+    if (cond && cond.waypoints && cond.waypoints.length > 0) {
+      updateConduit(editingConduitRouteId, {
+        waypoints: cond.waypoints.slice(0, -1)
+      });
+    }
+  }, [editingConduitRouteId, project.conduits, updateConduit]);
+
+  const updateConduitWaypoint = useCallback((conduitId: string, index: number, point: { x: number; y: number }) => {
+    const cond = project.conduits.find((c) => c.id === conduitId);
+    if (!cond || !cond.waypoints) return;
+    const nextWp = [...cond.waypoints];
+    if (index >= 0 && index < nextWp.length) {
+      nextWp[index] = { x: Number(point.x.toFixed(3)), y: Number(point.y.toFixed(3)) };
+      updateConduit(conduitId, { waypoints: nextWp });
+    }
+  }, [project.conduits, updateConduit]);
+
+  const removeConduitWaypoint = useCallback((conduitId: string, index: number) => {
+    const cond = project.conduits.find((c) => c.id === conduitId);
+    if (!cond || !cond.waypoints) return;
+    const nextWp = cond.waypoints.filter((_, i) => i !== index);
+    updateConduit(conduitId, { waypoints: nextWp.length > 0 ? nextWp : undefined });
+  }, [project.conduits, updateConduit]);
 
   const verticesMap = useMemo(() => {
     return new Map(project.vertices.map((v) => [v.id, v]));
@@ -256,6 +326,22 @@ export function useSurveyViewModel() {
           const seqDiam = seqStore.sequenceConduitDiameterMM || DEFAULT_CONDUIT_DIAMETER_MM;
           const seqMat = seqStore.sequenceConduitMaterial || DEFAULT_CONDUIT_MATERIAL;
 
+          if (targetConduitIdToRedesign) {
+            updateConduit(targetConduitIdToRedesign, {
+              toElementId: elementId,
+              routingMode: seqMode,
+              routingPlane: seqPlane,
+              waypoints: seqMode !== 'schematic_arc' && pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined
+            });
+            const redesignId = targetConduitIdToRedesign;
+            setTargetConduitIdToRedesign(null);
+            setIsConnectingConduit(false);
+            setPendingConduitStartId(null);
+            setPendingConduitWaypoints([]);
+            setSelectedEntity({ type: 'conduit', id: redesignId });
+            return;
+          }
+
           const newConduitId = `cond-${Date.now()}`;
           addConduit({
             id: newConduitId,
@@ -289,7 +375,9 @@ export function useSurveyViewModel() {
       isConnectingConduit,
       pendingConduitStartId,
       pendingConduitWaypoints,
+      targetConduitIdToRedesign,
       addConduit,
+      updateConduit,
       project.activeLevelId,
       project.electricalElements,
       project.circuits,
@@ -316,6 +404,14 @@ export function useSurveyViewModel() {
     undoLastConduitWaypoint,
     clearConduitWaypoints,
     cancelConduitConnection,
+    editingConduitRouteId,
+    startEditingConduitRoute,
+    finishEditingConduitRoute,
+    targetConduitIdToRedesign,
+    startRedesigningConduitRoute,
+    undoEditingConduitWaypoint,
+    updateConduitWaypoint,
+    removeConduitWaypoint,
     showTeeModal,
     setShowTeeModal,
     showOpeningModal,

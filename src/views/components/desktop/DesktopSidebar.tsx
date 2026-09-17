@@ -53,6 +53,11 @@ interface DesktopSidebarProps {
   isConnectingConduit: boolean;
   onToggleConnectConduit: () => void;
   onOpenCircuits?: () => void;
+  editingConduitRouteId?: string | null;
+  onStartEditingConduitRoute?: (conduitId: string) => void;
+  onFinishEditingConduitRoute?: () => void;
+  onStartRedesigningConduitRoute?: (conduitId: string) => void;
+  onUndoEditingConduitWaypoint?: () => void;
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
@@ -67,7 +72,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onSelectSymbol,
   isConnectingConduit,
   onToggleConnectConduit,
-  onOpenCircuits
+  onOpenCircuits,
+  editingConduitRouteId,
+  onStartEditingConduitRoute,
+  onFinishEditingConduitRoute,
+  onStartRedesigningConduitRoute,
+  onUndoEditingConduitWaypoint
 }) => {
   const {
     project,
@@ -1918,29 +1928,78 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       </div>
 
                       {/* Waypoints del Recorrido Arbitrario (solo disponible en modos no-arco) */}
-                      {selectedConduit.routingMode !== 'schematic_arc' && selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
-                        <div className="p-2.5 bg-amber-100/60 border border-amber-300 rounded-xl space-y-1 text-xs">
+                      {selectedConduit.routingMode !== 'schematic_arc' && (
+                        <div className="p-2.5 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2 text-xs">
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-amber-950">
-                              Quiebres del recorrido:
+                            <span className="font-bold text-amber-950 flex items-center gap-1">
+                              <span>📐 Quiebres de Recorrido:</span>
                             </span>
                             <span className="font-mono font-bold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded text-[11px]">
-                              {selectedConduit.waypoints.length} puntos
+                              {selectedConduit.waypoints?.length || 0} puntos
                             </span>
                           </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-amber-200/80">
-                            <span className="text-[10px] text-amber-800">
-                              Trazo multipunto personalizado
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => updateConduit(selectedConduit.id, { waypoints: undefined })}
-                              className="px-2 py-0.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-[10px] font-bold transition-colors shadow-2xs cursor-pointer"
-                              title="Quitar quiebres intermedios y volver a trazado directo"
-                            >
-                              Restablecer trazo
-                            </button>
-                          </div>
+
+                          {editingConduitRouteId === selectedConduit.id ? (
+                            <div className="space-y-1.5 p-2 bg-amber-200/50 border border-amber-400/60 rounded-lg">
+                              <p className="text-[11px] text-amber-900 font-medium leading-tight">
+                                Modo edición activo: Haz clic en el plano para agregar puntos o arrastra los manipuladores P1, P2 en pantalla.
+                              </p>
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={onUndoEditingConduitWaypoint}
+                                  disabled={!selectedConduit.waypoints || selectedConduit.waypoints.length === 0}
+                                  className="flex-1 py-1 px-2 bg-white hover:bg-amber-100 disabled:opacity-40 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                >
+                                  ↶ Deshacer Punto
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={onFinishEditingConduitRoute}
+                                  className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs cursor-pointer"
+                                >
+                                  ✓ Finalizar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onStartEditingConduitRoute?.(selectedConduit.id)}
+                                className="flex-1 py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                                title="Agregar o desplazar quiebres intermedios en el lienzo"
+                              >
+                                <span>✏️</span>
+                                <span>Editar Quiebres</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onStartRedesigningConduitRoute?.(selectedConduit.id)}
+                                className="py-1 px-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Redibujar la trayectoria completa desde la boca inicial"
+                              >
+                                <span>🔄</span>
+                                <span>Rediseñar</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {selectedConduit.waypoints && selectedConduit.waypoints.length > 0 && (
+                            <div className="flex items-center justify-between pt-1 border-t border-amber-200/80">
+                              <span className="text-[10px] text-amber-800">
+                                Trazo multipunto personalizado
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateConduit(selectedConduit.id, { waypoints: undefined })}
+                                className="px-2 py-0.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-[10px] font-bold transition-colors shadow-2xs cursor-pointer"
+                                title="Quitar quiebres intermedios y volver a trazado directo"
+                              >
+                                Restablecer trazo
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
 

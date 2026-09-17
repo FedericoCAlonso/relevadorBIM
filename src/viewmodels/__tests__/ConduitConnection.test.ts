@@ -496,5 +496,191 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     expect(condArc?.routingMode).toBe('schematic_arc');
     expect(condArc?.waypoints).toBeUndefined();
   });
+
+  it('permite modificar waypoints existentes: agregar, desplazar y eliminar puntos intermedios', () => {
+    const { addElectricalElement, addConduit, updateConduit } = useProjectStore.getState();
+
+    addElectricalElement({
+      id: 'box-1',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 0,
+      y: 0,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'B1',
+      attributes: []
+    });
+
+    addElectricalElement({
+      id: 'box-2',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 10,
+      y: 10,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'B2',
+      attributes: []
+    });
+
+    addConduit({
+      id: 'cond-edit-test',
+      circuitId: null,
+      circuitIds: [],
+      fromElementId: 'box-1',
+      toElementId: 'box-2',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 22,
+      material: 'hierro_semipesado_rs',
+      isVerticalRiser: false,
+      routingMode: 'orthogonal',
+      routingPlane: 'ceiling_slab',
+      waypoints: [{ x: 2, y: 0 }],
+      conductors: []
+    });
+
+    // 1. Agregar nuevo waypoint al final
+    const cond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-edit-test')!;
+    const nextWp = [...(cond.waypoints || []), { x: 2, y: 8 }];
+    updateConduit('cond-edit-test', { waypoints: nextWp });
+
+    let updated = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-edit-test')!;
+    expect(updated.waypoints).toHaveLength(2);
+    expect(updated.waypoints?.[1]).toEqual({ x: 2, y: 8 });
+
+    // 2. Desplazar / modificar posición de un waypoint (simulación de arrastre)
+    const draggedWp = [...updated.waypoints!];
+    draggedWp[0] = { x: 3.5, y: 0.5 };
+    updateConduit('cond-edit-test', { waypoints: draggedWp });
+
+    updated = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-edit-test')!;
+    expect(updated.waypoints?.[0]).toEqual({ x: 3.5, y: 0.5 });
+
+    // 3. Eliminar un waypoint individual
+    const filteredWp = updated.waypoints!.filter((_, i) => i !== 0);
+    updateConduit('cond-edit-test', { waypoints: filteredWp });
+
+    updated = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-edit-test')!;
+    expect(updated.waypoints).toHaveLength(1);
+    expect(updated.waypoints?.[0]).toEqual({ x: 2, y: 8 });
+
+    // 4. Deshacer último waypoint
+    updateConduit('cond-edit-test', { waypoints: updated.waypoints!.slice(0, -1) });
+    updated = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-edit-test')!;
+    expect(updated.waypoints).toHaveLength(0);
+  });
+
+  it('permite rediseñar la trayectoria completa de un conducto existente sin duplicarlo', () => {
+    const { addElectricalElement, addConduit, updateConduit } = useProjectStore.getState();
+
+    addElectricalElement({
+      id: 'box-start',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 0,
+      y: 0,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'BS',
+      attributes: []
+    });
+
+    addElectricalElement({
+      id: 'box-dest-original',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 5,
+      y: 0,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'BD1',
+      attributes: []
+    });
+
+    addElectricalElement({
+      id: 'box-dest-new',
+      symbolId: 'sym-planta-boca-techo',
+      levelId: 'level-1',
+      spaceId: 'space-1',
+      placement: 'ceiling',
+      x: 0,
+      y: 8,
+      heightZ: 2.6,
+      wallId: null,
+      rotation: 0,
+      circuitId: null,
+      status: 'proyectado',
+      powerW: 60,
+      phases: 1,
+      isPanel: false,
+      label: 'BD2',
+      attributes: []
+    });
+
+    addConduit({
+      id: 'cond-redesign',
+      circuitId: null,
+      circuitIds: [],
+      fromElementId: 'box-start',
+      toElementId: 'box-dest-original',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 19,
+      material: 'hierro_semipesado_rs',
+      isVerticalRiser: false,
+      routingMode: 'orthogonal',
+      routingPlane: 'ceiling_slab',
+      conductors: []
+    });
+
+    expect(useProjectStore.getState().project.conduits).toHaveLength(1);
+
+    // Rediseño: se reasignan destino y waypoints sobre el mismo conduitId
+    updateConduit('cond-redesign', {
+      toElementId: 'box-dest-new',
+      waypoints: [{ x: 0, y: 4 }]
+    });
+
+    const conduits = useProjectStore.getState().project.conduits;
+    expect(conduits).toHaveLength(1);
+    expect(conduits[0].id).toBe('cond-redesign');
+    expect(conduits[0].fromElementId).toBe('box-start');
+    expect(conduits[0].toElementId).toBe('box-dest-new');
+    expect(conduits[0].waypoints).toEqual([{ x: 0, y: 4 }]);
+  });
 });
 
