@@ -13,6 +13,7 @@ import {
   calculateWeightedCorrelation,
   rotateNormalizedPatch,
   magneticSubpixelSnap,
+  findTemplateCorrelationSnap,
   calculateMultiRotationWeightedZNCC
 } from '../GramSvd';
 import { extractNormalizedPatch, type NormalizedPatch } from '../PatternDetector';
@@ -271,6 +272,68 @@ describe('GramSvd - Descomposición Espectral y Consenso Morfológico', () => {
       // Con multi-rotación, detecta la orientación a 90° y da correlación alta (~1.0)
       const multiScore = calculateMultiRotationWeightedZNCC(patchB, patchA, weights);
       expect(multiScore).toBeGreaterThan(0.95);
+    });
+  });
+
+  describe('findTemplateCorrelationSnap (Shape-Aware Template Snap)', () => {
+    it('debe acoplarse con precisión milimétrica al símbolo y ser inmune a muros gruesos adyacentes', () => {
+      const width = 100;
+      const height = 100;
+      const binary = new Uint8Array(width * height);
+
+      // 1. Muro grueso continuo de 8px de espesor en x: 10..17 (masa de tinta enorme)
+      for (let y = 0; y < height; y++) {
+        for (let x = 10; x <= 17; x++) {
+          binary[y * width + x] = 1;
+        }
+      }
+
+      // 2. Símbolo técnico de boca (cruz circular) en (40, 40)
+      for (let y = 34; y <= 46; y++) binary[y * width + 40] = 1;
+      for (let x = 34; x <= 46; x++) binary[40 * width + x] = 1;
+
+      // Extraer plantilla de referencia del símbolo en (40, 40)
+      const templateBox = { x: 32, y: 32, width: 16, height: 16 };
+      const refPatch = extractNormalizedPatch(binary, width, templateBox, 24);
+
+      // El usuario pasa el cursor a 6 px de distancia del símbolo: (46, 42)
+      const nearSymbol = { x: 46, y: 42 };
+      const snapResult = findTemplateCorrelationSnap(
+        binary,
+        width,
+        height,
+        nearSymbol,
+        { width: 16, height: 16 },
+        refPatch,
+        0,
+        16,
+        0.35
+      );
+
+      expect(snapResult.isSnapped).toBe(true);
+      expect(snapResult.snappedCenterPx.x).toBeCloseTo(40, 0);
+      expect(snapResult.snappedCenterPx.y).toBeCloseTo(40, 0);
+      expect(snapResult.score).toBeGreaterThan(0.70);
+
+      // El usuario pasa el cursor sobre el muro grueso (x: 14, y: 40):
+      // A diferencia del Mean-Shift que saltaría al muro, la correlación de forma da bajo puntaje
+      // y NO activa el snap, manteniendo la posición del cursor.
+      const onWall = { x: 14, y: 40 };
+      const wallSnapResult = findTemplateCorrelationSnap(
+        binary,
+        width,
+        height,
+        onWall,
+        { width: 16, height: 16 },
+        refPatch,
+        0,
+        16,
+        0.35
+      );
+
+      expect(wallSnapResult.isSnapped).toBe(false);
+      expect(wallSnapResult.snappedCenterPx.x).toBe(14);
+      expect(wallSnapResult.snappedCenterPx.y).toBe(40);
     });
   });
 });

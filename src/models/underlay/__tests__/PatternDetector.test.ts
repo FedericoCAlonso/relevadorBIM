@@ -13,6 +13,7 @@ import {
   calculateEigenSignature,
   compareEigenSignatures,
   tightenBoundingBox,
+  makeSquareBoundingBox,
   createPatternExemplar,
   detectPatternMatchesWithExemplars,
   detectPatternMatches,
@@ -373,6 +374,73 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
     expect(snapResult.snappedCenterPx.x).toBeCloseTo(40, 0);
     expect(snapResult.snappedCenterPx.y).toBeCloseTo(40, 0);
     expect(snapResult.distancePx).toBeGreaterThan(5);
+  });
+
+  it('debe binarizar trazos de capas CAD de color (amarillo, cian, magenta, rojo, verde) como tinta activa', () => {
+    // 8 píxeles: blanco, amarillo puro, cian puro, rojo puro, verde puro, azul puro, gris claro papel, transparente
+    const width = 8;
+    const height = 1;
+    const rgba = new Uint8ClampedArray([
+      255, 255, 255, 255, // 0: Blanco papel -> 0
+      255, 255, 0, 255,   // 1: Amarillo puro CAD (luminancia alta 226) -> 1
+      0, 255, 255, 255,   // 2: Cian puro CAD -> 1
+      255, 0, 0, 255,     // 3: Rojo puro CAD -> 1
+      0, 255, 0, 255,     // 4: Verde puro CAD -> 1
+      0, 0, 255, 255,     // 5: Azul puro CAD -> 1
+      245, 245, 240, 255, // 6: Papel blanco ahuesado (<45 diff) -> 0
+      0, 0, 0, 0          // 7: Transparente -> 0
+    ]);
+
+    const binary = binarizeImageData(rgba, width, height);
+    expect(binary[0]).toBe(0); // Blanco
+    expect(binary[1]).toBe(1); // Amarillo detectado como tinta
+    expect(binary[2]).toBe(1); // Cian detectado como tinta
+    expect(binary[3]).toBe(1); // Rojo detectado como tinta
+    expect(binary[4]).toBe(1); // Verde detectado como tinta
+    expect(binary[5]).toBe(1); // Azul detectado como tinta
+    expect(binary[6]).toBe(0); // Fondo ahuesado limpio
+    expect(binary[7]).toBe(0); // Transparente
+  });
+
+  it('debe normalizar cajas rectangulares a cajas cuadradas canónicas manteniendo el centro exacto', () => {
+    // Caja horizontal alargada: 40px de ancho x 20px de alto, desde (10, 20)
+    const rectBoxH: BoundingBoxPx = { x: 10, y: 20, width: 40, height: 20 };
+    const squareBoxH = makeSquareBoundingBox(rectBoxH);
+
+    // Centro original: cx = 10 + 20 = 30, cy = 20 + 10 = 30
+    // Tamaño máximo: 40
+    expect(squareBoxH.width).toBe(40);
+    expect(squareBoxH.height).toBe(40);
+    expect(squareBoxH.x).toBe(10); // 30 - 20
+    expect(squareBoxH.y).toBe(10); // 30 - 20
+
+    // Caja vertical alargada: 16px de ancho x 30px de alto, desde (50, 40)
+    const rectBoxV: BoundingBoxPx = { x: 50, y: 40, width: 16, height: 30 };
+    const squareBoxV = makeSquareBoundingBox(rectBoxV);
+
+    expect(squareBoxV.width).toBe(30);
+    expect(squareBoxV.height).toBe(30);
+    // Centro original: cx = 50 + 8 = 58, cy = 40 + 15 = 55
+    expect(squareBoxV.x + squareBoxV.width / 2).toBeCloseTo(58, 0);
+    expect(squareBoxV.y + squareBoxV.height / 2).toBeCloseTo(55, 0);
+  });
+
+  it('debe generar ejemplares de patrones con recuadros estrictamente cuadrados e isotrópicos', () => {
+    const size = 60;
+    const binary = new Uint8Array(size * size);
+
+    // Dibuja una línea horizontal de 20x4 píxeles (no cuadrada)
+    for (let y = 28; y <= 31; y++) {
+      for (let x = 20; x <= 39; x++) {
+        binary[y * size + x] = 1;
+      }
+    }
+
+    const exemplar = createPatternExemplar(binary, size, { x: 15, y: 25, width: 30, height: 14 });
+    expect(exemplar).not.toBeNull();
+    // El ejemplar debe ser cuadrado (width === height)
+    expect(exemplar!.boxPx.width).toBe(exemplar!.boxPx.height);
+    expect(exemplar!.patch.size).toBe(24);
   });
 });
 

@@ -100,7 +100,12 @@ export function App() {
     setSimilarityThreshold,
     startSamplingPattern,
     cancelSamplingPattern,
-    executeDetectionFromWorldBox,
+    handleSampleBoxDrawn,
+    isAdjustingSampleBox,
+    provisionalSquareBox,
+    setProvisionalSquareBox,
+    confirmProvisionalSampleBox,
+    cancelProvisionalSampleBox,
     dismissMatch: dismissPatternMatch,
     clearMatches: clearPatternMatches,
     undoLastPositiveExemplar,
@@ -133,7 +138,7 @@ export function App() {
   const selectedConduit =
     selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
 
-  // Atajos de teclado CAD (Ctrl+Z para deshacer, Escape para deseleccionar, Supr para borrar)
+  // Atajos de teclado CAD (Ctrl+Z para deshacer, Escape para deseleccionar, Supr para borrar, Enter para confirmar muestra)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignorar si el usuario está escribiendo en un input o textarea
@@ -148,6 +153,13 @@ export function App() {
         return;
       }
 
+      // Atajo para confirmar el encuadre de la Muestra #1 con tecla Enter
+      if (isAdjustingSampleBox && (e.key === 'Enter' || e.key === 'NumpadEnter')) {
+        e.preventDefault();
+        confirmProvisionalSampleBox();
+        return;
+      }
+
       // Atajo para rotar el esténcil rígido de muestra (tecla R o barra espaciadora)
       if (isSamplingPattern && positiveExemplars.length > 0 && (e.key === 'r' || e.key === 'R' || e.key === ' ')) {
         e.preventDefault();
@@ -156,6 +168,10 @@ export function App() {
       }
 
       if (e.key === 'Escape') {
+        if (isAdjustingSampleBox) {
+          cancelProvisionalSampleBox();
+          return;
+        }
         if (isConnectingConduit) {
           cancelConduitConnection();
           return;
@@ -387,7 +403,12 @@ export function App() {
             getStencilSnapPoint={getStencilSnapPoint}
             onStartPatternSampling={startSamplingPattern}
             onCancelSamplingPattern={cancelSamplingPattern}
-            onPatternSampleBoxCompleted={(p1, p2) => executeDetectionFromWorldBox(p1, p2)}
+            onPatternSampleBoxCompleted={handleSampleBoxDrawn}
+            isAdjustingSampleBox={isAdjustingSampleBox}
+            provisionalSquareBox={provisionalSquareBox}
+            onUpdateProvisionalSquareBox={setProvisionalSquareBox}
+            onConfirmProvisionalSampleBox={confirmProvisionalSampleBox}
+            onCancelProvisionalSampleBox={cancelProvisionalSampleBox}
             detectedPatternMatches={detectedPatternMatches}
             onDismissPatternMatch={dismissPatternMatch}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
@@ -419,7 +440,7 @@ export function App() {
           />
 
           {/* Indicador de muestreo de símbolo activo */}
-          {isSamplingPattern && (
+          {isSamplingPattern && !isAdjustingSampleBox && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/60 flex flex-wrap items-center justify-center gap-2.5 text-xs animate-in fade-in slide-in-from-top-2 pointer-events-auto">
               <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
               <span className="font-semibold text-cyan-200">

@@ -478,6 +478,121 @@ export function magneticSubpixelSnap(
 }
 
 /**
+ * Realiza un snap magnético inteligente guiado por la plantilla visual del símbolo
+ * (Shape-Aware Template Snap).
+ * A diferencia del Mean-Shift ciego de masa de tinta que es atraído por muros o caños gruesos,
+ * este algoritmo busca el pico de correlación visual del símbolo orientado según el esténcil.
+ * Si el pico de correlación no alcanza el umbral mínimo (ej. 0.35), NO fuerza el acople,
+ * manteniendo el esténcil fielmente en la posición del cursor sin saltos bruscos.
+ */
+export function findTemplateCorrelationSnap(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  imgHeight: number,
+  centerPx: { x: number; y: number },
+  boxSize: { width: number; height: number },
+  referencePatch: NormalizedPatch,
+  rotationDeg: 0 | 90 | 180 | 270 = 0,
+  searchRadiusPx: number = 16,
+  minScoreThreshold: number = 0.35
+): {
+  snappedCenterPx: { x: number; y: number };
+  isSnapped: boolean;
+  score: number;
+} {
+  const unrotateDeg = ((360 - rotationDeg) % 360) as 0 | 90 | 180 | 270;
+  const radius = Math.max(4, Math.round(searchRadiusPx));
+  const step = radius > 12 ? 2 : 1;
+
+  let bestScore = -1;
+  let bestCx = centerPx.x;
+  let bestCy = centerPx.y;
+
+  // 1. Barrido de correlación en la ventana de búsqueda
+  for (let dy = -radius; dy <= radius; dy += step) {
+    for (let dx = -radius; dx <= radius; dx += step) {
+      const testCx = centerPx.x + dx;
+      const testCy = centerPx.y + dy;
+
+      const testBx = Math.round(testCx - boxSize.width / 2);
+      const testBy = Math.round(testCy - boxSize.height / 2);
+
+      if (testBx < 0 || testBy < 0 || testBx + boxSize.width > imgWidth || testBy + boxSize.height > imgHeight) {
+        continue;
+      }
+
+      const testBox: BoundingBoxPx = {
+        x: testBx,
+        y: testBy,
+        width: boxSize.width,
+        height: boxSize.height
+      };
+
+      const rawPatch = extractNormalizedPatch(binaryMask, imgWidth, testBox, referencePatch.size);
+      const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+      const score = calculateQuickZNCC(alignedPatch, referencePatch);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestCx = testCx;
+        bestCy = testCy;
+      }
+    }
+  }
+
+  // 2. Si el paso fue > 1 y se detectó coincidencia prometedora, refinamiento fino a 1 píxel
+  if (step > 1 && bestScore >= minScoreThreshold) {
+    const fineCenter = { x: bestCx, y: bestCy };
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const testCx = fineCenter.x + dx;
+        const testCy = fineCenter.y + dy;
+
+        const testBx = Math.round(testCx - boxSize.width / 2);
+        const testBy = Math.round(testCy - boxSize.height / 2);
+
+        if (testBx < 0 || testBy < 0 || testBx + boxSize.width > imgWidth || testBy + boxSize.height > imgHeight) {
+          continue;
+        }
+
+        const testBox: BoundingBoxPx = {
+          x: testBx,
+          y: testBy,
+          width: boxSize.width,
+          height: boxSize.height
+        };
+
+        const rawPatch = extractNormalizedPatch(binaryMask, imgWidth, testBox, referencePatch.size);
+        const alignedPatch = rotateNormalizedPatch(rawPatch, unrotateDeg);
+        const score = calculateQuickZNCC(alignedPatch, referencePatch);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestCx = testCx;
+          bestCy = testCy;
+        }
+      }
+    }
+  }
+
+  // 3. Decisión de acople magnético
+  if (bestScore >= minScoreThreshold) {
+    return {
+      snappedCenterPx: { x: Number(bestCx.toFixed(2)), y: Number(bestCy.toFixed(2)) },
+      isSnapped: true,
+      score: Number(bestScore.toFixed(3))
+    };
+  }
+
+  return {
+    snappedCenterPx: centerPx,
+    isSnapped: false,
+    score: Number(Math.max(0, bestScore).toFixed(3))
+  };
+}
+
+/**
  * ZNCC directo de orientación fija para comparar parches ya alineados
  */
 function calculateQuickZNCC(patchA: NormalizedPatch, patchB: NormalizedPatch): number {

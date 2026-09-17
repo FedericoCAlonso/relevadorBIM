@@ -13,7 +13,6 @@ import {
   createPatternExemplar,
   calculateImageMoments,
   calculateEigenSignature,
-  findLocalInkCentroidSnap,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
   type DetectedPatternMatch,
@@ -21,6 +20,7 @@ import {
 } from '../models/underlay/PatternDetector';
 import {
   computeGramSvdConsensus,
+  findTemplateCorrelationSnap,
   type SvdConsensusResult
 } from '../models/underlay/GramSvd';
 import { alignPatchEccEuclidean } from '../models/underlay/EccAlignment';
@@ -49,6 +49,10 @@ export function usePatternDetectorViewModel() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stencilRotationDeg, setStencilRotationDeg] = useState<0 | 90 | 180 | 270>(0);
 
+  // Estados para la fase de encuadre/ajuste interactivo fino de la Muestra #1
+  const [isAdjustingSampleBox, setIsAdjustingSampleBox] = useState(false);
+  const [provisionalSquareBox, setProvisionalSquareBox] = useState<{ x: number; y: number; size: number } | null>(null);
+
   /**
    * Coincidencias activas (excluyendo las descartadas por el usuario y filtradas por umbral)
    */
@@ -60,18 +64,18 @@ export function usePatternDetectorViewModel() {
 
   /**
    * Dimensiones métricas del esténcil rígido en mundo (anchura y altura en metros)
-   * calculadas a partir de la primera muestra y adaptadas según la rotación de 90°.
+   * calculadas a partir de la primera muestra en caja cuadrada canónica.
    */
   const stencilSizeWorld = useMemo(() => {
     if (positiveExemplars.length === 0 || !activeUnderlay) return null;
     const baseBox = positiveExemplars[0].boxPx;
     const scale = activeUnderlay.scaleMetersPerPx;
-    const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
+    const sizeMeters = Math.max(baseBox.width, baseBox.height) * scale;
     return {
-      width: (isRotated90 ? baseBox.height : baseBox.width) * scale,
-      height: (isRotated90 ? baseBox.width : baseBox.height) * scale
+      width: sizeMeters,
+      height: sizeMeters
     };
-  }, [positiveExemplars, activeUnderlay, stencilRotationDeg]);
+  }, [positiveExemplars, activeUnderlay]);
 
   /**
    * Consenso espectral SVD acumulado a partir de 2 o más muestras positivas.
@@ -102,15 +106,19 @@ export function usePatternDetectorViewModel() {
     if (!activeUnderlay) return;
     setIsSamplingPattern(true);
     setIsAddingSample(isAdditional);
+    setIsAdjustingSampleBox(false);
+    setProvisionalSquareBox(null);
     setErrorMessage(null);
   }, [activeUnderlay]);
 
   /**
-   * Cancela el modo de muestreo
+   * Cancela el modo de muestreo o la fase de ajuste
    */
   const cancelSamplingPattern = useCallback(() => {
     setIsSamplingPattern(false);
     setIsAddingSample(false);
+    setIsAdjustingSampleBox(false);
+    setProvisionalSquareBox(null);
     setErrorMessage(null);
   }, []);
 
@@ -201,8 +209,67 @@ export function usePatternDetectorViewModel() {
   );
 
   /**
+   * Maneja la finalización del trazado de recuadro en el lienzo.
+   * Si es la Muestra #1, abre la fase interactiva de ajuste fino con caja cuadrada canónica.
+   */
+  const handleSampleBoxDrawn = useCallback(
+    (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      const minWx = Math.min(p1.x, p2.x);
+      const maxWx = Math.max(p1.x, p2.x);
+      const minWy = Math.min(p1.y, p2.y);
+      const maxWy = Math.max(p1.y, p2.y);
+      const w = maxWx - minWx;
+      const h = maxWy - minWy;
+
+      if (w < 0.05 || h < 0.05) return;
+
+      const size = Math.max(w, h);
+      const cx = (minWx + maxWx) / 2;
+      const cy = (minWy + maxWy) / 2;
+
+      // Para la Muestra #1, entrar en fase de encuadre y ajuste interactivo fino
+      if (positiveExemplars.length === 0) {
+        setProvisionalSquareBox({
+          x: Number((cx - size / 2).toFixed(3)),
+          y: Number((cy - size / 2).toFixed(3)),
+          size: Number(size.toFixed(3))
+        });
+        setIsAdjustingSampleBox(true);
+        return;
+      }
+
+      // Muestras adicionales (si no se usó el esténcil)
+      executeDetectionFromWorldBox(p1, p2);
+    },
+    [positiveExemplars.length, executeDetectionFromWorldBox]
+  );
+
+  /**
+   * Confirma la muestra provisional ajustada interactivamente por el usuario
+   */
+  const confirmProvisionalSampleBox = useCallback(() => {
+    if (!provisionalSquareBox) return;
+    const p1 = { x: provisionalSquareBox.x, y: provisionalSquareBox.y };
+    const p2 = {
+      x: provisionalSquareBox.x + provisionalSquareBox.size,
+      y: provisionalSquareBox.y + provisionalSquareBox.size
+    };
+    setIsAdjustingSampleBox(false);
+    setProvisionalSquareBox(null);
+    executeDetectionFromWorldBox(p1, p2);
+  }, [provisionalSquareBox, executeDetectionFromWorldBox]);
+
+  /**
+   * Cancela el ajuste de la muestra provisional y permite redibujar libremente
+   */
+  const cancelProvisionalSampleBox = useCallback(() => {
+    setIsAdjustingSampleBox(false);
+    setProvisionalSquareBox(null);
+  }, []);
+
+  /**
    * Estampa una nueva muestra positiva mediante el esténcil rígido asistido por
-   * micro-snap magnético subpíxel y rotación cardinal exacta.
+   * acople de forma visual (Shape-Aware Snap) y rotación cardinal exacta.
    */
   const executeStencilPlacement = useCallback(
     async (centerWorld: { x: number; y: number }) => {
@@ -219,9 +286,7 @@ export function usePatternDetectorViewModel() {
         const originY = activeUnderlay.originWorldY;
 
         const baseBox = positiveExemplars[0].boxPx;
-        const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
-        const targetBoxWidth = isRotated90 ? baseBox.height : baseBox.width;
-        const targetBoxHeight = isRotated90 ? baseBox.width : baseBox.height;
+        const targetBoxSize = Math.max(baseBox.width, baseBox.height);
 
         const centerPx = {
           x: Math.round((centerWorld.x - originX) / scale),
@@ -233,16 +298,19 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        // 1. Auto-centrado milimétrico por Mean-Shift al centroide de tinta local (búsqueda holgada +/- 16 px)
-        const inkSnap = findLocalInkCentroidSnap(
+        // 1. Auto-centrado magnético inteligente guiado por la plantilla visual del símbolo (Shape-Aware Snap)
+        const templateSnap = findTemplateCorrelationSnap(
           mask,
           width,
           height,
           centerPx,
-          { width: targetBoxWidth, height: targetBoxHeight },
-          16
+          { width: targetBoxSize, height: targetBoxSize },
+          positiveExemplars[0].patch,
+          stencilRotationDeg,
+          Math.max(16, Math.round(PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS / scale)),
+          0.30
         );
-        const coarseCenter = inkSnap.hasInk ? inkSnap.snappedCenterPx : centerPx;
+        const coarseCenter = templateSnap.isSnapped ? templateSnap.snappedCenterPx : centerPx;
 
         // 2. Alineación fina continua euclídea por ECC (SE(2)) e interpolación bilineal
         const initialAngleRad = (stencilRotationDeg * Math.PI) / 180;
@@ -251,16 +319,16 @@ export function usePatternDetectorViewModel() {
           width,
           height,
           coarseCenter,
-          { width: baseBox.width, height: baseBox.height },
+          { width: targetBoxSize, height: targetBoxSize },
           positiveExemplars[0].patch,
           initialAngleRad
         );
 
         const refinedBox: BoundingBoxPx = {
-          x: Math.round(eccResult.refinedCenterPx.x - targetBoxWidth / 2),
-          y: Math.round(eccResult.refinedCenterPx.y - targetBoxHeight / 2),
-          width: targetBoxWidth,
-          height: targetBoxHeight
+          x: Math.round(eccResult.refinedCenterPx.x - targetBoxSize / 2),
+          y: Math.round(eccResult.refinedCenterPx.y - targetBoxSize / 2),
+          width: targetBoxSize,
+          height: targetBoxSize
         };
 
         // 3. Obtener firma espectral sobre el recuadro refinado
@@ -507,7 +575,7 @@ export function usePatternDetectorViewModel() {
         return { snappedPos: match.worldPos, isSnapped: true };
       }
 
-      // 2. Si no hay match previo pero hay máscara binaria en caché, snap al centroide de tinta local
+      // 2. Si no hay match previo pero hay máscara binaria en caché, snap guiado por forma visual del símbolo
       if (activeUnderlay && positiveExemplars.length > 0) {
         const cached = getCachedUnderlayBinaryMask(activeUnderlay.id);
         if (cached) {
@@ -519,20 +587,21 @@ export function usePatternDetectorViewModel() {
             y: Math.round((worldPos.y - originY) / scale)
           };
           const baseBox = positiveExemplars[0].boxPx;
-          const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
-          const targetW = isRotated90 ? baseBox.height : baseBox.width;
-          const targetH = isRotated90 ? baseBox.width : baseBox.height;
+          const targetBoxSize = Math.max(baseBox.width, baseBox.height);
 
-          const snap = findLocalInkCentroidSnap(
+          const snap = findTemplateCorrelationSnap(
             cached.mask,
             cached.width,
             cached.height,
             centerPx,
-            { width: targetW, height: targetH },
-            Math.max(16, Math.round(toleranceMeters / scale))
+            { width: targetBoxSize, height: targetBoxSize },
+            positiveExemplars[0].patch,
+            stencilRotationDeg,
+            Math.max(16, Math.round(toleranceMeters / scale)),
+            0.35
           );
 
-          if (snap.hasInk && snap.distancePx > 0) {
+          if (snap.isSnapped) {
             return {
               snappedPos: {
                 x: Number((originX + snap.snappedCenterPx.x * scale).toFixed(3)),
@@ -564,7 +633,14 @@ export function usePatternDetectorViewModel() {
     errorMessage,
     startSamplingPattern,
     cancelSamplingPattern,
+    handleSampleBoxDrawn,
     executeDetectionFromWorldBox,
+    // Ajuste interactivo fino de la Muestra #1
+    isAdjustingSampleBox,
+    provisionalSquareBox,
+    setProvisionalSquareBox,
+    confirmProvisionalSampleBox,
+    cancelProvisionalSampleBox,
     dismissMatch,
     clearMatches,
     undoLastPositiveExemplar,

@@ -73,6 +73,7 @@ export const PATTERN_DETECTOR_CONSTANTS = {
   DEFAULT_SIMILARITY_THRESHOLD: 0.65,
   CANDIDATE_SEARCH_THRESHOLD: 0.35, // Umbral mínimo para conservar candidatos en memoria
   LUMINANCE_THRESHOLD: 180, // Umbral para considerar un píxel como trazo (tinta negra/gris)
+  INK_WHITE_DEVIATION_THRESHOLD: 45, // Caída mínima en cualquier canal RGB respecto al blanco (255) para detectar tintas de color (amarillo, cian, magenta, etc.)
   MIN_BLOB_PIXELS: 4,
   PATCH_SIZE: 24, // Malla de 24x24 para correlación fina
   MAX_BLOB_DIMENSION_FACTOR: 2.5,
@@ -83,7 +84,9 @@ export const PATTERN_DETECTOR_CONSTANTS = {
 } as const;
 
 /**
- * Convierte un búfer de píxeles RGBA (ImageData) en una máscara binaria (1 = trazo oscuro, 0 = fondo blanco)
+ * Convierte un búfer de píxeles RGBA (ImageData) en una máscara binaria (1 = trazo oscuro o de color, 0 = fondo blanco).
+ * Incorpora detección cromática de tintas para capas CAD coloreadas (amarillo, cian, magenta, rojo, verde, azul)
+ * además de tinta negra y gris convencional.
  */
 export function binarizeImageData(
   rgbaData: Uint8ClampedArray | Uint8Array,
@@ -93,6 +96,7 @@ export function binarizeImageData(
 ): Uint8Array {
   const totalPixels = width * height;
   const binary = new Uint8Array(totalPixels);
+  const deviationThreshold = PATTERN_DETECTOR_CONSTANTS.INK_WHITE_DEVIATION_THRESHOLD;
 
   for (let i = 0; i < totalPixels; i++) {
     const r = rgbaData[i * 4];
@@ -106,12 +110,36 @@ export function binarizeImageData(
       continue;
     }
 
+    // Desviación de cualquier canal respecto al fondo blanco puro (255)
+    // Amarillo puro (255, 255, 0): max(0, 0, 255) = 255 >= 45 -> Tinta (1)
+    // Cian puro (0, 255, 255): max(255, 0, 0) = 255 >= 45 -> Tinta (1)
+    // Negro puro (0, 0, 0): max(255, 255, 255) = 255 >= 45 -> Tinta (1)
+    // Papel blanco (255, 255, 255): max(0, 0, 0) = 0 < 45 -> Fondo (0)
+    const diffFromWhite = Math.max(255 - r, 255 - g, 255 - b);
+
     // Luminancia estándar ITU-R BT.601
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    binary[i] = lum < luminanceThreshold ? 1 : 0;
+
+    binary[i] = diffFromWhite >= deviationThreshold || lum < luminanceThreshold ? 1 : 0;
   }
 
   return binary;
+}
+
+/**
+ * Normaliza un recuadro a una caja cuadrada centrada (S x S, donde S = max(width, height))
+ * para garantizar invariancia dimensional e isotrópica en rotaciones de 90°, 180° y 270°.
+ */
+export function makeSquareBoundingBox(box: BoundingBoxPx): BoundingBoxPx {
+  const size = Math.max(box.width, box.height);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  return {
+    x: Math.round(cx - size / 2),
+    y: Math.round(cy - size / 2),
+    width: size,
+    height: size
+  };
 }
 
 /**
@@ -693,8 +721,9 @@ export function createPatternExemplar(
   imgHeight?: number
 ): PatternExemplar | null {
   const tightBox = tightenBoundingBox(binaryMask, imgWidth, box);
-  const moments = calculateImageMoments(binaryMask, imgWidth, tightBox);
-  const signature = calculateEigenSignature(moments, tightBox.width, tightBox.height);
+  const squareBox = makeSquareBoundingBox(tightBox);
+  const moments = calculateImageMoments(binaryMask, imgWidth, squareBox);
+  const signature = calculateEigenSignature(moments, squareBox.width, squareBox.height);
   if (!signature) return null;
 
   const resolvedHeight = imgHeight ?? (imgWidth > 0 ? Math.floor(binaryMask.length / imgWidth) : 0);
@@ -704,15 +733,15 @@ export function createPatternExemplar(
           binaryMask,
           imgWidth,
           resolvedHeight,
-          { x: tightBox.x + tightBox.width / 2, y: tightBox.y + tightBox.height / 2 },
-          { width: tightBox.width, height: tightBox.height },
+          { x: squareBox.x + squareBox.width / 2, y: squareBox.y + squareBox.height / 2 },
+          { width: squareBox.width, height: squareBox.height },
           0
         )
-      : extractNormalizedPatch(binaryMask, imgWidth, tightBox);
+      : extractNormalizedPatch(binaryMask, imgWidth, squareBox);
 
   return {
-    id: `ex-${Date.now()}-${Math.round(tightBox.x)}_${Math.round(tightBox.y)}`,
-    boxPx: tightBox,
+    id: `ex-${Date.now()}-${Math.round(squareBox.x)}_${Math.round(squareBox.y)}`,
+    boxPx: squareBox,
     signature,
     patch,
     isNegative
@@ -734,19 +763,20 @@ export function detectPatternMatchesWithExemplars(
 ): DetectedPatternMatch[] {
   if (positiveExemplars.length === 0) return [];
 
-  // Usar las dimensiones y densidad promedio de los ejemplares positivos
+  // Usar las dimensiones cuadradas promedio de los ejemplares positivos para garantizar simetría e invariancia a 90°
   const avgWidth =
     positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.width, 0) / positiveExemplars.length;
   const avgHeight =
     positiveExemplars.reduce((acc, ex) => acc + ex.boxPx.height, 0) / positiveExemplars.length;
+  const avgSize = Math.max(8, Math.round(Math.max(avgWidth, avgHeight)));
   const avgPixelCount =
     positiveExemplars.reduce((acc, ex) => acc + ex.signature.pixelCount, 0) / positiveExemplars.length;
 
   const referenceBox: BoundingBoxPx = {
     x: 0,
     y: 0,
-    width: avgWidth,
-    height: avgHeight
+    width: avgSize,
+    height: avgSize
   };
 
   // 0. Pre-computar consenso SVD si hay 2 o más ejemplares positivos
@@ -770,7 +800,7 @@ export function detectPatternMatchesWithExemplars(
 
   const candidateBlobs = [...blobCandidates, ...densityCandidates];
   const rawMatches: DetectedPatternMatch[] = [];
-  const targetRadiusPx = Math.max(avgWidth, avgHeight) / 2;
+  const targetRadiusPx = avgSize / 2;
 
   // 3. Inyectar ejemplares positivos como candidatos semilla garantizados (Ground Truth)
   // con similitud máxima (1.0). Al someterse a NMS con ordenamiento por score,
@@ -783,10 +813,10 @@ export function detectPatternMatchesWithExemplars(
     };
 
     const seedBox: BoundingBoxPx = {
-      x: Math.max(0, Math.round(centerPx.x - avgWidth / 2)),
-      y: Math.max(0, Math.round(centerPx.y - avgHeight / 2)),
-      width: avgWidth,
-      height: avgHeight
+      x: Math.max(0, Math.round(centerPx.x - avgSize / 2)),
+      y: Math.max(0, Math.round(centerPx.y - avgSize / 2)),
+      width: avgSize,
+      height: avgSize
     };
 
     rawMatches.push({
@@ -806,10 +836,10 @@ export function detectPatternMatchesWithExemplars(
     const centerY = blob.y + blob.height / 2;
 
     const testBox: BoundingBoxPx = {
-      x: Math.max(0, centerX - avgWidth / 2),
-      y: Math.max(0, centerY - avgHeight / 2),
-      width: avgWidth,
-      height: avgHeight
+      x: Math.max(0, Math.round(centerX - avgSize / 2)),
+      y: Math.max(0, Math.round(centerY - avgSize / 2)),
+      width: avgSize,
+      height: avgSize
     };
 
     // Evaluamos en la máscara binaria original y aplicamos 1 paso de Mean-Shift
@@ -821,10 +851,10 @@ export function detectPatternMatchesWithExemplars(
     const refinedCenterY = initialMoments.m01 / initialMoments.m00;
 
     const centeredBox: BoundingBoxPx = {
-      x: Math.max(0, Math.round(refinedCenterX - avgWidth / 2)),
-      y: Math.max(0, Math.round(refinedCenterY - avgHeight / 2)),
-      width: avgWidth,
-      height: avgHeight
+      x: Math.max(0, Math.round(refinedCenterX - avgSize / 2)),
+      y: Math.max(0, Math.round(refinedCenterY - avgSize / 2)),
+      width: avgSize,
+      height: avgSize
     };
 
     const candMoments = calculateImageMoments(binaryMask, imgWidth, centeredBox);

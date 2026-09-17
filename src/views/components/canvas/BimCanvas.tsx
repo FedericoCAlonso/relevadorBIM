@@ -59,6 +59,11 @@ interface BimCanvasProps {
   onStartPatternSampling?: () => void;
   onCancelSamplingPattern?: () => void;
   onPatternSampleBoxCompleted?: (p1: { x: number; y: number }, p2: { x: number; y: number }) => void;
+  isAdjustingSampleBox?: boolean;
+  provisionalSquareBox?: { x: number; y: number; size: number } | null;
+  onUpdateProvisionalSquareBox?: (box: { x: number; y: number; size: number }) => void;
+  onConfirmProvisionalSampleBox?: () => void;
+  onCancelProvisionalSampleBox?: () => void;
   detectedPatternMatches?: DetectedPatternMatch[];
   onDismissPatternMatch?: (matchId: string) => void;
   onWallClick?: (wallId: string) => void;
@@ -101,6 +106,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onStartPatternSampling,
   onCancelSamplingPattern,
   onPatternSampleBoxCompleted,
+  isAdjustingSampleBox = false,
+  provisionalSquareBox = null,
+  onUpdateProvisionalSquareBox,
+  onConfirmProvisionalSampleBox,
+  onCancelProvisionalSampleBox,
   detectedPatternMatches = [],
   onDismissPatternMatch,
   onWallClick,
@@ -167,6 +177,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isStencilSnapped, setIsStencilSnapped] = useState(false);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
   const justCompletedSamplingRef = useRef(false);
+
+  // Estados locales para arrastre y redimensión del recuadro provisional de Muestra #1
+  type AdjustHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;
+  const [activeAdjustHandle, setActiveAdjustHandle] = useState<AdjustHandle>(null);
+  const adjustDragStartRef = useRef<{ clientX: number; clientY: number; initBox: { x: number; y: number; size: number } } | null>(null);
+
+  const startAdjustDrag = (handle: AdjustHandle, clientX: number, clientY: number) => {
+    if (!provisionalSquareBox) return;
+    setActiveAdjustHandle(handle);
+    adjustDragStartRef.current = {
+      clientX,
+      clientY,
+      initBox: { ...provisionalSquareBox }
+    };
+  };
 
   // Recentrar y encuadrar todo el plano
   const handleRecenter = () => {
@@ -323,6 +348,49 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (activeAdjustHandle && adjustDragStartRef.current && provisionalSquareBox && onUpdateProvisionalSquareBox) {
+      const dx = (e.clientX - adjustDragStartRef.current.clientX) / zoom;
+      const dy = (e.clientY - adjustDragStartRef.current.clientY) / zoom;
+      const init = adjustDragStartRef.current.initBox;
+
+      if (activeAdjustHandle === 'move') {
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + dx).toFixed(3)),
+          y: Number((init.y + dy).toFixed(3)),
+          size: init.size
+        });
+      } else if (activeAdjustHandle === 'se') {
+        const newSize = Math.max(0.10, init.size + Math.max(dx, dy));
+        onUpdateProvisionalSquareBox({
+          x: init.x,
+          y: init.y,
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'ne') {
+        const newSize = Math.max(0.10, init.size + Math.max(dx, -dy));
+        onUpdateProvisionalSquareBox({
+          x: init.x,
+          y: Number((init.y + init.size - newSize).toFixed(3)),
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'sw') {
+        const newSize = Math.max(0.10, init.size + Math.max(-dx, dy));
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + init.size - newSize).toFixed(3)),
+          y: init.y,
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'nw') {
+        const newSize = Math.max(0.10, init.size + Math.max(-dx, -dy));
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + init.size - newSize).toFixed(3)),
+          y: Number((init.y + init.size - newSize).toFixed(3)),
+          size: Number(newSize.toFixed(3))
+        });
+      }
+      return;
+    }
+
     if (isDragging) {
       if (mouseDragRef.current) {
         const dist = Math.hypot(e.clientX - mouseDragRef.current.startX, e.clientY - mouseDragRef.current.startY);
@@ -335,7 +403,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleMouseUp = () => {
-    if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
+    if (activeAdjustHandle) {
+      setActiveAdjustHandle(null);
+      adjustDragStartRef.current = null;
+      return;
+    }
+
+    if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
         justCompletedSamplingRef.current = true;
@@ -446,6 +520,50 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (activeAdjustHandle && adjustDragStartRef.current && provisionalSquareBox && onUpdateProvisionalSquareBox && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = (t.clientX - adjustDragStartRef.current.clientX) / zoom;
+      const dy = (t.clientY - adjustDragStartRef.current.clientY) / zoom;
+      const init = adjustDragStartRef.current.initBox;
+
+      if (activeAdjustHandle === 'move') {
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + dx).toFixed(3)),
+          y: Number((init.y + dy).toFixed(3)),
+          size: init.size
+        });
+      } else if (activeAdjustHandle === 'se') {
+        const newSize = Math.max(0.10, init.size + Math.max(dx, dy));
+        onUpdateProvisionalSquareBox({
+          x: init.x,
+          y: init.y,
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'ne') {
+        const newSize = Math.max(0.10, init.size + Math.max(dx, -dy));
+        onUpdateProvisionalSquareBox({
+          x: init.x,
+          y: Number((init.y + init.size - newSize).toFixed(3)),
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'sw') {
+        const newSize = Math.max(0.10, init.size + Math.max(-dx, dy));
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + init.size - newSize).toFixed(3)),
+          y: init.y,
+          size: Number(newSize.toFixed(3))
+        });
+      } else if (activeAdjustHandle === 'nw') {
+        const newSize = Math.max(0.10, init.size + Math.max(-dx, -dy));
+        onUpdateProvisionalSquareBox({
+          x: Number((init.x + init.size - newSize).toFixed(3)),
+          y: Number((init.y + init.size - newSize).toFixed(3)),
+          size: Number(newSize.toFixed(3))
+        });
+      }
+      return;
+    }
+
     if (!touchStateRef.current) return;
 
     if (e.touches.length === 1 && touchStateRef.current.type === 'single') {
@@ -488,7 +606,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleTouchEnd = () => {
-    if (isSamplingPattern && samplingStartWorldPos && hoverWorldPos) {
+    if (activeAdjustHandle) {
+      setActiveAdjustHandle(null);
+      adjustDragStartRef.current = null;
+      return;
+    }
+
+    if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
         justCompletedSamplingRef.current = true;
@@ -1588,7 +1712,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           )}
 
           {/* Recuadro elástico de selección de patrón (Marquesina Muestra #1) */}
-          {isSamplingPattern && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
+          {isSamplingPattern && !isAdjustingSampleBox && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
             <g pointerEvents="none">
               <rect
                 x={Math.min(samplingStartWorldPos.x, hoverWorldPos.x) * zoom}
@@ -1614,6 +1738,194 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               </text>
             </g>
           )}
+
+          {/* Recuadro interactivo de ajuste fino para la Muestra #1 (Trazar -> Ajustar -> Confirmar) */}
+          {isAdjustingSampleBox && provisionalSquareBox && (() => {
+            const boxX = provisionalSquareBox.x * zoom;
+            const boxY = provisionalSquareBox.y * zoom;
+            const boxW = provisionalSquareBox.size * zoom;
+            const boxH = provisionalSquareBox.size * zoom;
+            const cx = boxX + boxW / 2;
+            const cy = boxY + boxH / 2;
+
+            return (
+              <g className="select-none">
+                {/* Zona translúcida de fondo movible */}
+                <rect
+                  x={boxX}
+                  y={boxY}
+                  width={boxW}
+                  height={boxH}
+                  fill="rgba(6, 182, 212, 0.16)"
+                  stroke="#06b6d4"
+                  strokeWidth={2}
+                  strokeDasharray="4 2"
+                  rx={3}
+                  className="cursor-move"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startAdjustDrag('move', e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) {
+                      startAdjustDrag('move', e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                  }}
+                />
+
+                {/* Retícula en cruz milimétrica para centrado exacto sobre el símbolo */}
+                <line
+                  x1={boxX}
+                  y1={cy}
+                  x2={boxX + boxW}
+                  y2={cy}
+                  stroke="#0891b2"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.8}
+                  pointerEvents="none"
+                />
+                <line
+                  x1={cx}
+                  y1={boxY}
+                  x2={cx}
+                  y2={boxY + boxH}
+                  stroke="#0891b2"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.8}
+                  pointerEvents="none"
+                />
+                <circle cx={cx} cy={cy} r={3} fill="#0891b2" pointerEvents="none" />
+
+                {/* Etiqueta superior */}
+                <text
+                  x={cx}
+                  y={boxY - 10}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fontWeight="bold"
+                  fill="#0891b2"
+                  className="font-mono bg-white select-none pointer-events-none"
+                >
+                  🎯 Muestra #1 ({Math.round(provisionalSquareBox.size * 100)} cm) · Ajustá posición y tamaño
+                </text>
+
+                {/* Manija NW */}
+                <circle
+                  cx={boxX}
+                  cy={boxY}
+                  r={14}
+                  fill="transparent"
+                  className="cursor-nwse-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startAdjustDrag('nw', e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) startAdjustDrag('nw', e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                />
+                <rect
+                  x={boxX - 5}
+                  y={boxY - 5}
+                  width={10}
+                  height={10}
+                  fill="#ffffff"
+                  stroke="#0891b2"
+                  strokeWidth={2}
+                  rx={2}
+                  pointerEvents="none"
+                />
+
+                {/* Manija NE */}
+                <circle
+                  cx={boxX + boxW}
+                  cy={boxY}
+                  r={14}
+                  fill="transparent"
+                  className="cursor-nesw-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startAdjustDrag('ne', e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) startAdjustDrag('ne', e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                />
+                <rect
+                  x={boxX + boxW - 5}
+                  y={boxY - 5}
+                  width={10}
+                  height={10}
+                  fill="#ffffff"
+                  stroke="#0891b2"
+                  strokeWidth={2}
+                  rx={2}
+                  pointerEvents="none"
+                />
+
+                {/* Manija SE */}
+                <circle
+                  cx={boxX + boxW}
+                  cy={boxY + boxH}
+                  r={14}
+                  fill="transparent"
+                  className="cursor-nwse-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startAdjustDrag('se', e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) startAdjustDrag('se', e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                />
+                <rect
+                  x={boxX + boxW - 5}
+                  y={boxY + boxH - 5}
+                  width={10}
+                  height={10}
+                  fill="#ffffff"
+                  stroke="#0891b2"
+                  strokeWidth={2}
+                  rx={2}
+                  pointerEvents="none"
+                />
+
+                {/* Manija SW */}
+                <circle
+                  cx={boxX}
+                  cy={boxY + boxH}
+                  r={14}
+                  fill="transparent"
+                  className="cursor-nesw-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startAdjustDrag('sw', e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) startAdjustDrag('sw', e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                />
+                <rect
+                  x={boxX - 5}
+                  y={boxY + boxH - 5}
+                  width={10}
+                  height={10}
+                  fill="#ffffff"
+                  stroke="#0891b2"
+                  strokeWidth={2}
+                  rx={2}
+                  pointerEvents="none"
+                />
+              </g>
+            );
+          })()}
 
           {/* Esténcil rígido semitransparente asistido por SVD (Muestras #2 en adelante) */}
           {isSamplingPattern && positiveExemplarsCount > 0 && stencilSizeWorld && hoverWorldPos && (
@@ -1886,8 +2198,42 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         </div>
       )}
 
+      {/* Banner / Píldora superior durante ajuste fino interactivo de Muestra #1 */}
+      {isAdjustingSampleBox && provisionalSquareBox && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-2xl border border-cyan-400/60 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+          <span>📐 Ajustá posición y tamaño de la muestra base</span>
+          {onConfirmProvisionalSampleBox && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfirmProvisionalSampleBox();
+              }}
+              className="ml-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-full shadow transition-colors cursor-pointer flex items-center gap-1"
+              title="Confirmar muestra base (Enter)"
+            >
+              ✓ Confirmar (Enter)
+            </button>
+          )}
+          {onCancelProvisionalSampleBox && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelProvisionalSampleBox();
+              }}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] rounded-full border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar ajuste (Esc)"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Banner / Píldora superior durante selección con recuadro para detectar símbolos */}
-      {isSamplingPattern && (
+      {isSamplingPattern && !isAdjustingSampleBox && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
           <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
           <span>🎯 Arrastrá un recuadro sobre el símbolo del plano para detectarlo en toda la planta</span>
