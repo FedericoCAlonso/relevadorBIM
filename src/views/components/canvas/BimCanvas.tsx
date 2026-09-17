@@ -52,6 +52,10 @@ interface BimCanvasProps {
   stencilRotationDeg?: 0 | 90 | 180 | 270;
   onRotateStencil?: () => void;
   onPatternStencilPlaced?: (centerWorld: { x: number; y: number }) => void;
+  getStencilSnapPoint?: (
+    worldPos: { x: number; y: number },
+    toleranceMeters?: number
+  ) => { snappedPos: { x: number; y: number }; isSnapped: boolean };
   onStartPatternSampling?: () => void;
   onCancelSamplingPattern?: () => void;
   onPatternSampleBoxCompleted?: (p1: { x: number; y: number }, p2: { x: number; y: number }) => void;
@@ -93,6 +97,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   stencilRotationDeg = 0,
   onRotateStencil,
   onPatternStencilPlaced,
+  getStencilSnapPoint,
   onStartPatternSampling,
   onCancelSamplingPattern,
   onPatternSampleBoxCompleted,
@@ -159,6 +164,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isSnappedToCenter, setIsSnappedToCenter] = useState(false);
   const [isSnappedToPatternMatch, setIsSnappedToPatternMatch] = useState(false);
   const [samplingStartWorldPos, setSamplingStartWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const [isStencilSnapped, setIsStencilSnapped] = useState(false);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
   const justCompletedSamplingRef = useRef(false);
 
@@ -260,6 +266,20 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       }
     }
 
+    // 3. Snap magnético para el esténcil rígido al núcleo de tinta o candidatos detectados
+    if (isSamplingPattern && positiveExemplarsCount > 0 && getStencilSnapPoint) {
+      const stencilSnap = getStencilSnapPoint({ x: wx, y: wy });
+      if (stencilSnap.isSnapped) {
+        wx = stencilSnap.snappedPos.x;
+        wy = stencilSnap.snappedPos.y;
+        setIsStencilSnapped(true);
+      } else {
+        setIsStencilSnapped(false);
+      }
+    } else {
+      setIsStencilSnapped(false);
+    }
+
     setHoverWorldPos({ x: wx, y: wy });
     setHoverRotationDeg(rot);
     setActiveSnapInfo(snapInfo);
@@ -271,11 +291,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isSamplingPattern && e.button === 0 && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const wx = (e.clientX - rect.left - pan.x) / zoom;
-      const wy = (e.clientY - rect.top - pan.y) / zoom;
+      let wx = (e.clientX - rect.left - pan.x) / zoom;
+      let wy = (e.clientY - rect.top - pan.y) / zoom;
 
       // Si estamos en modo esténcil rígido (muestras adicionales con tamaño fijo)
       if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
+        if (getStencilSnapPoint) {
+          const stencilSnap = getStencilSnapPoint({ x: wx, y: wy });
+          if (stencilSnap.isSnapped) {
+            wx = stencilSnap.snappedPos.x;
+            wy = stencilSnap.snappedPos.y;
+          }
+        }
         justCompletedSamplingRef.current = true;
         onPatternStencilPlaced({ x: wx, y: wy });
         setTimeout(() => {
@@ -358,8 +385,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
       // Si estamos en modo esténcil rígido en móvil
       if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
+        let snapWx = wx;
+        let snapWy = wy;
+        if (getStencilSnapPoint) {
+          const stencilSnap = getStencilSnapPoint({ x: wx, y: wy });
+          if (stencilSnap.isSnapped) {
+            snapWx = stencilSnap.snappedPos.x;
+            snapWy = stencilSnap.snappedPos.y;
+          }
+        }
         justCompletedSamplingRef.current = true;
-        onPatternStencilPlaced({ x: wx, y: wy });
+        onPatternStencilPlaced({ x: snapWx, y: snapWy });
         setTimeout(() => {
           justCompletedSamplingRef.current = false;
         }, 150);
@@ -1506,6 +1542,51 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
+          {/* Retícula en cruz CAD extendida para alineación ortogonal precisa (Ejes X e Y infinitos) */}
+          {isSamplingPattern && hoverWorldPos && (
+            <g pointerEvents="none">
+              {/* Eje horizontal infinito */}
+              <line
+                x1={-100000}
+                y1={hoverWorldPos.y * zoom}
+                x2={100000}
+                y2={hoverWorldPos.y * zoom}
+                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
+                strokeWidth={1}
+                strokeDasharray="6 4"
+                strokeOpacity={0.6}
+              />
+              {/* Eje vertical infinito */}
+              <line
+                x1={hoverWorldPos.x * zoom}
+                y1={-100000}
+                x2={hoverWorldPos.x * zoom}
+                y2={100000}
+                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
+                strokeWidth={1}
+                strokeDasharray="6 4"
+                strokeOpacity={0.6}
+              />
+              {/* Retícula central sólida de mira CAD (40px) */}
+              <line
+                x1={hoverWorldPos.x * zoom - 20}
+                y1={hoverWorldPos.y * zoom}
+                x2={hoverWorldPos.x * zoom + 20}
+                y2={hoverWorldPos.y * zoom}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={1.5}
+              />
+              <line
+                x1={hoverWorldPos.x * zoom}
+                y1={hoverWorldPos.y * zoom - 20}
+                x2={hoverWorldPos.x * zoom}
+                y2={hoverWorldPos.y * zoom + 20}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={1.5}
+              />
+            </g>
+          )}
+
           {/* Recuadro elástico de selección de patrón (Marquesina Muestra #1) */}
           {isSamplingPattern && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
             <g pointerEvents="none">
@@ -1543,28 +1624,28 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 y={(hoverWorldPos.y - stencilSizeWorld.height / 2) * zoom}
                 width={stencilSizeWorld.width * zoom}
                 height={stencilSizeWorld.height * zoom}
-                fill="rgba(6, 182, 212, 0.25)"
-                stroke="#06b6d4"
-                strokeWidth={2.5}
-                strokeDasharray="6 3"
+                fill={isStencilSnapped ? "rgba(16, 185, 129, 0.22)" : "rgba(6, 182, 212, 0.22)"}
+                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
+                strokeWidth={isStencilSnapped ? 2.5 : 2}
+                strokeDasharray={isStencilSnapped ? "none" : "6 3"}
                 rx={3}
               />
               {/* Retícula en cruz para centrado visual */}
               <line
-                x1={(hoverWorldPos.x - 0.15) * zoom}
+                x1={(hoverWorldPos.x - 0.25) * zoom}
                 y1={hoverWorldPos.y * zoom}
-                x2={(hoverWorldPos.x + 0.15) * zoom}
+                x2={(hoverWorldPos.x + 0.25) * zoom}
                 y2={hoverWorldPos.y * zoom}
-                stroke="#0891b2"
-                strokeWidth={1.5}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={isStencilSnapped ? 2 : 1.5}
               />
               <line
                 x1={hoverWorldPos.x * zoom}
-                y1={(hoverWorldPos.y - 0.15) * zoom}
+                y1={(hoverWorldPos.y - 0.25) * zoom}
                 x2={hoverWorldPos.x * zoom}
-                y2={(hoverWorldPos.y + 0.15) * zoom}
-                stroke="#0891b2"
-                strokeWidth={1.5}
+                y2={(hoverWorldPos.y + 0.25) * zoom}
+                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
+                strokeWidth={isStencilSnapped ? 2 : 1.5}
               />
               {/* Etiqueta flotante con orientación y aviso de snap magnético */}
               <text
@@ -1573,10 +1654,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 textAnchor="middle"
                 fontSize={11}
                 fontWeight="bold"
-                fill="#0891b2"
+                fill={isStencilSnapped ? "#059669" : "#0891b2"}
                 className="font-mono bg-white select-none"
               >
-                🎯 Sello Muestra #{positiveExemplarsCount + 1} ({stencilRotationDeg ?? 0}°) · Clic para estampar
+                {isStencilSnapped
+                  ? `🎯 Snap fijado al símbolo (${stencilRotationDeg ?? 0}°) · Clic para confirmar`
+                  : `🎯 Sello Muestra #${positiveExemplarsCount + 1} (${stencilRotationDeg ?? 0}°) · Clic para estampar`}
               </text>
             </g>
           )}

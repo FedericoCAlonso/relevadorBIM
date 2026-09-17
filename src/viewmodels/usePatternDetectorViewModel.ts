@@ -13,6 +13,7 @@ import {
   createPatternExemplar,
   calculateImageMoments,
   calculateEigenSignature,
+  findLocalInkCentroidSnap,
   PATTERN_DETECTOR_CONSTANTS,
   type BoundingBoxPx,
   type DetectedPatternMatch,
@@ -20,11 +21,10 @@ import {
 } from '../models/underlay/PatternDetector';
 import {
   computeGramSvdConsensus,
-  magneticSubpixelSnap,
   type SvdConsensusResult
 } from '../models/underlay/GramSvd';
 import { alignPatchEccEuclidean } from '../models/underlay/EccAlignment';
-import { getUnderlayBinaryMask } from '../services/imageProcessingService';
+import { getUnderlayBinaryMask, getCachedUnderlayBinaryMask } from '../services/imageProcessingService';
 
 export function usePatternDetectorViewModel() {
   const { project, addElectricalElement, setSelectedEntity } = useProjectStore();
@@ -233,18 +233,16 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        // 1. Auto-centrado milimétrico por micro-snap magnético discreto (búsqueda gruesa +/- 4 px)
-        const snapResult = magneticSubpixelSnap(
+        // 1. Auto-centrado milimétrico por Mean-Shift al centroide de tinta local (búsqueda holgada +/- 16 px)
+        const inkSnap = findLocalInkCentroidSnap(
           mask,
           width,
           height,
           centerPx,
-          targetBoxWidth,
-          targetBoxHeight,
-          positiveExemplars[0].patch,
-          stencilRotationDeg,
-          4
+          { width: targetBoxWidth, height: targetBoxHeight },
+          16
         );
+        const coarseCenter = inkSnap.hasInk ? inkSnap.snappedCenterPx : centerPx;
 
         // 2. Alineación fina continua euclídea por ECC (SE(2)) e interpolación bilineal
         const initialAngleRad = (stencilRotationDeg * Math.PI) / 180;
@@ -252,7 +250,7 @@ export function usePatternDetectorViewModel() {
           mask,
           width,
           height,
-          snapResult.centerPx,
+          coarseCenter,
           { width: baseBox.width, height: baseBox.height },
           positiveExemplars[0].patch,
           initialAngleRad
@@ -281,12 +279,6 @@ export function usePatternDetectorViewModel() {
 
         const nextPositives = [...positiveExemplars, newExemplar];
         setPositiveExemplars(nextPositives);
-
-        // Si SVD sugiere un umbral ajustado, sincronizarlo
-        const consensus = computeGramSvdConsensus(nextPositives.map((e) => e.patch));
-        if (consensus?.suggestedThreshold) {
-          setSimilarityThreshold(consensus.suggestedThreshold);
-        }
 
         const matches = detectPatternMatchesWithExemplars(
           mask,
@@ -480,12 +472,13 @@ export function usePatternDetectorViewModel() {
       worldY: number,
       toleranceMeters: number = PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS
     ): DetectedPatternMatch | null => {
-      if (activeMatches.length === 0) return null;
+      const candidates = detectedMatches.length > 0 ? detectedMatches : activeMatches;
+      if (candidates.length === 0) return null;
 
       let bestMatch: DetectedPatternMatch | null = null;
       let minDistance = toleranceMeters;
 
-      for (const match of activeMatches) {
+      for (const match of candidates) {
         const dist = Math.hypot(match.worldPos.x - worldX, match.worldPos.y - worldY);
         if (dist < minDistance) {
           minDistance = dist;
@@ -495,7 +488,65 @@ export function usePatternDetectorViewModel() {
 
       return bestMatch;
     },
-    [activeMatches]
+    [detectedMatches, activeMatches]
+  );
+
+  /**
+   * Calcula el punto de acople magnético para el esténcil rígido en tiempo real.
+   * Prioridad 1: Candidatos detectados cercanos.
+   * Prioridad 2: Centroide de masa de tinta negra de la lámina en memoria caché.
+   */
+  const getStencilSnapPoint = useCallback(
+    (
+      worldPos: { x: number; y: number },
+      toleranceMeters: number = PATTERN_DETECTOR_CONSTANTS.SNAP_TOLERANCE_METERS
+    ): { snappedPos: { x: number; y: number }; isSnapped: boolean } => {
+      // 1. Primero intentar snap a cualquier candidato detectado
+      const match = getClosestSnapMatch(worldPos.x, worldPos.y, toleranceMeters);
+      if (match) {
+        return { snappedPos: match.worldPos, isSnapped: true };
+      }
+
+      // 2. Si no hay match previo pero hay máscara binaria en caché, snap al centroide de tinta local
+      if (activeUnderlay && positiveExemplars.length > 0) {
+        const cached = getCachedUnderlayBinaryMask(activeUnderlay.id);
+        if (cached) {
+          const scale = activeUnderlay.scaleMetersPerPx;
+          const originX = activeUnderlay.originWorldX;
+          const originY = activeUnderlay.originWorldY;
+          const centerPx = {
+            x: Math.round((worldPos.x - originX) / scale),
+            y: Math.round((worldPos.y - originY) / scale)
+          };
+          const baseBox = positiveExemplars[0].boxPx;
+          const isRotated90 = stencilRotationDeg === 90 || stencilRotationDeg === 270;
+          const targetW = isRotated90 ? baseBox.height : baseBox.width;
+          const targetH = isRotated90 ? baseBox.width : baseBox.height;
+
+          const snap = findLocalInkCentroidSnap(
+            cached.mask,
+            cached.width,
+            cached.height,
+            centerPx,
+            { width: targetW, height: targetH },
+            Math.max(16, Math.round(toleranceMeters / scale))
+          );
+
+          if (snap.hasInk && snap.distancePx > 0) {
+            return {
+              snappedPos: {
+                x: Number((originX + snap.snappedCenterPx.x * scale).toFixed(3)),
+                y: Number((originY + snap.snappedCenterPx.y * scale).toFixed(3))
+              },
+              isSnapped: true
+            };
+          }
+        }
+      }
+
+      return { snappedPos: worldPos, isSnapped: false };
+    },
+    [getClosestSnapMatch, activeUnderlay, positiveExemplars, stencilRotationDeg]
   );
 
   return {
@@ -519,6 +570,7 @@ export function usePatternDetectorViewModel() {
     undoLastPositiveExemplar,
     convertMatchesToElectricalElements,
     getClosestSnapMatch,
+    getStencilSnapPoint,
     // Esténcil rígido y SVD
     stencilRotationDeg,
     setStencilRotationDeg,

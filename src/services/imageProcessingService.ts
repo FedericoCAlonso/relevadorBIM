@@ -10,6 +10,15 @@ import { binarizeImageData, PATTERN_DETECTOR_CONSTANTS } from '../models/underla
 const maskCache = new Map<string, { width: number; height: number; mask: Uint8Array }>();
 
 /**
+ * Obtiene la máscara binaria en caché de forma síncrona si ya fue cargada.
+ */
+export function getCachedUnderlayBinaryMask(
+  sheetId: string
+): { width: number; height: number; mask: Uint8Array } | null {
+  return maskCache.get(sheetId) || null;
+}
+
+/**
  * Extrae la máscara binaria de una imagen a partir de su URL o dataURL.
  * Utiliza caché en memoria para no re-procesar la misma lámina.
  */

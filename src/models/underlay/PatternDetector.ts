@@ -162,6 +162,81 @@ export function tightenBoundingBox(
 }
 
 /**
+ * Busca el centroide de tinta local más cercano mediante Mean-Shift ponderado.
+ * Permite que el esténcil o el cursor se acople magnéticamente en tiempo real al símbolo.
+ */
+export function findLocalInkCentroidSnap(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  imgHeight: number,
+  centerPx: { x: number; y: number },
+  boxSize: { width: number; height: number },
+  searchRadiusPx: number = 16
+): {
+  snappedCenterPx: { x: number; y: number };
+  hasInk: boolean;
+  distancePx: number;
+} {
+  const halfSearch = Math.max(searchRadiusPx, Math.max(boxSize.width, boxSize.height) / 2);
+  const startX = Math.max(0, Math.floor(centerPx.x - halfSearch));
+  const endX = Math.min(imgWidth, Math.ceil(centerPx.x + halfSearch));
+  const startY = Math.max(0, Math.floor(centerPx.y - halfSearch));
+  const endY = Math.min(imgHeight, Math.ceil(centerPx.y + halfSearch));
+
+  let curX = centerPx.x;
+  let curY = centerPx.y;
+  let hasInk = false;
+
+  // 2 iteraciones de Mean-Shift con kernel Epanechnikov
+  for (let iter = 0; iter < 2; iter++) {
+    let weightSum = 0;
+    let sumX = 0;
+    let sumY = 0;
+
+    for (let y = startY; y < endY; y++) {
+      const rowOffset = y * imgWidth;
+      for (let x = startX; x < endX; x++) {
+        if (binaryMask[rowOffset + x] === 1) {
+          hasInk = true;
+          const dx = x - curX;
+          const dy = y - curY;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < halfSearch * halfSearch) {
+            const w = 1 - distSq / (halfSearch * halfSearch);
+            weightSum += w;
+            sumX += w * x;
+            sumY += w * y;
+          }
+        }
+      }
+    }
+
+    if (weightSum > 1e-4) {
+      curX = sumX / weightSum;
+      curY = sumY / weightSum;
+    } else {
+      break;
+    }
+  }
+
+  const distancePx = Math.hypot(curX - centerPx.x, curY - centerPx.y);
+
+  if (hasInk && distancePx <= halfSearch) {
+    return {
+      snappedCenterPx: { x: Number(curX.toFixed(2)), y: Number(curY.toFixed(2)) },
+      hasInk: true,
+      distancePx: Number(distancePx.toFixed(2))
+    };
+  }
+
+  return {
+    snappedCenterPx: centerPx,
+    hasInk: false,
+    distancePx: 0
+  };
+}
+
+/**
  * Calcula la imagen integral (Summed-Area Table) para consultas O(1) de densidad de trazos
  */
 export function computeIntegralImage(

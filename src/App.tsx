@@ -109,7 +109,8 @@ export function App() {
     cycleStencilRotation,
     stencilSizeWorld,
     svdConsensus,
-    executeStencilPlacement
+    executeStencilPlacement,
+    getStencilSnapPoint
   } = usePatternDetectorViewModel();
 
   const [isArchitectureLocked, setIsArchitectureLocked] = useState(false);
@@ -383,6 +384,7 @@ export function App() {
             stencilRotationDeg={stencilRotationDeg}
             onRotateStencil={cycleStencilRotation}
             onPatternStencilPlaced={executeStencilPlacement}
+            getStencilSnapPoint={getStencilSnapPoint}
             onStartPatternSampling={startSamplingPattern}
             onCancelSamplingPattern={cancelSamplingPattern}
             onPatternSampleBoxCompleted={(p1, p2) => executeDetectionFromWorldBox(p1, p2)}

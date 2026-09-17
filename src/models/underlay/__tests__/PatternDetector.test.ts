@@ -16,6 +16,7 @@ import {
   createPatternExemplar,
   detectPatternMatchesWithExemplars,
   detectPatternMatches,
+  findLocalInkCentroidSnap,
   type BoundingBoxPx
 } from '../PatternDetector';
 
@@ -340,6 +341,38 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
       (m) => Math.round(m.centerPx.x) === 80 && Math.round(m.centerPx.y) === 40
     );
     expect(otherMatch).toBeDefined();
+  });
+
+  it('debe atraer el centro del cursor al centroide del símbolo mediante findLocalInkCentroidSnap', () => {
+    const width = 80;
+    const height = 80;
+    const binary = new Uint8Array(width * height);
+
+    // Dibuja una boca circular sólida en (40, 40) de radio 5
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (Math.hypot(x - 40, y - 40) <= 5) {
+          binary[y * width + x] = 1;
+        }
+      }
+    }
+
+    // El usuario pasa el cursor a 8 px de distancia: (48, 43)
+    const cursorNear = { x: 48, y: 43 };
+    const snapResult = findLocalInkCentroidSnap(
+      binary,
+      width,
+      height,
+      cursorNear,
+      { width: 14, height: 14 },
+      16
+    );
+
+    expect(snapResult.hasInk).toBe(true);
+    // Debe haber atraído el cursor hacia (40, 40)
+    expect(snapResult.snappedCenterPx.x).toBeCloseTo(40, 0);
+    expect(snapResult.snappedCenterPx.y).toBeCloseTo(40, 0);
+    expect(snapResult.distancePx).toBeGreaterThan(5);
   });
 });
 
