@@ -24,6 +24,7 @@ import {
   getConduitVerticalTransitions,
   formatElementLabel
 } from '../../../models/electrical/calculations';
+import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
 
 export type { WallPlacementSnap };
 
@@ -154,6 +155,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     deleteDimensionLine,
     labelDisplayMode
   } = useProjectStore();
+
+  const sequenceRoutingMode = useElectricalSequenceStore((s) => s.sequenceRoutingMode);
+  const setSequenceRoutingMode = useElectricalSequenceStore((s) => s.setSequenceRoutingMode);
 
   // Escala y transformación de vista (Pan y Zoom)
   const [zoom, setZoom] = useState(60); // 60 píxeles = 1 metro
@@ -1225,7 +1229,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
       const routingPlane = conduit.routingPlane || 'wall';
       const isSlabOrFloor = routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab';
-      const isOrthogonal = !isSlabOrFloor && conduit.routingMode !== 'schematic_arc';
+      const isSchematicArc = conduit.routingMode === 'schematic_arc';
       let pathD: string;
       let midX: number;
       let midY: number;
@@ -1234,15 +1238,25 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         x: wp.x * zoom,
         y: wp.y * zoom
       }));
+      const hasWaypoints = Boolean(waypointsPx && waypointsPx.length > 0);
 
-      if (isSlabOrFloor) {
+      if (isSchematicArc && !hasWaypoints) {
+        // Curvatura suave arco esquemático tradicional AEA
+        const normalX = -dy / dist;
+        const normalY = dx / dist;
+        const curveOffset = Math.min(dist * 0.18, 28);
+        midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
+        midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
+        pathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      } else if (isSlabOrFloor) {
         // En losa o contrapiso: trazo directo / diagonal entre extremos o waypoints
         const pts = [p1, ...(waypointsPx || []), p2];
         pathD = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} ` + pts.slice(1).map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
         const midIdx = Math.max(1, Math.floor(pts.length / 2));
         midX = (pts[midIdx - 1].x + pts[midIdx].x) / 2;
         midY = (pts[midIdx - 1].y + pts[midIdx].y) / 2;
-      } else if (isOrthogonal) {
+      } else {
+        // Ortogonal por pared con curvas técnicas redondeadas a 90°
         const orthoPoints = computeOrthogonalConduitPoints(p1, p2, waypointsPx);
         const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
         pathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
@@ -1252,14 +1266,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const pSegB = orthoPoints[midSegmentIdx];
         midX = (pSegA.x + pSegB.x) / 2;
         midY = (pSegA.y + pSegB.y) / 2;
-      } else {
-        // Curvatura suave arco esquemático tradicional
-        const normalX = -dy / dist;
-        const normalY = dx / dist;
-        const curveOffset = Math.min(dist * 0.18, 28);
-        midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
-        midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
-        pathD = `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`;
       }
 
       const isSelected = selectedEntity?.type === 'conduit' && selectedEntity.id === conduit.id;
@@ -2273,17 +2279,36 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
-          {/* Línea elástica interactiva guiando al usuario hacia el segundo extremo */}
+          {/* Línea o arco elástico interactivo guiando al usuario hacia el segundo extremo */}
           {isConnectingConduit && pendingConduitStartId && hoverWorldPos && (() => {
             const startEl = project.electricalElements.find((e) => e.id === pendingConduitStartId);
             if (!startEl) return null;
+            const p1 = { x: startEl.x * zoom, y: startEl.y * zoom };
+            const p2 = { x: hoverWorldPos.x * zoom, y: hoverWorldPos.y * zoom };
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 1) return null;
+
+            const isArc = sequenceRoutingMode === 'schematic_arc';
+            let guidePathD: string;
+
+            if (isArc) {
+              const normalX = -dy / dist;
+              const normalY = dx / dist;
+              const curveOffset = Math.min(dist * 0.18, 28);
+              const midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
+              const midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
+              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+            } else {
+              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} L ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+            }
+
             return (
               <g pointerEvents="none">
-                <line
-                  x1={startEl.x * zoom}
-                  y1={startEl.y * zoom}
-                  x2={hoverWorldPos.x * zoom}
-                  y2={hoverWorldPos.y * zoom}
+                <path
+                  d={guidePathD}
+                  fill="none"
                   stroke="#f59e0b"
                   strokeWidth={2.5}
                   strokeDasharray="6 4"
@@ -2336,26 +2361,39 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
       {/* Banner / Píldora superior cuando se conecta cañería */}
       {isConnectingConduit && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-3.5 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-          <span>
+          <span className="truncate max-w-[280px] sm:max-w-none">
             {pendingConduitStartId
-              ? '⚡ 1° Extremo fijado · Tocá la boca o tablero de destino'
+              ? '⚡ 1° Extremo fijado · Tocá la boca de destino'
               : '⚡ Trazar Cañería: Tocá la primera boca o tablero'}
           </span>
-          {onCancelConnectingConduit && (
+          <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onCancelConnectingConduit();
+                setSequenceRoutingMode(sequenceRoutingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal');
               }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar conexión de cañería"
+              className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 hover:bg-slate-700 text-amber-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap"
+              title="Alternar entre Arco Curvo AEA y Trazado Ortogonal a 90°"
             >
-              ✕
+              {sequenceRoutingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco AEA'}
             </button>
-          )}
+            {onCancelConnectingConduit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancelConnectingConduit();
+                }}
+                className="p-0.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white text-[11px] transition-colors cursor-pointer ml-0.5"
+                title="Cancelar conexión de cañería (Esc)"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       )}
 

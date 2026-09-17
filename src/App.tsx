@@ -430,16 +430,16 @@ export function App() {
                   </div>
                 )}
 
-                {/* Selector de Ruteo (Ortogonal / Arco en Pared) */}
-                {sequence.autoConnectConduits && sequence.routingPlane === 'wall' && (
+                {/* Selector de Ruteo (Arco AEA / Ortogonal) */}
+                {sequence.autoConnectConduits && (
                   <select
                     value={sequence.routingMode}
                     onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
                     className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
-                    title="Modo de trazado de cañería en pared"
+                    title="Modo de trazado de cañería"
                   >
-                    <option value="orthogonal">📐 90° Ortogonal</option>
                     <option value="schematic_arc">⌒ Arco AEA</option>
+                    <option value="orthogonal">📐 90° Ortogonal</option>
                   </select>
                 )}
 
@@ -547,6 +547,18 @@ export function App() {
                       <option value="ceiling_slab">☁ Losa</option>
                       <option value="floor_slab">👣 Piso</option>
                       <option value="wall">🧱 Pared</option>
+                    </select>
+                  )}
+
+                  {/* Selector Geometría (Arco / Ortogonal) en Móvil */}
+                  {sequence.autoConnectConduits && (
+                    <select
+                      value={sequence.routingMode}
+                      onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
+                      className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
+                    >
+                      <option value="schematic_arc">⌒ Arco</option>
+                      <option value="orthogonal">📐 90°</option>
                     </select>
                   )}
 

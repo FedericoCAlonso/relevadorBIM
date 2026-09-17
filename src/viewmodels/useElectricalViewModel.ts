@@ -65,6 +65,7 @@ export interface ElectricalSequenceStoreState {
   setSequenceRoutingPlane: (plane: ConduitRoutingPlane) => void;
   setLastPlacedElementId: (elementId: string | null) => void;
   resetSequence: () => void;
+  resetAllSequenceState: () => void;
 }
 
 export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((set) => ({
@@ -74,7 +75,7 @@ export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((
   autoConnectConduits: true,
   sequenceConduitMaterial: 'hierro_semipesado_rs',
   sequenceConduitDiameterMM: 19,
-  sequenceRoutingMode: 'orthogonal',
+  sequenceRoutingMode: 'schematic_arc',
   sequenceRoutingPlane: 'ceiling_slab',
   lastPlacedElementId: null,
 
@@ -96,7 +97,17 @@ export const useElectricalSequenceStore = create<ElectricalSequenceStoreState>((
   setSequenceRoutingMode: (sequenceRoutingMode) => set({ sequenceRoutingMode }),
   setSequenceRoutingPlane: (sequenceRoutingPlane) => set({ sequenceRoutingPlane }),
   setLastPlacedElementId: (lastPlacedElementId) => set({ lastPlacedElementId }),
-  resetSequence: () => set({ lastPlacedElementId: null })
+  resetSequence: () => set({ lastPlacedElementId: null }),
+  resetAllSequenceState: () =>
+    set({
+      lastPlacedElementId: null,
+      sequenceRoutingMode: 'schematic_arc',
+      sequenceRoutingPlane: 'ceiling_slab',
+      sequencePrefix: 'B',
+      sequenceCircuitId: null,
+      sequencePassingCircuitIds: [],
+      autoConnectConduits: true
+    })
 }));
 
 export interface PlaceElectricalElementInput {

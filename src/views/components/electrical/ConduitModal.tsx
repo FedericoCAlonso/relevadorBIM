@@ -372,22 +372,20 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                 🧱 En Pared
               </button>
             </div>
-            {conduit.routingPlane === 'wall' && (
-              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-600 border-t border-slate-200">
-                <span>Geometría en pared:</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setConduitProperties(conduit.id, {
-                      routingMode: conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal'
-                    })
-                  }
-                  className="px-2 py-0.5 rounded-md bg-white border border-slate-300 font-bold hover:bg-slate-100"
-                >
-                  {conduit.routingMode === 'schematic_arc' ? '⌒ Arco Curvo' : '📐 90° Ortogonal'}
-                </button>
-              </div>
-            )}
+            <div className="flex items-center justify-between pt-1.5 text-[11px] text-slate-600 border-t border-slate-200">
+              <span className="font-semibold">Geometría de trazado en plano:</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setConduitProperties(conduit.id, {
+                    routingMode: conduit.routingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal'
+                  })
+                }
+                className="px-2.5 py-1 rounded-md bg-white border border-slate-300 font-bold hover:bg-slate-100 flex items-center gap-1.5 text-xs text-slate-800 transition-colors shadow-2xs"
+              >
+                <span>{conduit.routingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco Curvo AEA'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Montante Vertical / Pase de Losa (Remate a Distancia) */}

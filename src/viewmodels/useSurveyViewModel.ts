@@ -16,6 +16,7 @@ import {
   DEFAULT_CONDUIT_DIAMETER_MM,
   AEA_CONDUCTOR_COLORS
 } from '../models/electrical/electricalStandards';
+import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
 
@@ -231,6 +232,12 @@ export function useSurveyViewModel() {
           const circ = project.circuits.find((c) => c.id === inheritedCircuitId);
           const wireSec = circ?.wireSectionBaseMM2 || 2.5;
 
+          const seqStore = useElectricalSequenceStore.getState();
+          const seqMode = seqStore.sequenceRoutingMode || 'schematic_arc';
+          const seqPlane = seqStore.sequenceRoutingPlane || 'ceiling_slab';
+          const seqDiam = seqStore.sequenceConduitDiameterMM || DEFAULT_CONDUIT_DIAMETER_MM;
+          const seqMat = seqStore.sequenceConduitMaterial || DEFAULT_CONDUIT_MATERIAL;
+
           const newConduitId = `cond-${Date.now()}`;
           addConduit({
             id: newConduitId,
@@ -240,9 +247,11 @@ export function useSurveyViewModel() {
             toElementId: elementId,
             fromLevelId: project.activeLevelId,
             toLevelId: project.activeLevelId,
-            diameterMM: DEFAULT_CONDUIT_DIAMETER_MM,
-            material: DEFAULT_CONDUIT_MATERIAL,
+            diameterMM: seqDiam,
+            material: seqMat,
             isVerticalRiser: false,
+            routingMode: seqMode,
+            routingPlane: seqPlane,
             conductors: [
               { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
               { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },

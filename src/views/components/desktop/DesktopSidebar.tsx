@@ -1881,6 +1881,42 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </select>
                       </div>
 
+                      {/* Geometría de Trazado (Arco AEA vs Ortogonal) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-amber-950">TRAZADO EN PLANO</label>
+                          <span className="text-[10px] font-mono text-amber-800">
+                            {selectedConduit.routingMode === 'orthogonal' ? 'Ortogonal 90°' : 'Arco AEA'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => updateConduit(selectedConduit.id, { routingMode: 'schematic_arc' })}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 border ${
+                              selectedConduit.routingMode !== 'orthogonal'
+                                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/50'
+                            }`}
+                          >
+                            <span>⌒</span>
+                            <span>Arco AEA</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateConduit(selectedConduit.id, { routingMode: 'orthogonal' })}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 border ${
+                              selectedConduit.routingMode === 'orthogonal'
+                                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/50'
+                            }`}
+                          >
+                            <span>📐</span>
+                            <span>90° Ortogonal</span>
+                          </button>
+                        </div>
+                      </div>
+
                       {/* Factor de Ocupación */}
                       <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
                         <div className="flex items-center justify-between text-xs">

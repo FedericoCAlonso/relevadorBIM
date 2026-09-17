@@ -15,6 +15,7 @@ import { createDefaultLevel } from '../../models/architecture/Level';
 describe('Enlace de Conductos con Tableros y Bocas', () => {
   beforeEach(() => {
     useProjectStore.getState().resetProject();
+    useElectricalSequenceStore.getState().resetAllSequenceState();
   });
 
   it('los símbolos de tableros deben estar registrados en el catálogo con categoría tableros', () => {
@@ -273,5 +274,43 @@ describe('Enlace de Conductos con Tableros y Bocas', () => {
     expect(el4.label).toBe('B2'); // Segunda boca en el circuito C1
     // La cantidad de cañerías no debe haber aumentado
     expect(useProjectStore.getState().project.conduits).toHaveLength(2);
+  });
+
+  it('debe crear cañerías con arco esquemático genérico (schematic_arc) por defecto y permitir alternar a ortogonal', () => {
+    const seqStore = useElectricalSequenceStore.getState();
+    seqStore.resetSequence();
+    seqStore.setAutoConnectConduits(true);
+    seqStore.setSequencePrefix('B');
+    // Verificamos que por defecto el modo sea schematic_arc
+    expect(seqStore.sequenceRoutingMode).toBe('schematic_arc');
+
+    // 1. Insertar dos bocas sin cambiar modo -> debe conectar con arco esquemático
+    const el1 = placeElectricalElementInStore({
+      worldX: 1.0,
+      worldY: 1.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+    const el2 = placeElectricalElementInStore({
+      worldX: 4.0,
+      worldY: 1.0,
+      symbolId: 'sym-planta-boca-techo'
+    });
+
+    const conduits = useProjectStore.getState().project.conduits;
+    expect(conduits).toHaveLength(1);
+    const cond = conduits[0];
+    expect(cond.routingMode).toBe('schematic_arc');
+    expect(cond.fromElementId).toBe(el1.id);
+    expect(cond.toElementId).toBe(el2.id);
+
+    // 2. Modificar la cañería para alternar a 90° ortogonal
+    useProjectStore.getState().updateConduit(cond.id, { routingMode: 'orthogonal' });
+    const updatedCond = useProjectStore.getState().project.conduits.find((c) => c.id === cond.id);
+    expect(updatedCond?.routingMode).toBe('orthogonal');
+
+    // 3. Alternar nuevamente a schematic_arc
+    useProjectStore.getState().updateConduit(cond.id, { routingMode: 'schematic_arc' });
+    const revertedCond = useProjectStore.getState().project.conduits.find((c) => c.id === cond.id);
+    expect(revertedCond?.routingMode).toBe('schematic_arc');
   });
 });
