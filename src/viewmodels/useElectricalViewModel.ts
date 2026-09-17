@@ -267,7 +267,10 @@ export function useElectricalViewModel() {
     addBoxType,
     removeBoxType,
     labelDisplayMode,
-    setLabelDisplayMode
+    setLabelDisplayMode,
+    addPanel,
+    updatePanel,
+    deletePanel
   } = useProjectStore();
 
   const sequenceStore = useElectricalSequenceStore();
@@ -729,6 +732,12 @@ export function useElectricalViewModel() {
     toggleConduitRoutingMode,
     setConduitRoutingPlane,
     setConduitRiserTerminal,
-    setConduitWaypoints
+    setConduitWaypoints,
+
+    // Gestión de Tableros Eléctricos
+    panels: project.panels,
+    addPanel,
+    updatePanel,
+    deletePanel
   };
 }

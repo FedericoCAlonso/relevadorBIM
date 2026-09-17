@@ -325,7 +325,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                   <div>
                     <div className="font-bold text-slate-800">Circuitos y Tableros</div>
                     <div className="text-[11px] text-slate-500">
-                      {project.circuits?.length ?? 0} circuito(s) configurado(s)
+                      {project.circuits?.length ?? 0} circuito(s) · {project.panels?.length ?? 1} tablero(s)
                     </div>
                   </div>
                 </div>

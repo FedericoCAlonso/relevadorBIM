@@ -356,119 +356,215 @@ export function App() {
         <main className={`flex-1 w-full h-full relative ${isDesktop ? 'pb-0' : 'pb-44'}`}>
           {/* Barra Contextual Flotante de Inserción Continua de Símbolos */}
           {selectedSymbolId && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap max-w-[95vw] gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-full shadow-2xl border border-slate-700/80 text-xs animate-in fade-in slide-in-from-top-2 duration-200">
-              {/* Badge de Símbolo Activo */}
-              <div className="flex items-center gap-1.5 font-semibold text-sky-400 pl-1 pr-2 border-r border-slate-700/70">
-                <span className="text-xs">⚡</span>
-                <span className="max-w-[110px] truncate">{getSymbolById(selectedSymbolId)?.label || 'Boca'}</span>
-              </div>
+            isDesktop ? (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center flex-wrap max-w-[95vw] gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-full shadow-2xl border border-slate-700/80 text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* Badge de Símbolo Activo */}
+                <div className="flex items-center gap-1.5 font-semibold text-sky-400 pl-1 pr-2 border-r border-slate-700/70">
+                  <span className="text-xs">⚡</span>
+                  <span className="max-w-[110px] truncate">{getSymbolById(selectedSymbolId)?.label || 'Boca'}</span>
+                </div>
 
-              {/* Prefijo y Próxima Etiqueta Única */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-slate-400 text-[11px]">Pref:</span>
-                <input
-                  type="text"
-                  value={sequence.prefix}
-                  onChange={(e) => sequence.setPrefix(e.target.value)}
-                  className="w-12 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-center font-mono font-bold text-white text-xs focus:border-sky-500 focus:outline-none"
-                  title="Prefijo para la numeración secuencial de bocas"
-                />
-                <span
-                  className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-1.5 py-0.5 rounded select-none"
-                  title="Próxima etiqueta única garantizada sin colisiones"
-                >
-                  {sequence.nextSuggestedLabel}
-                </span>
-              </div>
-
-              {/* Selector de Circuito de la Secuencia */}
-              <div className="flex items-center gap-1.5 border-l border-slate-700/70 pl-2">
-                <span className="text-slate-400 text-[11px]">Circ:</span>
-                <select
-                  value={sequence.circuitId || ''}
-                  onChange={(e) => sequence.setCircuitId(e.target.value || null)}
-                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-xs focus:border-sky-500 focus:outline-none max-w-[125px] truncate"
-                >
-                  <option value="">(Libre / Sin circ.)</option>
-                  {project.circuits.map((circ) => (
-                    <option key={circ.id} value={circ.id}>
-                      {circ.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Switch Auto-Enlace de Cañería */}
-              <label
-                className="flex items-center gap-1.5 cursor-pointer border-l border-slate-700/70 pl-2 select-none"
-                title="Enlazar automáticamente cañería boca a boca durante la secuencia de clics"
-              >
-                <input
-                  type="checkbox"
-                  checked={sequence.autoConnectConduits}
-                  onChange={(e) => sequence.setAutoConnectConduits(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-0 bg-slate-800 border-slate-600 cursor-pointer"
-                />
-                <span className="text-slate-300 text-[11px]">Enlazar</span>
-              </label>
-
-              {/* Selector de Vía de Tendido (Losa, Contrapiso, Pared) */}
-              {sequence.autoConnectConduits && (
-                <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
-                  <select
-                    value={sequence.routingPlane}
-                    onChange={(e) => sequence.setRoutingPlane(e.target.value as any)}
-                    className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
-                    title="Vía física de tendido de cañería (Norma AEA 90364-771)"
+                {/* Prefijo y Próxima Etiqueta Única */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[11px]">Pref:</span>
+                  <input
+                    type="text"
+                    value={sequence.prefix}
+                    onChange={(e) => sequence.setPrefix(e.target.value)}
+                    className="w-12 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-center font-mono font-bold text-white text-xs focus:border-sky-500 focus:outline-none"
+                    title="Prefijo para la numeración secuencial de bocas"
+                  />
+                  <span
+                    className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-1.5 py-0.5 rounded select-none"
+                    title="Próxima etiqueta única garantizada sin colisiones"
                   >
-                    <option value="ceiling_slab">☁ Losa Techo</option>
-                    <option value="floor_slab">👣 Contrapiso</option>
-                    <option value="wall">🧱 Por Pared</option>
+                    {sequence.nextSuggestedLabel}
+                  </span>
+                </div>
+
+                {/* Selector de Circuito de la Secuencia */}
+                <div className="flex items-center gap-1.5 border-l border-slate-700/70 pl-2">
+                  <span className="text-slate-400 text-[11px]">Circ:</span>
+                  <select
+                    value={sequence.circuitId || ''}
+                    onChange={(e) => sequence.setCircuitId(e.target.value || null)}
+                    className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-xs focus:border-sky-500 focus:outline-none max-w-[125px] truncate"
+                  >
+                    <option value="">(Libre / Sin circ.)</option>
+                    {project.circuits.map((circ) => (
+                      <option key={circ.id} value={circ.id}>
+                        {circ.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              )}
 
-              {/* Selector de Ruteo (Ortogonal / Arco en Pared) */}
-              {sequence.autoConnectConduits && sequence.routingPlane === 'wall' && (
-                <select
-                  value={sequence.routingMode}
-                  onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
-                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
-                  title="Modo de trazado de cañería en pared"
+                {/* Switch Auto-Enlace de Cañería */}
+                <label
+                  className="flex items-center gap-1.5 cursor-pointer border-l border-slate-700/70 pl-2 select-none"
+                  title="Enlazar automáticamente cañería boca a boca durante la secuencia de clics"
                 >
-                  <option value="orthogonal">📐 90° Ortogonal</option>
-                  <option value="schematic_arc">⌒ Arco AEA</option>
-                </select>
-              )}
+                  <input
+                    type="checkbox"
+                    checked={sequence.autoConnectConduits}
+                    onChange={(e) => sequence.setAutoConnectConduits(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-0 bg-slate-800 border-slate-600 cursor-pointer"
+                  />
+                  <span className="text-slate-300 text-[11px]">Enlazar</span>
+                </label>
 
-              {/* Selector de Modo de Visualización de Etiquetas */}
-              <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
-                <span className="text-slate-400 text-[11px]">Etq:</span>
-                <select
-                  value={labelDisplayMode}
-                  onChange={(e) => setLabelDisplayMode(e.target.value as any)}
-                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
-                  title="Modo de visualización de etiquetas en plano"
+                {/* Selector de Vía de Tendido (Losa, Contrapiso, Pared) */}
+                {sequence.autoConnectConduits && (
+                  <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
+                    <select
+                      value={sequence.routingPlane}
+                      onChange={(e) => sequence.setRoutingPlane(e.target.value as any)}
+                      className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                      title="Vía física de tendido de cañería (Norma AEA 90364-771)"
+                    >
+                      <option value="ceiling_slab">☁ Losa Techo</option>
+                      <option value="floor_slab">👣 Contrapiso</option>
+                      <option value="wall">🧱 Por Pared</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Selector de Ruteo (Ortogonal / Arco en Pared) */}
+                {sequence.autoConnectConduits && sequence.routingPlane === 'wall' && (
+                  <select
+                    value={sequence.routingMode}
+                    onChange={(e) => sequence.setRoutingMode(e.target.value as any)}
+                    className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                    title="Modo de trazado de cañería en pared"
+                  >
+                    <option value="orthogonal">📐 90° Ortogonal</option>
+                    <option value="schematic_arc">⌒ Arco AEA</option>
+                  </select>
+                )}
+
+                {/* Selector de Modo de Visualización de Etiquetas */}
+                <div className="flex items-center gap-1 border-l border-slate-700/70 pl-2">
+                  <span className="text-slate-400 text-[11px]">Etq:</span>
+                  <select
+                    value={labelDisplayMode}
+                    onChange={(e) => setLabelDisplayMode(e.target.value as any)}
+                    className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-slate-200 text-[11px] focus:border-sky-500 focus:outline-none"
+                    title="Modo de visualización de etiquetas en plano"
+                  >
+                    <option value="full">TP_C1_B1</option>
+                    <option value="circuit_element">C1_B1</option>
+                    <option value="element_only">B1</option>
+                  </select>
+                </div>
+
+                {/* Botón Salir / Terminar */}
+                <button
+                  onClick={() => {
+                    setSelectedSymbolId(null);
+                    resetPlacingTemplate();
+                    sequence.resetSequence();
+                  }}
+                  className="ml-1 p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Finalizar colocación continua (Esc)"
                 >
-                  <option value="full">TP_C1_B1</option>
-                  <option value="circuit_element">C1_B1</option>
-                  <option value="element_only">B1</option>
-                </select>
+                  <X size={14} />
+                </button>
               </div>
+            ) : (
+              /* Versión Móvil: Tarjeta Compacta debajo de la TopStatusBar */
+              <div className="absolute top-16 left-2 right-2 z-40 bg-slate-900/95 backdrop-blur-md text-white p-2 rounded-2xl shadow-xl border border-slate-700/80 text-xs animate-in fade-in slide-in-from-top-2 duration-200 space-y-1.5">
+                {/* Fila 1 Móvil: Símbolo + Próxima Etiqueta + Salir */}
+                <div className="flex items-center justify-between gap-1 border-b border-slate-800 pb-1">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-sky-400 font-bold">⚡</span>
+                    <span className="font-bold text-sky-200 truncate max-w-[130px]">
+                      {getSymbolById(selectedSymbolId)?.label || 'Boca'}
+                    </span>
+                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-1.5 py-0.5 rounded font-bold">
+                      {sequence.nextSuggestedLabel}
+                    </span>
+                  </div>
 
-              {/* Botón Salir / Terminar */}
-              <button
-                onClick={() => {
-                  setSelectedSymbolId(null);
-                  resetPlacingTemplate();
-                  sequence.resetSequence();
-                }}
-                className="ml-1 p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
-                title="Finalizar colocación continua (Esc)"
-              >
-                <X size={14} />
-              </button>
-            </div>
+                  <button
+                    onClick={() => {
+                      setSelectedSymbolId(null);
+                      resetPlacingTemplate();
+                      sequence.resetSequence();
+                    }}
+                    className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                    title="Cerrar"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Fila 2 Móvil: Controles con scroll horizontal suave */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                  {/* Prefijo */}
+                  <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700 shrink-0">
+                    <span className="text-[10px] text-slate-400">Pref:</span>
+                    <input
+                      type="text"
+                      value={sequence.prefix}
+                      onChange={(e) => sequence.setPrefix(e.target.value)}
+                      className="w-10 bg-transparent text-center font-mono font-bold text-white text-xs focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Selector Circuito */}
+                  <select
+                    value={sequence.circuitId || ''}
+                    onChange={(e) => sequence.setCircuitId(e.target.value || null)}
+                    className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none max-w-[120px] truncate shrink-0"
+                  >
+                    <option value="">(Libre / Sin circ.)</option>
+                    {project.circuits.map((circ) => (
+                      <option key={circ.id} value={circ.id}>
+                        {circ.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Switch Enlace */}
+                  <label className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700 shrink-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sequence.autoConnectConduits}
+                      onChange={(e) => sequence.setAutoConnectConduits(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-0 bg-slate-700 border-slate-600"
+                    />
+                    <span className="text-[11px] text-slate-300">Enlazar</span>
+                  </label>
+
+                  {/* Selector Vía */}
+                  {sequence.autoConnectConduits && (
+                    <select
+                      value={sequence.routingPlane}
+                      onChange={(e) => sequence.setRoutingPlane(e.target.value as any)}
+                      className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
+                    >
+                      <option value="ceiling_slab">☁ Losa</option>
+                      <option value="floor_slab">👣 Piso</option>
+                      <option value="wall">🧱 Pared</option>
+                    </select>
+                  )}
+
+                  {/* Selector Formato Etiqueta */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (labelDisplayMode === 'full') setLabelDisplayMode('circuit_element');
+                      else if (labelDisplayMode === 'circuit_element') setLabelDisplayMode('element_only');
+                      else setLabelDisplayMode('full');
+                    }}
+                    className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-[11px] font-mono shrink-0 cursor-pointer"
+                    title="Alternar formato de rótulo"
+                  >
+                    🏷️ {labelDisplayMode === 'full' ? 'TP_C1_B1' : labelDisplayMode === 'circuit_element' ? 'C1_B1' : 'B1'}
+                  </button>
+                </div>
+              </div>
+            )
           )}
           <BimCanvas
             currentDirectionDeg={effectiveAngleDeg}
@@ -620,7 +716,9 @@ export function App() {
 
           {/* Barra interactiva de control cuando hay muestras o patrones activos */}
           {positiveExemplars.length > 0 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center justify-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto max-w-[95vw]">
+            <div className={`absolute left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center justify-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto max-w-[95vw] ${
+              isDesktop ? 'bottom-6' : 'bottom-48'
+            }`}>
               {/* Badge de cantidad detectada y ejemplares */}
               <div className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${detectedPatternMatches.length > 0 ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}`} />

@@ -818,14 +818,25 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     })),
 
   deletePanel: (panelId) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        panels: state.project.panels.filter((p) => p.id !== panelId),
-        circuits: state.project.circuits.filter((c) => c.panelId !== panelId),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
+    set((state) => {
+      if (state.project.panels.length <= 1) {
+        return state;
       }
-    })),
+      const remainingPanels = state.project.panels.filter((p) => p.id !== panelId);
+      const fallbackPanelId = remainingPanels[0].id;
+      return {
+        project: {
+          ...state.project,
+          panels: remainingPanels,
+          circuits: state.project.circuits.map((c) => ({
+            ...c,
+            panelId: c.panelId === panelId ? fallbackPanelId : c.panelId,
+            targetPanelId: c.targetPanelId === panelId ? null : c.targetPanelId
+          })),
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   ensureDefaultCircuits: () => {
     const { project } = get();

@@ -578,7 +578,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 title="Gestionar circuitos y tableros"
               >
                 <Layers size={12} className="text-blue-600" />
-                <span>Circuitos ({project.circuits?.length ?? 0})</span>
+                <span>Tableros & Circ ({project.circuits?.length ?? 0})</span>
               </button>
             )}
             <button
