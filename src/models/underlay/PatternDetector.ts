@@ -49,6 +49,15 @@ export interface NormalizedPatch {
   data: Float32Array; // Valores de densidad normalizados entre 0 y 1
   mean: number;
   std: number;
+  /**
+   * Canales cromáticos normalizados [0.0, 1.0] que representan absorción de tinta
+   * (0 = papel blanco / sin tinta, 1 = saturación de color o negro puro).
+   */
+  colorChannels?: {
+    r: Float32Array;
+    g: Float32Array;
+    b: Float32Array;
+  };
 }
 
 export interface PatternExemplar {
@@ -430,9 +439,15 @@ export function extractNormalizedPatch(
   binaryMask: Uint8Array,
   imgWidth: number,
   box: BoundingBoxPx,
-  patchSize: number = PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE
+  patchSize: number = PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE,
+  rgbaData?: Uint8ClampedArray | Uint8Array
 ): NormalizedPatch {
-  const data = new Float32Array(patchSize * patchSize);
+  const n = patchSize * patchSize;
+  const data = new Float32Array(n);
+  const rChannel = rgbaData ? new Float32Array(n) : null;
+  const gChannel = rgbaData ? new Float32Array(n) : null;
+  const bChannel = rgbaData ? new Float32Array(n) : null;
+
   const stepX = box.width / patchSize;
   const stepY = box.height / patchSize;
 
@@ -444,20 +459,46 @@ export function extractNormalizedPatch(
     const rowOffset = srcY * imgWidth;
     for (let px = 0; px < patchSize; px++) {
       const srcX = Math.floor(box.x + px * stepX);
-      const val = srcX >= 0 && srcX < imgWidth && srcY >= 0 ? binaryMask[rowOffset + srcX] : 0;
+      const isInside = srcX >= 0 && srcX < imgWidth && srcY >= 0;
+      const val = isInside ? binaryMask[rowOffset + srcX] : 0;
       const idx = py * patchSize + px;
       data[idx] = val;
       sum += val;
       sumSq += val * val;
+
+      if (rgbaData && rChannel && gChannel && bChannel) {
+        if (isInside) {
+          const pixelOffset = (rowOffset + srcX) * 4;
+          const r = rgbaData[pixelOffset];
+          const g = rgbaData[pixelOffset + 1];
+          const b = rgbaData[pixelOffset + 2];
+          // Densidad de absorción cromática: 0 = fondo blanco puro, >0 = presencia de tinta
+          rChannel[idx] = (255 - r) / 255;
+          gChannel[idx] = (255 - g) / 255;
+          bChannel[idx] = (255 - b) / 255;
+        } else {
+          rChannel[idx] = 0;
+          gChannel[idx] = 0;
+          bChannel[idx] = 0;
+        }
+      }
     }
   }
 
-  const n = patchSize * patchSize;
   const mean = sum / n;
   const variance = Math.max(1e-7, sumSq / n - mean * mean);
   const std = Math.sqrt(variance);
 
-  return { size: patchSize, data, mean, std };
+  return {
+    size: patchSize,
+    data,
+    mean,
+    std,
+    colorChannels:
+      rChannel && gChannel && bChannel
+        ? { r: rChannel, g: gChannel, b: bChannel }
+        : undefined
+  };
 }
 
 /**
@@ -718,7 +759,8 @@ export function createPatternExemplar(
   imgWidth: number,
   box: BoundingBoxPx,
   isNegative: boolean = false,
-  imgHeight?: number
+  imgHeight?: number,
+  rgbaData?: Uint8ClampedArray | Uint8Array
 ): PatternExemplar | null {
   const tightBox = tightenBoundingBox(binaryMask, imgWidth, box);
   const squareBox = makeSquareBoundingBox(tightBox);
@@ -735,9 +777,13 @@ export function createPatternExemplar(
           resolvedHeight,
           { x: squareBox.x + squareBox.width / 2, y: squareBox.y + squareBox.height / 2 },
           { width: squareBox.width, height: squareBox.height },
-          0
+          0,
+          0,
+          0,
+          PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE,
+          rgbaData
         )
-      : extractNormalizedPatch(binaryMask, imgWidth, squareBox);
+      : extractNormalizedPatch(binaryMask, imgWidth, squareBox, PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE, rgbaData);
 
   return {
     id: `ex-${Date.now()}-${Math.round(squareBox.x)}_${Math.round(squareBox.y)}`,

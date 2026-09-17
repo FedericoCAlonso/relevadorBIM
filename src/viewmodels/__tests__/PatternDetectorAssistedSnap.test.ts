@@ -156,4 +156,75 @@ describe('Auto-muestreo Asistido y Snap Magnético (Smart Assisted Placement)', 
     expect(snapResult.snappedCenterPx.x).toBe(60);
     expect(snapResult.snappedCenterPx.y).toBe(80);
   });
+
+  describe('Automuestreo con 1 Clic en Detección de Patrones', () => {
+    it('debe auto-centrar el recuadro sobre el baricentro exacto de la tinta ante un clic descentrado', () => {
+      const width = 100;
+      const height = 100;
+      const binary = new Uint8Array(width * height);
+
+      // Símbolo en (60, 40)
+      for (let y = 35; y <= 45; y++) {
+        for (let x = 55; x <= 65; x++) {
+          if (Math.hypot(x - 60, y - 40) <= 4) {
+            binary[y * width + x] = 1;
+          }
+        }
+      }
+
+      // Clic del usuario en (63, 38)
+      const userClickPx = { x: 63, y: 38 };
+      const boxSizePx = 20;
+      const roughBox = {
+        x: Math.round(userClickPx.x - boxSizePx / 2),
+        y: Math.round(userClickPx.y - boxSizePx / 2),
+        width: boxSizePx,
+        height: boxSizePx
+      };
+
+      const moments = calculateImageMoments(binary, width, roughBox);
+      expect(moments.m00).toBeGreaterThan(4);
+      const autoCx = Math.round(moments.m10 / moments.m00);
+      const autoCy = Math.round(moments.m01 / moments.m00);
+
+      expect(autoCx).toBe(60);
+      expect(autoCy).toBe(40);
+
+      const centeredBox = {
+        x: Math.round(autoCx - boxSizePx / 2),
+        y: Math.round(autoCy - boxSizePx / 2),
+        width: boxSizePx,
+        height: boxSizePx
+      };
+
+      // Simular búfer RGBA para verificar extracción cromática
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      // Fondo blanco (255, 255, 255, 255)
+      rgba.fill(255);
+      // Tinta roja (255, 0, 0, 255) en los píxeles del símbolo
+      for (let y = 35; y <= 45; y++) {
+        for (let x = 55; x <= 65; x++) {
+          if (Math.hypot(x - 60, y - 40) <= 4) {
+            const idx = (y * width + x) * 4;
+            rgba[idx] = 255;
+            rgba[idx + 1] = 0;
+            rgba[idx + 2] = 0;
+            rgba[idx + 3] = 255;
+          }
+        }
+      }
+
+      const patch = extractNormalizedPatch(binary, width, centeredBox, 24, rgba);
+      expect(patch.colorChannels).toBeDefined();
+      expect(patch.colorChannels!.r).toBeDefined();
+      expect(patch.colorChannels!.g).toBeDefined();
+      expect(patch.colorChannels!.b).toBeDefined();
+
+      // En el centro del parche, los canales G y B deben tener alta absorción (tinta roja)
+      const patchCenterIdx = 12 * 24 + 12;
+      expect(patch.colorChannels!.g[patchCenterIdx]).toBeCloseTo(1.0, 1);
+      expect(patch.colorChannels!.b[patchCenterIdx]).toBeCloseTo(1.0, 1);
+      expect(patch.colorChannels!.r[patchCenterIdx]).toBeCloseTo(0.0, 1);
+    });
+  });
 });

@@ -7,25 +7,28 @@
 
 import { binarizeImageData, PATTERN_DETECTOR_CONSTANTS } from '../models/underlay/PatternDetector';
 
-const maskCache = new Map<string, { width: number; height: number; mask: Uint8Array }>();
+const maskCache = new Map<
+  string,
+  { width: number; height: number; mask: Uint8Array; rgbaData?: Uint8ClampedArray }
+>();
 
 /**
  * Obtiene la máscara binaria en caché de forma síncrona si ya fue cargada.
  */
 export function getCachedUnderlayBinaryMask(
   sheetId: string
-): { width: number; height: number; mask: Uint8Array } | null {
+): { width: number; height: number; mask: Uint8Array; rgbaData?: Uint8ClampedArray } | null {
   return maskCache.get(sheetId) || null;
 }
 
 /**
- * Extrae la máscara binaria de una imagen a partir de su URL o dataURL.
+ * Extrae la máscara binaria y búfer RGBA de una imagen a partir de su URL o dataURL.
  * Utiliza caché en memoria para no re-procesar la misma lámina.
  */
 export async function getUnderlayBinaryMask(
   sheetId: string,
   imageUrl: string
-): Promise<{ width: number; height: number; mask: Uint8Array }> {
+): Promise<{ width: number; height: number; mask: Uint8Array; rgbaData?: Uint8ClampedArray }> {
   if (maskCache.has(sheetId)) {
     return maskCache.get(sheetId)!;
   }
@@ -60,7 +63,7 @@ export async function getUnderlayBinaryMask(
           PATTERN_DETECTOR_CONSTANTS.LUMINANCE_THRESHOLD
         );
 
-        const result = { width: img.width, height: img.height, mask };
+        const result = { width: img.width, height: img.height, mask, rgbaData: imgData.data };
         maskCache.set(sheetId, result);
         resolve(result);
       } catch (err) {

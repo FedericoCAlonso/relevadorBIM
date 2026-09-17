@@ -121,7 +121,10 @@ export function App() {
     activePlacingTemplate,
     capturePlacingTemplate,
     resetPlacingTemplate,
-    getPlacingSnapPoint
+    getPlacingSnapPoint,
+    samplingMode,
+    setSamplingMode,
+    executeAutoSampleAtPoint
   } = usePatternDetectorViewModel();
 
   const [isArchitectureLocked, setIsArchitectureLocked] = useState(false);
@@ -159,8 +162,8 @@ export function App() {
         return;
       }
 
-      // Atajo para alternar el snap magnético con tecla S
-      if (e.key === 's' || e.key === 'S') {
+      // Atajo para alternar el snap magnético con tecla S (solo disponible si hay lámina de fondo activa)
+      if (activeUnderlay && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         toggleSnap();
         return;
@@ -474,19 +477,54 @@ export function App() {
             isSnapEnabled={isSnapEnabled}
             onToggleSnap={toggleSnap}
             getPlacingSnapPoint={getPlacingSnapPoint}
+            patternSamplingMode={samplingMode}
+            onAutoPatternSampleAtPoint={executeAutoSampleAtPoint}
           />
 
           {/* Indicador de muestreo de símbolo activo */}
           {isSamplingPattern && !isAdjustingSampleBox && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2 rounded-2xl shadow-xl border border-cyan-500/60 flex flex-wrap items-center justify-center gap-2.5 text-xs animate-in fade-in slide-in-from-top-2 pointer-events-auto">
               <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+
+              {/* Selector de modo: Automuestreo vs Recuadro manual */}
+              <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setSamplingMode('auto')}
+                  className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                    samplingMode === 'auto'
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Captura automática con 1 clic centrada en el baricentro del símbolo"
+                >
+                  🎯 Auto (1 clic)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSamplingMode('box')}
+                  className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                    samplingMode === 'box'
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Recuadro manual dibujado con el cursor"
+                >
+                  ⬚ Recuadro
+                </button>
+              </div>
+
               <span className="font-semibold text-cyan-200">
-                {isAddingSample && positiveExemplars.length > 0
-                  ? `🎯 Sello Muestra #${positiveExemplars.length + 1}: Clic para estampar con auto-centrado`
-                  : 'Dibujá un recuadro sobre el símbolo base en el plano...'}
+                {samplingMode === 'auto'
+                  ? positiveExemplars.length > 0
+                    ? `🎯 Clic sobre otro símbolo para sumar muestra #${positiveExemplars.length + 1}`
+                    : '🎯 Hacé 1 clic sobre el símbolo en el plano para auto-muestrearlo'
+                  : isAddingSample && positiveExemplars.length > 0
+                    ? `🎯 Sello Muestra #${positiveExemplars.length + 1}: Clic para estampar con auto-centrado`
+                    : 'Dibujá un recuadro sobre el símbolo base en el plano...'}
               </span>
 
-              {isAddingSample && positiveExemplars.length > 0 && (
+              {samplingMode === 'box' && isAddingSample && positiveExemplars.length > 0 && (
                 <div className="flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded-xl border border-slate-700 text-[11px]">
                   <span className="text-slate-400 text-[10px]">Giro:</span>
                   <button

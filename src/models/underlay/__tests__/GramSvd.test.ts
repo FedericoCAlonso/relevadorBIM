@@ -376,4 +376,133 @@ describe('GramSvd - Descomposición Espectral y Consenso Morfológico', () => {
       expect(result.snappedRotationDeg).toBe(90);
     });
   });
+
+  describe('Gram-SVD Multicanal Cromático (Tensor RGB en R^(3d))', () => {
+    const createColorPatch = (
+      size: number,
+      rgbFn: (x: number, y: number) => [number, number, number]
+    ): NormalizedPatch => {
+      const n = size * size;
+      const data = new Float32Array(n);
+      const r = new Float32Array(n);
+      const g = new Float32Array(n);
+      const b = new Float32Array(n);
+
+      let sum = 0;
+      let sumSq = 0;
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const idx = y * size + x;
+          const [cr, cg, cb] = rgbFn(x, y);
+          // cr, cg, cb: densidades de absorción de tinta entre 0.0 y 1.0
+          r[idx] = cr;
+          g[idx] = cg;
+          b[idx] = cb;
+          const composite = Math.max(cr, cg, cb);
+          data[idx] = composite;
+          sum += composite;
+          sumSq += composite * composite;
+        }
+      }
+
+      const mean = sum / n;
+      const std = Math.sqrt(Math.max(1e-7, sumSq / n - mean * mean));
+
+      return {
+        size,
+        data,
+        mean,
+        std,
+        colorChannels: { r, g, b }
+      };
+    };
+
+    it('debe descomponer muestras en color y conservar el autosímbolo cromático en el consenso', () => {
+      // Muestra 1 y 2: Símbolo circular rojo puro (r: 1, g: 0, b: 0 de absorción -> cian/magenta absorbe)
+      const patch1 = createColorPatch(24, (x, y) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 0.0];
+      });
+
+      const patch2 = createColorPatch(24, (x, y) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 0.0];
+      });
+
+      const consensus = computeGramSvdConsensus([patch1, patch2]);
+      expect(consensus).not.toBeNull();
+      expect(consensus!.purityRatio).toBeCloseTo(1.0, 2);
+      expect(consensus!.consensusPatch.colorChannels).toBeDefined();
+
+      const cChannels = consensus!.consensusPatch.colorChannels!;
+      // En el centro (12, 12), el canal R debe ser dominante y los canales G/B nulos
+      const centerIdx = 12 * 24 + 12;
+      expect(cChannels.r[centerIdx]).toBeGreaterThan(0.8);
+      expect(cChannels.g[centerIdx]).toBeCloseTo(0, 2);
+      expect(cChannels.b[centerIdx]).toBeCloseTo(0, 2);
+    });
+
+    it('debe discriminar símbolos de igual forma geométrica pero diferente color mediante correlación multicanal', () => {
+      // Símbolo A: círculo rojo [1, 0, 0]
+      const redCircle = createColorPatch(24, (x, y) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 0.0];
+      });
+
+      // Símbolo B: idéntico círculo pero azul [0, 0, 1]
+      const blueCircle = createColorPatch(24, (x, y) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 5 ? [0.0, 0.0, 1.0] : [0.0, 0.0, 0.0];
+      });
+
+      // Símbolo C: segundo círculo rojo idéntico
+      const redCircle2 = createColorPatch(24, (x, y) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 0.0];
+      });
+
+      const weights = new Float32Array(24 * 24).fill(1.0);
+
+      const scoreRedWithRed = calculateWeightedCorrelation(redCircle, redCircle2, weights);
+      const scoreRedWithBlue = calculateWeightedCorrelation(redCircle, blueCircle, weights);
+
+      // Los dos símbolos rojos deben correlacionar perfectamente (~1.0)
+      expect(scoreRedWithRed).toBeCloseTo(1.0, 2);
+      // El círculo rojo contra el círculo azul ortogonal en el espacio cromático debe dar correlación fuertemente penalizada
+      expect(scoreRedWithBlue).toBeLessThan(scoreRedWithRed - 0.50);
+    });
+
+    it('debe aislar y enviar a cero las perturbaciones de caños de color ajeno presentes en solo una muestra', () => {
+      // Símbolo base: boca verde [0, 1, 0]
+      const baseFn = (x: number, y: number) => {
+        const d = Math.hypot(x - 12, y - 12);
+        return d <= 4 ? [0.0, 1.0, 0.0] : [0.0, 0.0, 0.0];
+      };
+
+      // Muestra 1: boca verde + una cañería azul cruzando horizontalmente
+      const patch1 = createColorPatch(24, (x, y) => {
+        if (y >= 11 && y <= 13 && (x < 6 || x > 18)) {
+          return [0.0, 0.0, 1.0]; // cañería azul
+        }
+        return baseFn(x, y) as [number, number, number];
+      });
+
+      // Muestra 2: boca verde limpia
+      const patch2 = createColorPatch(24, (x, y) => {
+        return baseFn(x, y) as [number, number, number];
+      });
+
+      const consensus = computeGramSvdConsensus([patch1, patch2]);
+      expect(consensus).not.toBeNull();
+
+      // En la zona de la cañería azul (ej. x: 3, y: 12), la varianza es alta -> el peso W debe atenuarse fuertemente
+      const pipeIdx = 12 * 24 + 3;
+      const centerIdx = 12 * 24 + 12;
+
+      expect(consensus!.confidenceWeights[pipeIdx]).toBeLessThan(consensus!.confidenceWeights[centerIdx]);
+      expect(consensus!.confidenceWeights[pipeIdx]).toBeLessThan(0.70);
+      expect(consensus!.confidenceWeights[centerIdx]).toBeGreaterThan(0.95);
+    });
+  });
 });

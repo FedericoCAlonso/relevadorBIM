@@ -58,6 +58,9 @@ export function usePatternDetectorViewModel() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stencilRotationDeg, setStencilRotationDeg] = useState<0 | 90 | 180 | 270>(0);
 
+  // Modo de muestreo de patrones: 'auto' (1 clic con centrado por baricentro) o 'box' (recuadro manual con ajuste)
+  const [samplingMode, setSamplingMode] = useState<'auto' | 'box'>('auto');
+
   // Control global de Snap Magnético (ON / OFF)
   const [isSnapEnabled, setIsSnapEnabled] = useState<boolean>(true);
 
@@ -173,14 +176,14 @@ export function usePatternDetectorViewModel() {
       setErrorMessage(null);
 
       try {
-        const { width, height, mask } = await getUnderlayBinaryMask(
+        const { width, height, mask, rgbaData } = await getUnderlayBinaryMask(
           activeUnderlay.id,
           activeUnderlay.imageUrl
         );
 
-        const newExemplar = createPatternExemplar(mask, width, boxPx, false, height);
+        const newExemplar = createPatternExemplar(mask, width, boxPx, false, height, rgbaData);
         if (!newExemplar) {
-          throw new Error('La región seleccionada no contiene suficiente tinta negra para extraer un símbolo.');
+          throw new Error('La región seleccionada no contiene suficiente trazo de tinta o color para extraer un símbolo.');
         }
 
         const nextPositives = isAddingSample ? [...positiveExemplars, newExemplar] : [newExemplar];
@@ -221,6 +224,106 @@ export function usePatternDetectorViewModel() {
       }
     },
     [activeUnderlay, isAddingSample, positiveExemplars, negativeExemplars]
+  );
+
+  /**
+   * Ejecuta el auto-muestreo inteligente de un símbolo con 1 solo clic en el plano (Modo Auto).
+   * Auto-centra el recuadro sobre el baricentro de tinta/color de la región y extrae
+   * la muestra positiva ejecutando la búsqueda de patrones de inmediato.
+   */
+  const executeAutoSampleAtPoint = useCallback(
+    async (worldPos: { x: number; y: number }, sampleSizeM: number = 0.45) => {
+      if (!activeUnderlay) return;
+
+      setIsDetecting(true);
+      setIsSamplingPattern(false);
+      setErrorMessage(null);
+
+      try {
+        const { width, height, mask, rgbaData } = await getUnderlayBinaryMask(
+          activeUnderlay.id,
+          activeUnderlay.imageUrl
+        );
+        const scale = activeUnderlay.scaleMetersPerPx;
+        const originX = activeUnderlay.originWorldX;
+        const originY = activeUnderlay.originWorldY;
+
+        // Si ya hay muestras previas, preservar exactamente el tamaño del primer ejemplar
+        const sizeMeters = positiveExemplars.length > 0 && stencilSizeWorld
+          ? stencilSizeWorld.width
+          : sampleSizeM;
+        const boxSizePx = Math.max(16, Math.min(96, Math.round(sizeMeters / scale)));
+
+        const centerPx = {
+          x: Math.round((worldPos.x - originX) / scale),
+          y: Math.round((worldPos.y - originY) / scale)
+        };
+
+        const roughBox: BoundingBoxPx = {
+          x: Math.max(0, Math.round(centerPx.x - boxSizePx / 2)),
+          y: Math.max(0, Math.round(centerPx.y - boxSizePx / 2)),
+          width: boxSizePx,
+          height: boxSizePx
+        };
+
+        // Auto-centrado por baricentro de momentos de tinta/color
+        const moments = calculateImageMoments(mask, width, roughBox);
+        let finalBox = roughBox;
+        if (moments && moments.m00 >= 4) {
+          const cx = Math.round(moments.m10 / moments.m00);
+          const cy = Math.round(moments.m01 / moments.m00);
+          finalBox = {
+            x: Math.max(0, Math.round(cx - boxSizePx / 2)),
+            y: Math.max(0, Math.round(cy - boxSizePx / 2)),
+            width: boxSizePx,
+            height: boxSizePx
+          };
+        }
+
+        const newExemplar = createPatternExemplar(mask, width, finalBox, false, height, rgbaData);
+        if (!newExemplar) {
+          throw new Error('No se detectó suficiente trazo o símbolo en el punto clickeado. Intentá hacer clic más cerca del centro del símbolo.');
+        }
+
+        const nextPositives = isAddingSample ? [...positiveExemplars, newExemplar] : [newExemplar];
+        const nextNegatives = isAddingSample ? negativeExemplars : [];
+
+        setPositiveExemplars(nextPositives);
+        setSampleBoxPx(newExemplar.boxPx);
+
+        if (!isAddingSample) {
+          setNegativeExemplars([]);
+          setDismissedMatchIds(new Set());
+        } else {
+          const newMatchId = `match-${Math.round(newExemplar.signature.centroid.x)}_${Math.round(newExemplar.signature.centroid.y)}`;
+          setDismissedMatchIds((prev) => {
+            if (!prev.has(newMatchId)) return prev;
+            const next = new Set(prev);
+            next.delete(newMatchId);
+            return next;
+          });
+        }
+
+        const matches = detectPatternMatchesWithExemplars(
+          mask,
+          width,
+          height,
+          nextPositives,
+          nextNegatives,
+          scale,
+          { x: originX, y: originY },
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+        );
+
+        setDetectedMatches(matches);
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Error al auto-muestrear el símbolo.');
+      } finally {
+        setIsDetecting(false);
+        setIsAddingSample(false);
+      }
+    },
+    [activeUnderlay, isAddingSample, positiveExemplars, negativeExemplars, stencilSizeWorld]
   );
 
   /**
@@ -308,7 +411,7 @@ export function usePatternDetectorViewModel() {
           y: Math.round((centerWorld.y - originY) / scale)
         };
 
-        const { width, height, mask } = await getUnderlayBinaryMask(
+        const { width, height, mask, rgbaData } = await getUnderlayBinaryMask(
           activeUnderlay.id,
           activeUnderlay.imageUrl
         );
@@ -336,7 +439,8 @@ export function usePatternDetectorViewModel() {
           coarseCenter,
           { width: targetBoxSize, height: targetBoxSize },
           positiveExemplars[0].patch,
-          initialAngleRad
+          initialAngleRad,
+          { rgbaData }
         );
 
         const refinedBox: BoundingBoxPx = {
@@ -434,12 +538,12 @@ export function usePatternDetectorViewModel() {
       }
 
       try {
-        const { width, height, mask } = await getUnderlayBinaryMask(
+        const { width, height, mask, rgbaData } = await getUnderlayBinaryMask(
           activeUnderlay.id,
           activeUnderlay.imageUrl
         );
 
-        const negExemplar = createPatternExemplar(mask, width, targetMatch.boxPx, true, height);
+        const negExemplar = createPatternExemplar(mask, width, targetMatch.boxPx, true, height, rgbaData);
         if (negExemplar) {
           const nextNegatives = [...negativeExemplars, negExemplar];
           setNegativeExemplars(nextNegatives);
@@ -597,7 +701,7 @@ export function usePatternDetectorViewModel() {
     async (symbolId: string, worldPos: { x: number; y: number }, sampleSizeM: number = 0.45) => {
       if (!activeUnderlay) return;
       try {
-        const { width, mask } = await getUnderlayBinaryMask(
+        const { width, mask, rgbaData } = await getUnderlayBinaryMask(
           activeUnderlay.id,
           activeUnderlay.imageUrl
         );
@@ -633,7 +737,7 @@ export function usePatternDetectorViewModel() {
           };
         }
 
-        const patch = extractNormalizedPatch(mask, width, finalBox);
+        const patch = extractNormalizedPatch(mask, width, finalBox, PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE, rgbaData);
         setActivePlacingTemplate({
           symbolId,
           patch,
@@ -823,6 +927,10 @@ export function usePatternDetectorViewModel() {
     activePlacingTemplate,
     capturePlacingTemplate,
     resetPlacingTemplate,
-    getPlacingSnapPoint
+    getPlacingSnapPoint,
+    // Modo de muestreo (Auto vs Recuadro)
+    samplingMode,
+    setSamplingMode,
+    executeAutoSampleAtPoint
   };
 }

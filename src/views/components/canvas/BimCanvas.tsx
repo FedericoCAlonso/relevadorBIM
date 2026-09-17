@@ -76,6 +76,8 @@ interface BimCanvasProps {
   onToggleLockArchitecture?: () => void;
   isSnapEnabled?: boolean;
   onToggleSnap?: () => void;
+  patternSamplingMode?: 'auto' | 'box';
+  onAutoPatternSampleAtPoint?: (worldPos: { x: number; y: number }) => void;
   getPlacingSnapPoint?: (
     worldPos: { x: number; y: number },
     symbolId?: string,
@@ -135,7 +137,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onToggleLockArchitecture,
   isSnapEnabled = true,
   onToggleSnap,
-  getPlacingSnapPoint
+  getPlacingSnapPoint,
+  patternSamplingMode = 'auto',
+  onAutoPatternSampleAtPoint
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -257,10 +261,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
     // El snap magnético se activa únicamente si está habilitado globalmente y no se mantiene Shift presionado
     const snapAllowed = isSnapEnabled && !isShiftPressed;
+    // Las asistencias de snap analítico sobre mapa de bits requieren estrictamente un plano cargado
+    const underlaySnapAllowed = snapAllowed && underlaySheet !== null;
 
     if (selectedSymbolId && snapAllowed) {
-      // 0. Prioridad 1: Snap magnético al centroide de un símbolo detectado previamente
-      if (detectedPatternMatches && detectedPatternMatches.length > 0) {
+      // 0. Prioridad 1: Snap magnético al centroide de un símbolo detectado previamente en el plano
+      if (underlaySnapAllowed && detectedPatternMatches && detectedPatternMatches.length > 0) {
         let bestMatch: DetectedPatternMatch | null = null;
         let minD = 0.50; // 50 cm de tolerancia de atracción magnética
         for (const m of detectedPatternMatches) {
@@ -279,7 +285,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       }
 
       // 0.1 Prioridad 1.5: Snap guiado por auto-muestreo asistido del primer símbolo emplazado (Smart Assisted Placement)
-      if (!snappedPattern && getPlacingSnapPoint) {
+      if (!snappedPattern && getPlacingSnapPoint && underlaySnapAllowed) {
         const placingSnap = getPlacingSnapPoint({ x: wx, y: wy }, selectedSymbolId, !snapAllowed);
         if (placingSnap.isSnapped) {
           wx = placingSnap.snappedPos.x;
@@ -326,7 +332,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
 
     // 3. Snap magnético para el esténcil rígido al núcleo de tinta o candidatos detectados
-    if (isSamplingPattern && positiveExemplarsCount > 0 && getStencilSnapPoint && snapAllowed) {
+    if (isSamplingPattern && positiveExemplarsCount > 0 && getStencilSnapPoint && underlaySnapAllowed) {
       const stencilSnap = getStencilSnapPoint({ x: wx, y: wy });
       if (stencilSnap.isSnapped) {
         wx = stencilSnap.snappedPos.x;
@@ -352,6 +358,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       let wx = (e.clientX - rect.left - pan.x) / zoom;
       let wy = (e.clientY - rect.top - pan.y) / zoom;
+
+      // Si estamos en modo auto-muestreo inteligente (1 solo clic, centrado por baricentro)
+      if (patternSamplingMode === 'auto') {
+        justCompletedSamplingRef.current = true;
+        onAutoPatternSampleAtPoint?.({ x: wx, y: wy });
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
+        return;
+      }
 
       // Si estamos en modo esténcil rígido (muestras adicionales con tamaño fijo)
       if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
@@ -490,6 +506,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       const wx = (t.clientX - rect.left - pan.x) / zoom;
       const wy = (t.clientY - rect.top - pan.y) / zoom;
+
+      // Si estamos en modo auto-muestreo inteligente en móvil (1 toque, centrado por baricentro)
+      if (patternSamplingMode === 'auto') {
+        justCompletedSamplingRef.current = true;
+        onAutoPatternSampleAtPoint?.({ x: wx, y: wy });
+        setTimeout(() => {
+          justCompletedSamplingRef.current = false;
+        }, 150);
+        return;
+      }
 
       // Si estamos en modo esténcil rígido en móvil
       if (positiveExemplarsCount > 0 && onPatternStencilPlaced) {
@@ -1745,6 +1771,23 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
+          {/* Caja indicadora del objetivo para Auto-muestreo inteligente (1 clic) */}
+          {isSamplingPattern && patternSamplingMode === 'auto' && hoverWorldPos && (
+            <g pointerEvents="none">
+              <rect
+                x={(hoverWorldPos.x - (stencilSizeWorld?.width || 0.45) / 2) * zoom}
+                y={(hoverWorldPos.y - (stencilSizeWorld?.width || 0.45) / 2) * zoom}
+                width={(stencilSizeWorld?.width || 0.45) * zoom}
+                height={(stencilSizeWorld?.width || 0.45) * zoom}
+                fill="rgba(6, 182, 212, 0.12)"
+                stroke="#06b6d4"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                rx={4}
+              />
+            </g>
+          )}
+
           {/* Recuadro elástico de selección de patrón (Marquesina Muestra #1) */}
           {isSamplingPattern && !isAdjustingSampleBox && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
             <g pointerEvents="none">
@@ -2342,26 +2385,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <DraftingCompass size={16} />
         </button>
 
-        {/* Conmutador de Snap Magnético ON / OFF (Tecla S) */}
-        {onToggleSnap && (
-          <button
-            type="button"
-            onClick={onToggleSnap}
-            className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-              isSnapEnabled
-                ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200'
-                : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-600'
-            }`}
-            title={
-              isSnapEnabled
-                ? 'Snap magnético activado (tecla S para desactivar, o mantener Shift)'
-                : 'Snap magnético desactivado (tecla S para activar)'
-            }
-          >
-            <span className="text-sm select-none">🧲</span>
-          </button>
-        )}
-
         {onToggleLockArchitecture && (
           <button
             type="button"
@@ -2381,10 +2404,29 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </button>
         )}
 
-        {/* Controles de Lámina de Fondo (solo si hay plano cargado) */}
+        {/* Controles de Lámina de Fondo y Snap Analítico (solo si hay plano cargado) */}
         {underlaySheet && (
           <>
             <div className="h-px bg-slate-200 my-0.5" />
+            {/* Conmutador de Snap Magnético ON / OFF (Tecla S) */}
+            {onToggleSnap && (
+              <button
+                type="button"
+                onClick={onToggleSnap}
+                className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
+                  isSnapEnabled
+                    ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200'
+                    : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-600'
+                }`}
+                title={
+                  isSnapEnabled
+                    ? 'Snap magnético activado (tecla S para desactivar, o mantener Shift)'
+                    : 'Snap magnético desactivado (tecla S para activar)'
+                }
+              >
+                <span className="text-sm select-none">🧲</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onToggleUnderlayVisibility}

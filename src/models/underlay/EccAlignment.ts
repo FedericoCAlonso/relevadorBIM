@@ -37,6 +37,7 @@ export interface EccOptions {
   maxTranslationPx?: number;
   maxRotationDeg?: number;
   dampingLambda?: number;
+  rgbaData?: Uint8ClampedArray | Uint8Array;
 }
 
 const DEFAULT_ECC_OPTIONS: Required<EccOptions> = {
@@ -44,7 +45,8 @@ const DEFAULT_ECC_OPTIONS: Required<EccOptions> = {
   convergenceThreshold: 1e-4,
   maxTranslationPx: 5.0,
   maxRotationDeg: 12.0,
-  dampingLambda: 1e-3
+  dampingLambda: 1e-3,
+  rgbaData: undefined as any
 };
 
 /**
@@ -101,9 +103,14 @@ export function extractWarpedPatchBilinear(
   angleRad: number,
   tx: number = 0,
   ty: number = 0,
-  patchSize: number = 24
+  patchSize: number = 24,
+  rgbaData?: Uint8ClampedArray | Uint8Array
 ): NormalizedPatch {
   const data = new Float32Array(patchSize * patchSize);
+  const rChannel = rgbaData ? new Float32Array(patchSize * patchSize) : null;
+  const gChannel = rgbaData ? new Float32Array(patchSize * patchSize) : null;
+  const bChannel = rgbaData ? new Float32Array(patchSize * patchSize) : null;
+
   const cosA = Math.cos(angleRad);
   const sinA = Math.sin(angleRad);
 
@@ -133,6 +140,21 @@ export function extractWarpedPatchBilinear(
       data[idx] = val;
       sum += val;
       sumSq += val * val;
+
+      if (rgbaData && rChannel && gChannel && bChannel) {
+        const px = Math.round(worldX);
+        const py = Math.round(worldY);
+        if (px >= 0 && px < width && py >= 0 && py < height) {
+          const pIdx = (py * width + px) * 4;
+          rChannel[idx] = (255 - rgbaData[pIdx]) / 255;
+          gChannel[idx] = (255 - rgbaData[pIdx + 1]) / 255;
+          bChannel[idx] = (255 - rgbaData[pIdx + 2]) / 255;
+        } else {
+          rChannel[idx] = 0;
+          gChannel[idx] = 0;
+          bChannel[idx] = 0;
+        }
+      }
     }
   }
 
@@ -141,7 +163,16 @@ export function extractWarpedPatchBilinear(
   const variance = Math.max(1e-7, sumSq / n - mean * mean);
   const std = Math.sqrt(variance);
 
-  return { size: patchSize, data, mean, std };
+  return {
+    size: patchSize,
+    data,
+    mean,
+    std,
+    colorChannels:
+      rChannel && gChannel && bChannel
+        ? { r: rChannel, g: gChannel, b: bChannel }
+        : undefined
+  };
 }
 
 /**
@@ -347,7 +378,8 @@ export function alignPatchEccEuclidean(
     finalAngleRad,
     0,
     0,
-    N
+    N,
+    opts.rgbaData
   );
 
   const refinedAngleDeg = Number(((finalAngleRad * 180) / Math.PI).toFixed(1));

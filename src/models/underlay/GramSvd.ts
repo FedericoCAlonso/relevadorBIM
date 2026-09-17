@@ -166,6 +166,7 @@ export function computeGramSvdConsensus(
 
   const k = patches.length;
   const d = patches[0].data.length; // 576 píxeles para 24x24
+  const hasColor = patches.every((p) => p.colorChannels !== undefined);
 
   // Si solo hay 1 muestra, el consenso es la muestra misma con pureza 1.0 y pesos unitarios
   if (k === 1) {
@@ -189,10 +190,18 @@ export function computeGramSvdConsensus(
   for (let i = 0; i < k; i++) {
     for (let j = i; j < k; j++) {
       let dot = 0;
-      const dataI = patches[i].data;
-      const dataJ = patches[j].data;
-      for (let p = 0; p < d; p++) {
-        dot += dataI[p] * dataJ[p];
+      if (hasColor) {
+        const cI = patches[i].colorChannels!;
+        const cJ = patches[j].colorChannels!;
+        for (let p = 0; p < d; p++) {
+          dot += cI.r[p] * cJ.r[p] + cI.g[p] * cJ.g[p] + cI.b[p] * cJ.b[p];
+        }
+      } else {
+        const dataI = patches[i].data;
+        const dataJ = patches[j].data;
+        for (let p = 0; p < d; p++) {
+          dot += dataI[p] * dataJ[p];
+        }
       }
       G[i][j] = dot;
       G[j][i] = dot;
@@ -208,34 +217,91 @@ export function computeGramSvdConsensus(
 
   // 3. Reconstruir el primer vector propio izquierdo u₁ = (1 / sigma₁) * M * v₁
   const eigensymbol = new Float32Array(d);
-  if (sigma1 > 1e-6) {
-    const invSigma1 = 1 / sigma1;
-    for (let p = 0; p < d; p++) {
-      let val = 0;
-      for (let col = 0; col < k; col++) {
-        val += patches[col].data[p] * eigenvectors[col][0];
+  let eigensymbolR: Float32Array | null = null;
+  let eigensymbolG: Float32Array | null = null;
+  let eigensymbolB: Float32Array | null = null;
+
+  if (hasColor) {
+    eigensymbolR = new Float32Array(d);
+    eigensymbolG = new Float32Array(d);
+    eigensymbolB = new Float32Array(d);
+
+    if (sigma1 > 1e-6) {
+      const invSigma1 = 1 / sigma1;
+      for (let p = 0; p < d; p++) {
+        let vr = 0;
+        let vg = 0;
+        let vb = 0;
+        for (let col = 0; col < k; col++) {
+          const vCol = eigenvectors[col][0];
+          vr += patches[col].colorChannels!.r[p] * vCol;
+          vg += patches[col].colorChannels!.g[p] * vCol;
+          vb += patches[col].colorChannels!.b[p] * vCol;
+        }
+        eigensymbolR[p] = vr * invSigma1;
+        eigensymbolG[p] = vg * invSigma1;
+        eigensymbolB[p] = vb * invSigma1;
       }
-      eigensymbol[p] = val * invSigma1;
+    } else {
+      for (let p = 0; p < d; p++) {
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        for (let col = 0; col < k; col++) {
+          sr += patches[col].colorChannels!.r[p];
+          sg += patches[col].colorChannels!.g[p];
+          sb += patches[col].colorChannels!.b[p];
+        }
+        eigensymbolR[p] = sr / k;
+        eigensymbolG[p] = sg / k;
+        eigensymbolB[p] = sb / k;
+      }
+    }
+
+    // Inversión de signo si el autovector quedó invertido por convención de descomposición
+    let eigenColorSum = 0;
+    for (let p = 0; p < d; p++) {
+      eigenColorSum += eigensymbolR[p] + eigensymbolG[p] + eigensymbolB[p];
+    }
+    if (eigenColorSum < 0) {
+      for (let p = 0; p < d; p++) {
+        eigensymbolR[p] = -eigensymbolR[p];
+        eigensymbolG[p] = -eigensymbolG[p];
+        eigensymbolB[p] = -eigensymbolB[p];
+      }
+    }
+
+    for (let p = 0; p < d; p++) {
+      eigensymbol[p] = Math.max(0, eigensymbolR[p], eigensymbolG[p], eigensymbolB[p]);
     }
   } else {
-    // Si la señal es prácticamente nula, promediar linealmente
-    for (let p = 0; p < d; p++) {
-      let sum = 0;
-      for (let col = 0; col < k; col++) {
-        sum += patches[col].data[p];
+    if (sigma1 > 1e-6) {
+      const invSigma1 = 1 / sigma1;
+      for (let p = 0; p < d; p++) {
+        let val = 0;
+        for (let col = 0; col < k; col++) {
+          val += patches[col].data[p] * eigenvectors[col][0];
+        }
+        eigensymbol[p] = val * invSigma1;
       }
-      eigensymbol[p] = sum / k;
+    } else {
+      for (let p = 0; p < d; p++) {
+        let sum = 0;
+        for (let col = 0; col < k; col++) {
+          sum += patches[col].data[p];
+        }
+        eigensymbol[p] = sum / k;
+      }
     }
-  }
 
-  // Asegurar signo positivo de la tinta (si el autovector quedó invertido por convención)
-  let eigenSum = 0;
-  for (let p = 0; p < d; p++) {
-    eigenSum += eigensymbol[p];
-  }
-  if (eigenSum < 0) {
+    let eigenSum = 0;
     for (let p = 0; p < d; p++) {
-      eigensymbol[p] = -eigensymbol[p];
+      eigenSum += eigensymbol[p];
+    }
+    if (eigenSum < 0) {
+      for (let p = 0; p < d; p++) {
+        eigensymbol[p] = -eigensymbol[p];
+      }
     }
   }
 
@@ -245,22 +311,46 @@ export function computeGramSvdConsensus(
 
   // 5. Calcular la máscara de confianza / varianza inversa W[p] = exp(-var[p] / tau)
   const confidenceWeights = new Float32Array(d);
-  for (let p = 0; p < d; p++) {
-    let meanP = 0;
-    for (let i = 0; i < k; i++) {
-      meanP += patches[i].data[p];
-    }
-    meanP /= k;
+  if (hasColor) {
+    for (let p = 0; p < d; p++) {
+      let mr = 0, mg = 0, mb = 0;
+      for (let i = 0; i < k; i++) {
+        mr += patches[i].colorChannels!.r[p];
+        mg += patches[i].colorChannels!.g[p];
+        mb += patches[i].colorChannels!.b[p];
+      }
+      mr /= k; mg /= k; mb /= k;
 
-    let varP = 0;
-    for (let i = 0; i < k; i++) {
-      const diff = patches[i].data[p] - meanP;
-      varP += diff * diff;
+      let vr = 0, vg = 0, vb = 0;
+      for (let i = 0; i < k; i++) {
+        const dr = patches[i].colorChannels!.r[p] - mr;
+        const dg = patches[i].colorChannels!.g[p] - mg;
+        const db = patches[i].colorChannels!.b[p] - mb;
+        vr += dr * dr;
+        vg += dg * dg;
+        vb += db * db;
+      }
+      const avgVar = (vr + vg + vb) / (3 * k);
+      confidenceWeights[p] = Math.exp(-avgVar / temperatureVariance);
     }
-    varP /= k;
+  } else {
+    for (let p = 0; p < d; p++) {
+      let meanP = 0;
+      for (let i = 0; i < k; i++) {
+        meanP += patches[i].data[p];
+      }
+      meanP /= k;
 
-    // Varianza 0 -> peso 1.0. Varianza alta (ruido de caños) -> peso tiende a 0
-    confidenceWeights[p] = Math.exp(-varP / temperatureVariance);
+      let varP = 0;
+      for (let i = 0; i < k; i++) {
+        const diff = patches[i].data[p] - meanP;
+        varP += diff * diff;
+      }
+      varP /= k;
+
+      // Varianza 0 -> peso 1.0. Varianza alta (ruido de caños) -> peso tiende a 0
+      confidenceWeights[p] = Math.exp(-varP / temperatureVariance);
+    }
   }
 
   // 6. Generar el parche normalizado representativo del consenso (para visualización y ZNCC)
@@ -292,6 +382,26 @@ export function computeGramSvdConsensus(
     consensusPatch.data[p] = Math.max(0, Math.min(1, eigensymbol[p] * normFactor));
   }
 
+  // Si hay canales de color, normalizarlos y preservarlos en el consenso
+  if (hasColor && eigensymbolR && eigensymbolG && eigensymbolB) {
+    let maxC = 0;
+    for (let p = 0; p < d; p++) {
+      if (eigensymbolR[p] > maxC) maxC = eigensymbolR[p];
+      if (eigensymbolG[p] > maxC) maxC = eigensymbolG[p];
+      if (eigensymbolB[p] > maxC) maxC = eigensymbolB[p];
+    }
+    const cFactor = maxC > 1e-5 ? 1 / maxC : 1;
+    const rData = new Float32Array(d);
+    const gData = new Float32Array(d);
+    const bData = new Float32Array(d);
+    for (let p = 0; p < d; p++) {
+      rData[p] = Math.max(0, Math.min(1, eigensymbolR[p] * cFactor));
+      gData[p] = Math.max(0, Math.min(1, eigensymbolG[p] * cFactor));
+      bData[p] = Math.max(0, Math.min(1, eigensymbolB[p] * cFactor));
+    }
+    consensusPatch.colorChannels = { r: rData, g: gData, b: bData };
+  }
+
   // 7. Auto-calibrar el umbral mínimo sugerido según las proyecciones de las propias muestras
   let minProjectionScore = 1.0;
   for (let i = 0; i < k; i++) {
@@ -317,6 +427,7 @@ export function computeGramSvdConsensus(
 
 /**
  * Calcula la correlación ponderada entre dos parches usando la máscara de confianza W.
+ * Soporta parches monocromáticos o tensores multicanal RGB concatenados en R^(3d).
  * Ignora píxeles donde W tiende a 0 (líneas de caño o muros que solo estaban en una muestra).
  */
 export function calculateWeightedCorrelation(
@@ -325,6 +436,47 @@ export function calculateWeightedCorrelation(
   weights: Float32Array
 ): number {
   const d = patchA.data.length;
+
+  if (patchA.colorChannels && patchB.colorChannels) {
+    const cA = patchA.colorChannels;
+    const cB = patchB.colorChannels;
+    let weightSum = 0;
+    let meanAr = 0, meanAg = 0, meanAb = 0;
+    let meanBr = 0, meanBg = 0, meanBb = 0;
+
+    for (let p = 0; p < d; p++) {
+      const w = weights[p];
+      weightSum += w;
+      meanAr += w * cA.r[p]; meanAg += w * cA.g[p]; meanAb += w * cA.b[p];
+      meanBr += w * cB.r[p]; meanBg += w * cB.g[p]; meanBb += w * cB.b[p];
+    }
+
+    if (weightSum < 1e-5) return 0;
+    meanAr /= weightSum; meanAg /= weightSum; meanAb /= weightSum;
+    meanBr /= weightSum; meanBg /= weightSum; meanBb /= weightSum;
+
+    let cov = 0;
+    let varA = 0;
+    let varB = 0;
+
+    for (let p = 0; p < d; p++) {
+      const w = weights[p];
+      const dAr = cA.r[p] - meanAr; const dBr = cB.r[p] - meanBr;
+      const dAg = cA.g[p] - meanAg; const dBg = cB.g[p] - meanBg;
+      const dAb = cA.b[p] - meanAb; const dBb = cB.b[p] - meanBb;
+
+      cov += w * (dAr * dBr + dAg * dBg + dAb * dBb);
+      varA += w * (dAr * dAr + dAg * dAg + dAb * dAb);
+      varB += w * (dBr * dBr + dBg * dBg + dBb * dBb);
+    }
+
+    const denom = Math.sqrt(varA * varB);
+    if (denom < 1e-6) return 0;
+
+    const corr = cov / denom;
+    return Number(Math.max(0, Math.min(1, corr)).toFixed(3));
+  }
+
   let weightSum = 0;
   let weightedMeanA = 0;
   let weightedMeanB = 0;
@@ -361,7 +513,8 @@ export function calculateWeightedCorrelation(
 }
 
 /**
- * Rota un parche normalizado en ángulos ortogonales exactos (0°, 90°, 180°, 270°).
+ * Rota un parche normalizado en ángulos ortogonales exactos (0°, 90°, 180°, 270°),
+ * preservando canales cromáticos si están presentes.
  */
 export function rotateNormalizedPatch(
   patch: NormalizedPatch,
@@ -371,6 +524,15 @@ export function rotateNormalizedPatch(
 
   const n = patch.size;
   const rotatedData = new Float32Array(n * n);
+  let rotatedColorChannels: { r: Float32Array; g: Float32Array; b: Float32Array } | undefined;
+
+  if (patch.colorChannels) {
+    rotatedColorChannels = {
+      r: new Float32Array(n * n),
+      g: new Float32Array(n * n),
+      b: new Float32Array(n * n)
+    };
+  }
 
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
@@ -398,6 +560,12 @@ export function rotateNormalizedPatch(
 
       const dstIdx = dstY * n + dstX;
       rotatedData[dstIdx] = patch.data[srcIdx];
+
+      if (patch.colorChannels && rotatedColorChannels) {
+        rotatedColorChannels.r[dstIdx] = patch.colorChannels.r[srcIdx];
+        rotatedColorChannels.g[dstIdx] = patch.colorChannels.g[srcIdx];
+        rotatedColorChannels.b[dstIdx] = patch.colorChannels.b[srcIdx];
+      }
     }
   }
 
@@ -405,7 +573,8 @@ export function rotateNormalizedPatch(
     size: n,
     data: rotatedData,
     mean: patch.mean,
-    std: patch.std
+    std: patch.std,
+    colorChannels: rotatedColorChannels
   };
 }
 
