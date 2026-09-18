@@ -76,9 +76,10 @@ export function extractDominantLabColor(
   const startY = Math.max(0, Math.floor(box.y));
   const endY = Math.ceil(box.y + box.height);
 
-  const lValues: number[] = [];
-  const aValues: number[] = [];
-  const bValues: number[] = [];
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let count = 0;
 
   for (let y = startY; y < endY; y++) {
     const rowOffset = y * imgWidth;
@@ -98,24 +99,19 @@ export function extractDominantLabColor(
       // Descartar fondo blanco puro si no había máscara binaria
       if (!binaryMask && r > 240 && g > 240 && b > 240) continue;
 
-      const lab = rgbToLab(r, g, b);
-      lValues.push(lab[0]);
-      aValues.push(lab[1]);
-      bValues.push(lab[2]);
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      count++;
     }
   }
 
-  if (lValues.length === 0) return null;
+  if (count === 0) return null;
 
-  // Mediana para robustez frente a antialiasing en bordes
-  lValues.sort((v1, v2) => v1 - v2);
-  aValues.sort((v1, v2) => v1 - v2);
-  bValues.sort((v1, v2) => v1 - v2);
+  // Promedio aritmético directo de tinta (extremadamente rápido O(N) sin memoria ni pow reiterados)
+  const avgR = Math.round(sumR / count);
+  const avgG = Math.round(sumG / count);
+  const avgB = Math.round(sumB / count);
 
-  const mid = Math.floor(lValues.length / 2);
-  return [
-    Number(lValues[mid].toFixed(2)),
-    Number(aValues[mid].toFixed(2)),
-    Number(bValues[mid].toFixed(2))
-  ];
+  return rgbToLab(avgR, avgG, avgB);
 }

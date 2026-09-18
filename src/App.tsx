@@ -29,6 +29,7 @@ import { ElectricalReportModal } from './views/components/electrical/ElectricalR
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
+import { UnderlayAdjustModal } from './views/components/underlay/UnderlayAdjustModal';
 import { useElectricalViewModel } from './viewmodels/useElectricalViewModel';
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { X } from 'lucide-react';
@@ -105,7 +106,12 @@ export function App() {
     confirmCalibration: confirmUnderlayCalibration,
     toggleVisibility: toggleUnderlayVisibility,
     cycleOpacity: cycleUnderlayOpacity,
-    removeSheet: removeUnderlaySheet
+    removeSheet: removeUnderlaySheet,
+    showAdjustModal: showUnderlayAdjustModal,
+    isTransforming: isTransformingUnderlay,
+    openAdjustModal: openUnderlayAdjustModal,
+    closeAdjustModal: closeUnderlayAdjustModal,
+    applyAdjustments: applyUnderlayAdjustments
   } = useUnderlaySheetViewModel();
 
   const {
@@ -514,6 +520,7 @@ export function App() {
             onToggleUnderlayVisibility={toggleUnderlayVisibility}
             onCycleUnderlayOpacity={cycleUnderlayOpacity}
             onStartUnderlayCalibration={startUnderlayCalibration}
+            onOpenAdjustUnderlay={openUnderlayAdjustModal}
             isAddingDimension={isAddingDimension}
             dimensionP1={dimensionP1}
             onToggleAddingDimension={() => {
@@ -868,6 +875,7 @@ export function App() {
         hasUnderlay={Boolean(activeUnderlay)}
         onLoadUnderlay={handleLoadUnderlayFile}
         onStartUnderlayCalibration={startUnderlayCalibration}
+        onOpenAdjustUnderlay={openUnderlayAdjustModal}
         onRemoveUnderlay={removeUnderlaySheet}
       />
 
@@ -877,6 +885,15 @@ export function App() {
         initialDistanceM={measuredDistanceWorldM}
         onConfirm={confirmUnderlayCalibration}
         onClose={cancelUnderlayCalibration}
+      />
+
+      {/* Modal de Ajuste (Rotación y Recorte) de la Lámina de Fondo */}
+      <UnderlayAdjustModal
+        isOpen={showUnderlayAdjustModal}
+        underlaySheet={activeUnderlay}
+        isTransforming={isTransformingUnderlay}
+        onClose={closeUnderlayAdjustModal}
+        onApply={applyUnderlayAdjustments}
       />
 
       {/* Overlay de carga al procesar PDF o Imagen */}

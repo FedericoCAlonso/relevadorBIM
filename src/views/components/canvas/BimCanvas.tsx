@@ -51,6 +51,7 @@ interface BimCanvasProps {
   onToggleUnderlayVisibility?: () => void;
   onCycleUnderlayOpacity?: () => void;
   onStartUnderlayCalibration?: () => void;
+  onOpenAdjustUnderlay?: () => void;
   isAddingDimension?: boolean;
   dimensionP1?: { x: number; y: number } | null;
   onToggleAddingDimension?: () => void;
@@ -124,6 +125,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onToggleUnderlayVisibility,
   onCycleUnderlayOpacity,
   onStartUnderlayCalibration,
+  onOpenAdjustUnderlay,
   isAddingDimension = false,
   dimensionP1 = null,
   onToggleAddingDimension,
@@ -3030,6 +3032,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             >
               📏
             </button>
+            {onOpenAdjustUnderlay && (
+              <button
+                type="button"
+                onClick={onOpenAdjustUnderlay}
+                className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all text-xs font-bold"
+                title="Ajustar plano de fondo (rotar / recortar)"
+              >
+                ✂️
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

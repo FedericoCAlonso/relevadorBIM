@@ -23,6 +23,15 @@ export interface UnderlaySheet {
   rotationDeg?: number;      // Giro angular opcional en grados
 }
 
+export interface CropBoxPx {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type UnderlayRotationAngle = 0 | 90 | 180 | 270;
+
 /**
  * Constantes por defecto para láminas de fondo
  */
@@ -68,3 +77,49 @@ export function calculateUnderlayScale(
   const distPixels = measuredDistanceWorld / currentScaleMetersPerPx;
   return Number((realDistanceM / distPixels).toFixed(6));
 }
+
+/**
+ * Calcula el nuevo origen en coordenadas métricas del mundo tras recortar la lámina.
+ * Garantiza que los elementos ya dibujados mantengan su alineación perfecta con el plano.
+ */
+export function calculateCroppedOrigin(
+  currentOrigin: { x: number; y: number },
+  cropBox: CropBoxPx,
+  scaleMetersPerPx: number
+): { x: number; y: number } {
+  return {
+    x: Number((currentOrigin.x + cropBox.x * scaleMetersPerPx).toFixed(4)),
+    y: Number((currentOrigin.y + cropBox.y * scaleMetersPerPx).toFixed(4))
+  };
+}
+
+/**
+ * Calcula el nuevo origen métrico de anclaje tras rotar la lámina (90°, 180°, 270°),
+ * preservando el centro geométrico del plano en el espacio de trabajo del usuario.
+ */
+export function calculateRotatedOrigin(
+  currentOrigin: { x: number; y: number },
+  currentWidthPx: number,
+  currentHeightPx: number,
+  rotationDeg: 90 | 180 | 270,
+  scaleMetersPerPx: number
+): { x: number; y: number } {
+  const curW = currentWidthPx * scaleMetersPerPx;
+  const curH = currentHeightPx * scaleMetersPerPx;
+  const centerX = currentOrigin.x + curW / 2;
+  const centerY = currentOrigin.y + curH / 2;
+
+  if (rotationDeg === 180) {
+    return currentOrigin;
+  }
+
+  // 90° horario o 270° antihorario intercambian los ejes métricos
+  const newW = curH;
+  const newH = curW;
+
+  return {
+    x: Number((centerX - newW / 2).toFixed(4)),
+    y: Number((centerY - newH / 2).toFixed(4))
+  };
+}
+

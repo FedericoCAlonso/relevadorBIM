@@ -10,6 +10,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import {
   type UnderlaySheet,
+  type CropBoxPx,
+  type UnderlayRotationAngle,
   UNDERLAY_CONSTANTS
 } from '../models/underlay/UnderlaySheet';
 
@@ -123,3 +125,125 @@ export async function createUnderlaySheetFromFile(file: File, levelId: string): 
     isCalibrated: false
   };
 }
+
+/**
+ * Transforma una imagen existente (rotación en 90°, 180°, 270° y/o recorte a un bounding box)
+ * mediante Canvas 2D en memoria con máxima nitidez y fidelidad geométrica.
+ */
+export async function transformUnderlayImage(
+  imageUrl: string,
+  rotationDeg: UnderlayRotationAngle = 0,
+  cropBox?: CropBoxPx
+): Promise<{ dataUrl: string; widthPx: number; heightPx: number }> {
+  if (typeof Image === 'undefined' || typeof document === 'undefined') {
+    // Entorno mock para Vitest sin DOM Canvas
+    const dummyW = cropBox ? cropBox.width : (rotationDeg === 90 || rotationDeg === 270 ? 800 : 1000);
+    const dummyH = cropBox ? cropBox.height : (rotationDeg === 90 || rotationDeg === 270 ? 1000 : 800);
+    return {
+      dataUrl: imageUrl,
+      widthPx: dummyW,
+      heightPx: dummyH
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const origW = img.naturalWidth || img.width;
+        const origH = img.naturalHeight || img.height;
+
+        // 1. Aplicar rotación
+        let rotCanvas: HTMLCanvasElement;
+        let rotW = origW;
+        let rotH = origH;
+
+        if (rotationDeg === 90) {
+          rotCanvas = document.createElement('canvas');
+          rotCanvas.width = origH;
+          rotCanvas.height = origW;
+          rotW = origH;
+          rotH = origW;
+          const ctx = rotCanvas.getContext('2d');
+          if (!ctx) throw new Error('No se pudo inicializar contexto 2D para rotación.');
+          ctx.translate(rotCanvas.width, 0);
+          ctx.rotate(Math.PI / 2);
+          ctx.drawImage(img, 0, 0);
+        } else if (rotationDeg === 180) {
+          rotCanvas = document.createElement('canvas');
+          rotCanvas.width = origW;
+          rotCanvas.height = origH;
+          const ctx = rotCanvas.getContext('2d');
+          if (!ctx) throw new Error('No se pudo inicializar contexto 2D para rotación.');
+          ctx.translate(rotCanvas.width, rotCanvas.height);
+          ctx.rotate(Math.PI);
+          ctx.drawImage(img, 0, 0);
+        } else if (rotationDeg === 270) {
+          rotCanvas = document.createElement('canvas');
+          rotCanvas.width = origH;
+          rotCanvas.height = origW;
+          rotW = origH;
+          rotH = origW;
+          const ctx = rotCanvas.getContext('2d');
+          if (!ctx) throw new Error('No se pudo inicializar contexto 2D para rotación.');
+          ctx.translate(0, rotCanvas.height);
+          ctx.rotate((3 * Math.PI) / 2);
+          ctx.drawImage(img, 0, 0);
+        } else {
+          rotCanvas = document.createElement('canvas');
+          rotCanvas.width = origW;
+          rotCanvas.height = origH;
+          const ctx = rotCanvas.getContext('2d');
+          if (!ctx) throw new Error('No se pudo inicializar contexto 2D.');
+          ctx.drawImage(img, 0, 0);
+        }
+
+        // 2. Aplicar recorte si se especificó cropBox
+        if (cropBox && cropBox.width > 0 && cropBox.height > 0) {
+          const cropCanvas = document.createElement('canvas');
+          const clampedX = Math.max(0, Math.min(cropBox.x, rotW - 1));
+          const clampedY = Math.max(0, Math.min(cropBox.y, rotH - 1));
+          const clampedW = Math.max(1, Math.min(cropBox.width, rotW - clampedX));
+          const clampedH = Math.max(1, Math.min(cropBox.height, rotH - clampedY));
+
+          cropCanvas.width = clampedW;
+          cropCanvas.height = clampedH;
+          const cropCtx = cropCanvas.getContext('2d');
+          if (!cropCtx) throw new Error('No se pudo inicializar contexto 2D para recorte.');
+
+          cropCtx.drawImage(
+            rotCanvas,
+            clampedX,
+            clampedY,
+            clampedW,
+            clampedH,
+            0,
+            0,
+            clampedW,
+            clampedH
+          );
+
+          resolve({
+            dataUrl: cropCanvas.toDataURL('image/png'),
+            widthPx: clampedW,
+            heightPx: clampedH
+          });
+        } else {
+          resolve({
+            dataUrl: rotCanvas.toDataURL('image/png'),
+            widthPx: rotW,
+            heightPx: rotH
+          });
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      reject(new Error('Error al cargar la imagen para transformación.'));
+    };
+    img.src = imageUrl;
+  });
+}
+

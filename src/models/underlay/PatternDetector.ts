@@ -20,8 +20,9 @@ export interface BoundingBoxPx {
 
 import {
   computeGramSvdConsensus,
-  calculateMultiRotationWeightedZNCC,
-  rotateNormalizedPatch
+  rotateNormalizedPatch,
+  rotateWeights,
+  calculateWeightedCorrelation
 } from './GramSvd';
 import { extractWarpedPatchBilinear, alignPatchEccEuclidean } from './EccAlignment';
 import { extractDominantLabColor, deltaE, type LabColor } from './ColorLab';
@@ -730,12 +731,32 @@ export function extractDensityCandidates(
   const maxDensity = Math.ceil(expectedPixelCount * 3.0);
 
   const candidates: BoundingBoxPx[] = [];
+  const macroSize = Math.max(64, Math.min(w * 4, 128));
 
-  for (let y = 0; y <= height - h; y += stepY) {
-    for (let x = 0; x <= width - w; x += stepX) {
-      const sum = queryIntegralSum(integral, stride, x, y, x + w, y + h);
-      if (sum >= minDensity && sum <= maxDensity) {
-        candidates.push({ x, y, width: w, height: h });
+  // Poda jerárquica Coarse-to-Fine: saltar macro-bloques vacíos en O(1)
+  for (let my = 0; my < height; my += macroSize) {
+    const mHeight = Math.min(macroSize, height - my);
+    const queryEndY = Math.min(height, my + mHeight + h);
+
+    for (let mx = 0; mx < width; mx += macroSize) {
+      const mWidth = Math.min(macroSize, width - mx);
+      const queryEndX = Math.min(width, mx + mWidth + w);
+
+      // Consulta O(1) de tinta total en el macro-bloque extendido
+      const macroSum = queryIntegralSum(integral, stride, mx, my, queryEndX, queryEndY);
+      if (macroSum < minDensity) {
+        continue;
+      }
+
+      const maxY = Math.min(height - h, my + mHeight);
+      for (let y = my; y <= maxY; y += stepY) {
+        const maxX = Math.min(width - w, mx + mWidth);
+        for (let x = mx; x <= maxX; x += stepX) {
+          const sum = queryIntegralSum(integral, stride, x, y, x + w, y + h);
+          if (sum >= minDensity && sum <= maxDensity) {
+            candidates.push({ x, y, width: w, height: h });
+          }
+        }
       }
     }
   }
@@ -942,10 +963,28 @@ export function detectPatternMatchesWithExemplars(
     height: avgSize
   };
 
-  // 0. Pre-computar consenso SVD si hay 2 o más ejemplares positivos
+  // 0. Pre-computar consenso SVD y sus 4 rotaciones fijas UNA SOLA VEZ fuera del bucle
   const svdConsensus =
     positiveExemplars.length >= 2
       ? computeGramSvdConsensus(positiveExemplars.map((ex) => ex.patch))
+      : null;
+
+  const precomputedSvdRotations =
+    svdConsensus
+      ? ([0, 90, 180, 270] as const).map((angle) => ({
+          patch:
+            angle === 0
+              ? svdConsensus.consensusPatch
+              : rotateNormalizedPatch(svdConsensus.consensusPatch, angle),
+          weights:
+            angle === 0
+              ? svdConsensus.confidenceWeights
+              : rotateWeights(
+                  svdConsensus.confidenceWeights,
+                  svdConsensus.consensusPatch.size,
+                  angle
+                )
+        }))
       : null;
 
   // 1. Extraer candidatos por componentes conexas directamente en la máscara binaria
@@ -1028,30 +1067,53 @@ export function detectPatternMatchesWithExemplars(
 
     if (candSignature) {
       const candPatch = extractNormalizedPatch(binaryMask, imgWidth, centeredBox);
-      const candLab =
-        rgbaData && hasExemplarLab
-          ? extractDominantLabColor(rgbaData, imgWidth, centeredBox, binaryMask)
-          : null;
 
-      // Similitud máxima con las muestras positivas
+      // Paso 1: Similitud geométrica preliminar ultra-rápida (ZNCC y autovalores sin cálculo de color)
       let maxPositiveScore = 0;
       for (const posEx of positiveExemplars) {
-        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx, candLab);
+        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx);
         if (score > maxPositiveScore) {
           maxPositiveScore = score;
         }
       }
 
-      // Si tenemos consenso SVD, contrastar además contra el autosímbolo filtrado
-      // con la máscara de varianza (ignora interferencias ortogonales como caños cruzados)
-      if (svdConsensus) {
-        const consensusScore = calculateMultiRotationWeightedZNCC(
-          candPatch,
-          svdConsensus.consensusPatch,
-          svdConsensus.confidenceWeights
-        );
-        if (consensusScore > maxPositiveScore) {
-          maxPositiveScore = consensusScore;
+      // Si tenemos consenso SVD, contrastar contra parches pre-rotados (cero alocaciones de memoria)
+      if (precomputedSvdRotations) {
+        for (let r = 0; r < precomputedSvdRotations.length; r++) {
+          const rot = precomputedSvdRotations[r];
+          const consensusScore = calculateWeightedCorrelation(
+            candPatch,
+            rot.patch,
+            rot.weights
+          );
+          if (consensusScore > maxPositiveScore) {
+            maxPositiveScore = consensusScore;
+          }
+        }
+      }
+
+      // Descarte geométrico temprano: si la forma difiere sustancialmente (< 65% del umbral),
+      // no gastar ciclos de CPU en color CIELAB ni en penalizaciones de negativos
+      if (maxPositiveScore < similarityThreshold * 0.65) {
+        continue;
+      }
+
+      // Paso 2: Evaluación perezosa de color CIELAB (solo para el ~2% de candidatos geométricamente viables)
+      const candLab =
+        rgbaData && hasExemplarLab
+          ? extractDominantLabColor(rgbaData, imgWidth, centeredBox, binaryMask)
+          : null;
+
+      // Penalización cromática suave si el color CAD difiere perceptiblemente (Delta E > 35)
+      if (candLab) {
+        for (const posEx of positiveExemplars) {
+          if (posEx.dominantLab) {
+            const dE = deltaE(posEx.dominantLab, candLab);
+            if (dE > 35) {
+              const colorDampening = Math.max(0.70, 1 - (dE - 35) / 100);
+              maxPositiveScore *= colorDampening;
+            }
+          }
         }
       }
 

@@ -7,11 +7,19 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
-import { createUnderlaySheetFromFile } from '../services/underlaySheetService';
+import {
+  createUnderlaySheetFromFile,
+  transformUnderlayImage
+} from '../services/underlaySheetService';
+import { clearUnderlayMaskCache } from '../services/imageProcessingService';
 import {
   calculateUnderlayScale,
+  calculateCroppedOrigin,
+  calculateRotatedOrigin,
   UNDERLAY_CONSTANTS,
-  type UnderlaySheet
+  type UnderlaySheet,
+  type CropBoxPx,
+  type UnderlayRotationAngle
 } from '../models/underlay/UnderlaySheet';
 
 export function useUnderlaySheetViewModel() {
@@ -29,6 +37,10 @@ export function useUnderlaySheetViewModel() {
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Estados del flujo de ajuste (rotación y recorte)
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [isTransforming, setIsTransforming] = useState(false);
 
   /**
    * Carga una imagen o PDF como lámina de fondo del nivel activo
@@ -156,7 +168,88 @@ export function useUnderlaySheetViewModel() {
   const removeSheet = useCallback(() => {
     removeUnderlaySheet(activeLevelId);
     cancelCalibration();
+    setShowAdjustModal(false);
   }, [activeLevelId, removeUnderlaySheet, cancelCalibration]);
+
+  /**
+   * Abre el modal interactivo de rotación y recorte
+   */
+  const openAdjustModal = useCallback(() => {
+    setShowAdjustModal(true);
+  }, []);
+
+  /**
+   * Cierra el modal de rotación y recorte
+   */
+  const closeAdjustModal = useCallback(() => {
+    setShowAdjustModal(false);
+  }, []);
+
+  /**
+   * Aplica rotación (90°, 180°, 270°) y/o recorte a la lámina de fondo,
+   * preservando la alineación métrica de los elementos ya relevados.
+   */
+  const applyAdjustments = useCallback(
+    async (rotationDeg: UnderlayRotationAngle = 0, cropBox?: CropBoxPx) => {
+      if (!activeUnderlay) return;
+
+      try {
+        setIsTransforming(true);
+        setErrorMessage(null);
+
+        const transformed = await transformUnderlayImage(
+          activeUnderlay.imageUrl,
+          rotationDeg,
+          cropBox
+        );
+
+        let originX = activeUnderlay.originWorldX;
+        let originY = activeUnderlay.originWorldY;
+
+        // 1. Si hubo rotación, calcular nuevo origen conservando el centro geométrico
+        if (rotationDeg !== 0) {
+          const rotOrigin = calculateRotatedOrigin(
+            { x: originX, y: originY },
+            activeUnderlay.widthPx,
+            activeUnderlay.heightPx,
+            rotationDeg,
+            activeUnderlay.scaleMetersPerPx
+          );
+          originX = rotOrigin.x;
+          originY = rotOrigin.y;
+        }
+
+        // 2. Si hubo recorte, desplazar el origen relativo a las coordenadas de corte
+        if (cropBox && cropBox.width > 0 && cropBox.height > 0) {
+          const cropOrigin = calculateCroppedOrigin(
+            { x: originX, y: originY },
+            cropBox,
+            activeUnderlay.scaleMetersPerPx
+          );
+          originX = cropOrigin.x;
+          originY = cropOrigin.y;
+        }
+
+        // Limpiar caché de máscaras binarias del analizador de patrones
+        clearUnderlayMaskCache(activeUnderlay.id);
+
+        updateUnderlaySheet(activeLevelId, {
+          imageUrl: transformed.dataUrl,
+          widthPx: transformed.widthPx,
+          heightPx: transformed.heightPx,
+          originWorldX: originX,
+          originWorldY: originY
+        });
+
+        setShowAdjustModal(false);
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Error al aplicar rotación o recorte al plano.');
+      } finally {
+        setIsTransforming(false);
+      }
+    },
+    [activeUnderlay, activeLevelId, updateUnderlaySheet]
+  );
 
   return {
     activeUnderlay,
@@ -175,6 +268,11 @@ export function useUnderlaySheetViewModel() {
     confirmCalibration,
     toggleVisibility,
     cycleOpacity,
-    removeSheet
+    removeSheet,
+    showAdjustModal,
+    isTransforming,
+    openAdjustModal,
+    closeAdjustModal,
+    applyAdjustments
   };
 }

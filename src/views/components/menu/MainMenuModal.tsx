@@ -22,7 +22,8 @@ import {
   FileImage,
   Ruler,
   Trash2,
-  Layers
+  Layers,
+  Sliders
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -36,6 +37,7 @@ interface MainMenuModalProps {
   hasUnderlay?: boolean;
   onLoadUnderlay?: (file: File) => void;
   onStartUnderlayCalibration?: () => void;
+  onOpenAdjustUnderlay?: () => void;
   onRemoveUnderlay?: () => void;
 }
 
@@ -50,6 +52,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   hasUnderlay = false,
   onLoadUnderlay,
   onStartUnderlayCalibration,
+  onOpenAdjustUnderlay,
   onRemoveUnderlay
 }) => {
   const { project, resetProject, loadProject } = useProjectStore();
@@ -225,20 +228,35 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             </button>
 
             {hasUnderlay && (
-              <div className="flex gap-2 pt-1">
-                {onStartUnderlayCalibration && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onStartUnderlayCalibration();
-                    }}
-                    className="flex-1 py-2 px-3 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold rounded-xl text-[11px] border border-sky-200 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <Ruler size={13} />
-                    Calibrar Escala (2 clics)
-                  </button>
-                )}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex gap-2">
+                  {onOpenAdjustUnderlay && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenAdjustUnderlay();
+                      }}
+                      className="flex-1 py-2 px-3 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold rounded-xl text-[11px] border border-sky-200 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Sliders size={13} />
+                      Rotar / Recortar
+                    </button>
+                  )}
+                  {onStartUnderlayCalibration && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onStartUnderlayCalibration();
+                      }}
+                      className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-[11px] border border-slate-200 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Ruler size={13} />
+                      Calibrar (2 clics)
+                    </button>
+                  )}
+                </div>
                 {onRemoveUnderlay && (
                   <button
                     type="button"
@@ -248,10 +266,10 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                         onClose();
                       }
                     }}
-                    className="py-2 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-[11px] border border-red-200 transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-[11px] border border-red-200 transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Trash2 size={13} />
-                    Quitar Plano
+                    Quitar Plano de Fondo
                   </button>
                 )}
               </div>
