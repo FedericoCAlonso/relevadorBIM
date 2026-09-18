@@ -624,3 +624,23 @@ export function getDefaultSizeForConduitType(
   return getDefaultSizeForConduitMaterial(typeId as ConduitMaterial);
 }
 
+/**
+ * Retorna la denominación legible del tipo/material de canalización (genérico o específico),
+ * respetando que puede ser caño, bandeja, manguera, etc.
+ */
+export function getConduitMaterialDisplayName(
+  material?: ConduitMaterial,
+  catalog?: ProjectMaterialCatalog
+): string {
+  if (!material) return 'Canalización';
+  if (catalog?.conduitTypes) {
+    const custom = catalog.conduitTypes.find((c) => c.id === material);
+    if (custom) return custom.name;
+  }
+  const found = CONDUIT_MATERIALS_CATALOG.find((m) => m.id === material);
+  if (found) {
+    return found.label.replace(/^\d+\.\s*/, '');
+  }
+  return material;
+}
+

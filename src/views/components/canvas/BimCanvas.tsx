@@ -22,10 +22,15 @@ import {
   generateRoundedPolylineSvgPath,
   computeOrthogonalConduitPoints,
   getConduitVerticalTransitions,
-  formatElementLabel
+  formatElementLabel,
+  computeWaypointTransitionMetrics,
+  isBendAngleValid,
+  getNextElevationDetailTag
 } from '../../../models/electrical/calculations';
+import type { WaypointTransitionMetrics } from '../../../models/electrical/calculations';
+import { getConduitMaterialDisplayName } from '../../../models/electrical/electricalStandards';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
-import type { SpatialElectricalNode } from '../../../models/electrical/ElectricalModel';
+import type { SpatialElectricalNode, ConduitWaypoint, Conduit } from '../../../models/electrical/ElectricalModel';
 
 export type { WallPlacementSnap };
 
@@ -41,7 +46,7 @@ interface BimCanvasProps {
   onCancelConnectingConduit?: () => void;
   isDesktop?: boolean;
   editingConduitRouteId?: string | null;
-  onUpdateConduitWaypoint?: (conduitId: string, index: number, point: { x: number; y: number }) => void;
+  onUpdateConduitWaypoint?: (conduitId: string, index: number, patch: Partial<ConduitWaypoint>) => void;
   onRemoveConduitWaypoint?: (conduitId: string, index: number) => void;
   underlaySheet?: UnderlaySheet | null;
   isCalibratingUnderlay?: boolean;
@@ -101,6 +106,267 @@ interface BimCanvasProps {
     score: number;
   };
 }
+
+interface ConduitElevationCardProps {
+  conduit: Conduit;
+  wp: ConduitWaypoint;
+  wpIndex: number;
+  tag: string;
+  metrics: WaypointTransitionMetrics;
+  materialName: string;
+  mode: 'in_situ' | 'sheet';
+  onClose: () => void;
+  onPlaceOnSheet?: () => void;
+  onReintegrateInSitu?: () => void;
+  onUpdateWaypoint: (patch: Partial<ConduitWaypoint>) => void;
+  onStartDragSheet?: (e: React.MouseEvent | React.TouchEvent) => void;
+}
+
+const ConduitElevationSectionCard: React.FC<ConduitElevationCardProps> = ({
+  wp,
+  tag,
+  metrics,
+  materialName,
+  mode,
+  onClose,
+  onPlaceOnSheet,
+  onReintegrateInSitu,
+  onUpdateWaypoint,
+  onStartDragSheet
+}) => {
+  const { dz, angleDeg, hypotenuseM, offsetPlantaM } = metrics;
+  const isAngle90 = angleDeg >= 85;
+
+  const yTop = 26;
+  const yBottom = 78;
+  const x1 = isAngle90 ? 120 : 88;
+  const x2 = isAngle90 ? 120 : 152;
+
+  const pathD = isAngle90
+    ? `M 24 ${yTop} L ${x1 - 10} ${yTop} Q ${x1} ${yTop} ${x1} ${yTop + 10} L ${x1} ${yBottom - 10} Q ${x1} ${yBottom} ${x1 + 10} ${yBottom} L 216 ${yBottom}`
+    : `M 24 ${yTop} L ${x1 - 10} ${yTop} Q ${x1} ${yTop} ${x1 + 8} ${yTop + 8} L ${x2 - 8} ${yBottom - 8} Q ${x2} ${yBottom} ${x2 + 10} ${yBottom} L 216 ${yBottom}`;
+
+  const fromZ = wp.elevationFromZ ?? 2.60;
+  const toZ = wp.elevationToZ ?? 1.10;
+
+  return (
+    <div
+      className="bg-slate-900/95 backdrop-blur-md rounded-2xl border border-amber-500/70 shadow-2xl p-2.5 w-[290px] text-white select-none pointer-events-auto"
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      {/* Barra de título */}
+      <div
+        className={`flex items-center justify-between pb-1.5 border-b border-slate-800 text-[11px] ${
+          mode === 'sheet' ? 'cursor-grab active:cursor-grabbing' : ''
+        }`}
+        onMouseDown={mode === 'sheet' ? onStartDragSheet : undefined}
+        onTouchStart={mode === 'sheet' ? onStartDragSheet : undefined}
+      >
+        <div className="flex items-center gap-1.5 truncate">
+          {mode === 'sheet' && <span className="text-slate-400">✥</span>}
+          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/40">
+            VISTA {tag}
+          </span>
+          <span className="truncate text-slate-300 font-semibold max-w-[130px]" title={materialName}>
+            {materialName.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {mode === 'in_situ' && onPlaceOnSheet && (
+            <button
+              type="button"
+              onClick={onPlaceOnSheet}
+              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-700 transition-colors cursor-pointer"
+              title="Emplazar como viñeta independiente en la lámina"
+            >
+              ⤢ Lámina
+            </button>
+          )}
+          {mode === 'sheet' && onReintegrateInSitu && (
+            <button
+              type="button"
+              onClick={onReintegrateInSitu}
+              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-mono border border-slate-700 transition-colors cursor-pointer"
+              title="Reintegrar corte al quiebre in situ"
+            >
+              ⤺ In Situ
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-5 h-5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
+            title="Cerrar vista"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Perfil del corte lateral (SVG acotado de curva y contracurva) */}
+      <div className="my-1.5 bg-slate-950 rounded-xl p-1.5 border border-slate-800/80">
+        <svg viewBox="0 0 240 96" className="w-full h-24">
+          {/* Líneas guía de cota horizontal */}
+          <line x1="16" y1={yTop} x2="224" y2={yTop} stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
+          <line x1="16" y1={yBottom} x2="224" y2={yBottom} stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
+
+          {/* Rótulos de cota Z */}
+          <text x="14" y={yTop + 3} textAnchor="end" fontSize="8.5" fill="#94a3b8" className="font-mono">
+            {fromZ.toFixed(2)}m
+          </text>
+          <text x="14" y={yBottom + 3} textAnchor="end" fontSize="8.5" fill="#94a3b8" className="font-mono">
+            {toZ.toFixed(2)}m
+          </text>
+
+          {/* Trazo continuo de la canalización con curvas */}
+          <path d={pathD} fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Curva y contracurva */}
+          <circle cx={x1} cy={yTop} r="3.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="1" />
+          <circle cx={x2} cy={yBottom} r="3.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="1" />
+
+          {/* Cota vertical ΔZ */}
+          <line x1="228" y1={yTop} x2="228" y2={yBottom} stroke="#06b6d4" strokeWidth="1" />
+          <line x1="225" y1={yTop} x2="231" y2={yTop} stroke="#06b6d4" strokeWidth="1" />
+          <line x1="225" y1={yBottom} x2="231" y2={yBottom} stroke="#06b6d4" strokeWidth="1" />
+          <text x="224" y={(yTop + yBottom) / 2 + 3} textAnchor="end" fontSize="8" fill="#06b6d4" className="font-mono font-bold">
+            ΔZ {dz.toFixed(2)}m
+          </text>
+
+          {/* Acotaciones de ángulo, hipotenusa y desplazamiento si es inclinado */}
+          {!isAngle90 && (
+            <>
+              <text x={(x1 + x2) / 2 - 10} y={(yTop + yBottom) / 2 - 4} fontSize="8" fill="#fbbf24" className="font-mono font-bold">
+                45°
+              </text>
+              <text x={(x1 + x2) / 2} y={(yTop + yBottom) / 2 + 10} textAnchor="middle" fontSize="8" fill="#38bdf8" className="font-mono">
+                H={hypotenuseM.toFixed(2)}m
+              </text>
+              <line x1={x1} y1="90" x2={x2} y2="90" stroke="#c084fc" strokeWidth="1" />
+              <text x={(x1 + x2) / 2} y="88" textAnchor="middle" fontSize="7.5" fill="#c084fc" className="font-mono">
+                ΔL {offsetPlantaM.toFixed(2)}m
+              </text>
+            </>
+          )}
+        </svg>
+      </div>
+
+      {/* Controles interactivos de configuración */}
+      <div className="space-y-1.5 text-[11px]">
+        {/* Selector de ángulo de curva */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Ángulo de curva:</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ transitionAngleDeg: 90 })}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                isAngle90
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              90° Plomo
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ transitionAngleDeg: 45 })}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                !isAngle90
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              45° Desvío
+            </button>
+          </div>
+        </div>
+
+        {/* Cota Z Origen */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Cota Z1 (Origen):</span>
+          <div className="flex items-center gap-1 font-mono">
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationFromZ: Math.max(0, Number((fromZ - 0.10).toFixed(2))) })}
+              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs cursor-pointer"
+            >
+              -
+            </button>
+            <span className="w-12 text-center font-bold text-amber-300">{fromZ.toFixed(2)}m</span>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationFromZ: Number((fromZ + 0.10).toFixed(2)) })}
+              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs cursor-pointer"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationFromZ: 2.60 })}
+              className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 border border-slate-700 cursor-pointer"
+              title="Cielorraso 2.60m"
+            >
+              Techo
+            </button>
+          </div>
+        </div>
+
+        {/* Cota Z Destino */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Cota Z2 (Destino):</span>
+          <div className="flex items-center gap-1 font-mono">
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationToZ: Math.max(0, Number((toZ - 0.10).toFixed(2))) })}
+              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs cursor-pointer"
+            >
+              -
+            </button>
+            <span className="w-12 text-center font-bold text-amber-300">{toZ.toFixed(2)}m</span>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationToZ: Number((toZ + 0.10).toFixed(2)) })}
+              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs cursor-pointer"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationToZ: 1.10 })}
+              className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 border border-slate-700 cursor-pointer"
+              title="Llave de luz 1.10m"
+            >
+              Llave
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateWaypoint({ elevationToZ: 0.40 })}
+              className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300 border border-slate-700 cursor-pointer"
+              title="Tomacorriente 0.40m"
+            >
+              Toma
+            </button>
+          </div>
+        </div>
+
+        {/* Cómputo técnico en vivo */}
+        <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-800 text-[10px] font-mono">
+          <div className="bg-slate-950/80 px-2 py-1 rounded border border-slate-800">
+            <span className="text-slate-400 block text-[9px]">Desarrollo (H):</span>
+            <span className="font-bold text-amber-300">{hypotenuseM.toFixed(2)} m</span>
+          </div>
+          <div className="bg-slate-950/80 px-2 py-1 rounded border border-slate-800">
+            <span className="text-slate-400 block text-[9px]">Δ Planta (L):</span>
+            <span className="font-bold text-purple-300">{offsetPlantaM.toFixed(2)} m</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const BimCanvas: React.FC<BimCanvasProps> = ({
   currentDirectionDeg,
@@ -231,6 +497,15 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     origWpY: number;
     moved: boolean;
   } | null>(null);
+  const activeSheetVignetteDragRef = useRef<{
+    conduitId: string;
+    wpIndex: number;
+    startX: number;
+    startY: number;
+    origSheetX: number;
+    origSheetY: number;
+  } | null>(null);
+  const isDraggingObjectRef = useRef<boolean>(false);
 
   // Control para evitar clics espurios al finalizar un gesto de arrastre o paneo
   const lastDragEndTimeRef = useRef<number>(0);
@@ -480,6 +755,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (activeSheetVignetteDragRef.current) {
+      const drag = activeSheetVignetteDragRef.current;
+      const dxWorld = (e.clientX - drag.startX) / zoom;
+      const dyWorld = (e.clientY - drag.startY) / zoom;
+      onUpdateConduitWaypoint?.(drag.conduitId, drag.wpIndex, {
+        sheetPosition: {
+          x: Number((drag.origSheetX + dxWorld).toFixed(2)),
+          y: Number((drag.origSheetY + dyWorld).toFixed(2))
+        }
+      });
+      return;
+    }
+
     if (isDragging) {
       if (mouseDragRef.current) {
         const dist = Math.hypot(e.clientX - mouseDragRef.current.startX, e.clientY - mouseDragRef.current.startY);
@@ -492,6 +780,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (activeSheetVignetteDragRef.current) {
+      activeSheetVignetteDragRef.current = null;
+      isDraggingObjectRef.current = false;
+      lastDragEndTimeRef.current = Date.now();
+      return;
+    }
+
     if (activeAdjustHandle) {
       setActiveAdjustHandle(null);
       adjustDragStartRef.current = null;
@@ -544,6 +839,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   // Manejo Táctil Móvil: Paneo con 1 dedo y Pellizco (Pinch-to-zoom) con 2 dedos
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isDraggingObjectRef.current) return;
+
     if (isSamplingPattern && e.touches.length === 1 && containerRef.current) {
       const t = e.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
@@ -667,6 +964,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (activeSheetVignetteDragRef.current && e.touches.length === 1) {
+      const t = e.touches[0];
+      const drag = activeSheetVignetteDragRef.current;
+      const dxWorld = (t.clientX - drag.startX) / zoom;
+      const dyWorld = (t.clientY - drag.startY) / zoom;
+      onUpdateConduitWaypoint?.(drag.conduitId, drag.wpIndex, {
+        sheetPosition: {
+          x: Number((drag.origSheetX + dxWorld).toFixed(2)),
+          y: Number((drag.origSheetY + dyWorld).toFixed(2))
+        }
+      });
+      return;
+    }
+
+    if (isDraggingObjectRef.current) return;
     if (!touchStateRef.current) return;
 
     if (touchStateRef.current.type === 'single' && e.touches.length === 1) {
@@ -711,6 +1023,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   const handleTouchEnd = () => {
+    if (activeSheetVignetteDragRef.current) {
+      activeSheetVignetteDragRef.current = null;
+    }
+    if (activeWaypointDragRef.current) {
+      activeWaypointDragRef.current = null;
+    }
+    isDraggingObjectRef.current = false;
+
     if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
       const dist = Math.hypot(hoverWorldPos.x - samplingStartWorldPos.x, hoverWorldPos.y - samplingStartWorldPos.y);
       if (dist >= 0.10) {
@@ -1160,7 +1480,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             fill={isAnchor ? '#2563eb' : '#64748b'}
             stroke="#ffffff"
             strokeWidth={1.5}
-            className="hover:scale-125 transition-transform"
+            className="hover:stroke-blue-400 hover:stroke-[2.5px] transition-colors"
           />
         </g>
       );
@@ -1396,98 +1716,310 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
-          {/* Marcadores de Quiebres Interactivos (Waypoints) cuando la cañería está seleccionada o en edición */}
+          {/* Símbolos de Proyección Normalizados (Flechas Pentagonales CAD con letra de Vista) */}
+          {conduit.routingMode !== 'schematic_arc' &&
+            waypointsPx &&
+            waypointsPx.map((wpPx, idx) => {
+              const wpModel = conduit.waypoints?.[idx];
+              if (!wpModel) return null;
+              const isElev =
+                wpModel.kind === 'elevation_change' ||
+                wpModel.isVerticalTransition ||
+                (wpModel.elevationFromZ !== undefined && wpModel.elevationToZ !== undefined);
+              if (!isElev) return null;
+
+              const tag = wpModel.tag || 'A';
+              const pPrev = idx === 0 ? p1 : waypointsPx[idx - 1];
+              const pNext = idx === waypointsPx.length - 1 ? p2 : waypointsPx[idx + 1];
+              const tDx = pNext.x - pPrev.x;
+              const tDy = pNext.y - pPrev.y;
+              const tLen = Math.hypot(tDx, tDy) || 1;
+              const tx = tDx / tLen;
+              const ty = tDy / tLen;
+
+              const sideSign = wpModel.viewDirection === 'right' ? -1 : 1;
+              const nx = -ty * sideSign;
+              const ny = tx * sideSign;
+              const normAngleDeg = Math.atan2(ny, nx) * (180 / Math.PI);
+              const metrics = computeWaypointTransitionMetrics(wpModel);
+              const offsetPx = metrics.offsetPlantaM * zoom;
+              const isAngle90 = metrics.angleDeg >= 85;
+
+              return (
+                <g key={`proj-symbol-${conduit.id}-${idx}`}>
+                  {/* Si el quiebre es inclinado (< 90°), graficar contracurva desplazada según la hipotenusa */}
+                  {!isAngle90 && metrics.offsetPlantaM > 0 && (
+                    <g pointerEvents="none">
+                      <line
+                        x1={wpPx.x}
+                        y1={wpPx.y}
+                        x2={wpPx.x + tx * offsetPx}
+                        y2={wpPx.y + ty * offsetPx}
+                        stroke="#c084fc"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                      <circle
+                        cx={wpPx.x + tx * offsetPx}
+                        cy={wpPx.y + ty * offsetPx}
+                        r={4.5}
+                        fill="#c084fc"
+                        stroke="#ffffff"
+                        strokeWidth={1.5}
+                      />
+                    </g>
+                  )}
+
+                  {/* Flecha pentagonal de proyección CAD normalizada apuntando en la dirección del corte */}
+                  <g
+                    transform={`translate(${wpPx.x + nx * 16}, ${wpPx.y + ny * 16}) rotate(${normAngleDeg})`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateConduitWaypoint?.(conduit.id, idx, {
+                        isOpenInSitu: wpModel.isPlacedOnSheet ? true : !wpModel.isOpenInSitu,
+                        ...(wpModel.isPlacedOnSheet ? { isPlacedOnSheet: false } : {})
+                      });
+                    }}
+                    className="cursor-pointer group/arrow"
+                  >
+                    <title>{`VISTA ${tag} · Clic para abrir corte in situ`}</title>
+                    <polygon
+                      points="-11,-9 3,-9 14,0 3,9 -11,9"
+                      fill="#0f172a"
+                      stroke="#f59e0b"
+                      strokeWidth={1.8}
+                      className="group-hover/arrow:fill-slate-800 transition-colors drop-shadow-sm"
+                    />
+                    <text
+                      x="-2.5"
+                      y="3.5"
+                      textAnchor="middle"
+                      fontSize={9.5}
+                      fontWeight="bold"
+                      fill="#ffffff"
+                      className="font-mono select-none pointer-events-none"
+                      transform={`rotate(${-normAngleDeg})`}
+                    >
+                      {tag}
+                    </text>
+                  </g>
+                </g>
+              );
+            })}
+
+          {/* Marcadores de Quiebres Interactivos (Waypoints) cuando la canalización está seleccionada o en edición */}
           {(isSelected || editingConduitRouteId === conduit.id) &&
             conduit.routingMode !== 'schematic_arc' &&
             waypointsPx &&
             waypointsPx.length > 0 && (
               <g className="conduit-waypoints-handles">
-                {waypointsPx.map((wp, idx) => (
-                  <g
-                    key={`wp-handle-${conduit.id}-${idx}`}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      try {
-                        (e.currentTarget as Element).setPointerCapture(e.pointerId);
-                      } catch {
-                        // Fallback
-                      }
-                      activeWaypointDragRef.current = {
-                        conduitId: conduit.id,
-                        wpIndex: idx,
-                        startX: e.clientX,
-                        startY: e.clientY,
-                        origWpX: conduit.waypoints![idx].x,
-                        origWpY: conduit.waypoints![idx].y,
-                        moved: false
-                      };
-                    }}
-                    onPointerMove={(e) => {
-                      if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
-                        e.stopPropagation();
-                        const drag = activeWaypointDragRef.current;
-                        const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-                        if (dist > 3) drag.moved = true;
-                        const dxWorld = (e.clientX - drag.startX) / zoom;
-                        const dyWorld = (e.clientY - drag.startY) / zoom;
-                        onUpdateConduitWaypoint?.(conduit.id, idx, {
-                          x: Number((drag.origWpX + dxWorld).toFixed(3)),
-                          y: Number((drag.origWpY + dyWorld).toFixed(3))
-                        });
-                      }
-                    }}
-                    onPointerUp={(e) => {
-                      if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
-                        e.stopPropagation();
-                        try {
-                          (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                        } catch {
-                          // Ignore
-                        }
-                        activeWaypointDragRef.current = null;
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onRemoveConduitWaypoint?.(conduit.id, idx);
-                    }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveConduitWaypoint?.(conduit.id, idx);
-                    }}
-                    className="cursor-move"
-                  >
-                    <circle
-                      cx={wp.x}
-                      cy={wp.y}
-                      r={13}
-                      fill="none"
-                      stroke="#f59e0b"
-                      strokeWidth={1.5}
-                      strokeDasharray="3 3"
-                    />
-                    <circle
-                      cx={wp.x}
-                      cy={wp.y}
-                      r={9}
-                      fill="#f59e0b"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                      className="hover:scale-125 transition-transform"
-                    />
-                    <text
-                      x={wp.x}
-                      y={wp.y + 3}
-                      textAnchor="middle"
-                      fontSize={8}
-                      fill="#ffffff"
-                      className="font-mono font-bold select-none pointer-events-none"
-                    >
-                      P{idx + 1}
-                    </text>
-                  </g>
-                ))}
+                {waypointsPx.map((wp, idx) => {
+                  const wpModel = conduit.waypoints![idx];
+                  const isElev =
+                    wpModel.kind === 'elevation_change' ||
+                    wpModel.isVerticalTransition ||
+                    (wpModel.elevationFromZ !== undefined && wpModel.elevationToZ !== undefined);
+
+                  return (
+                    <g key={`wp-handle-${conduit.id}-${idx}`}>
+                      <g
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          isDraggingObjectRef.current = true;
+                          try {
+                            (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                          } catch {
+                            // Fallback
+                          }
+                          activeWaypointDragRef.current = {
+                            conduitId: conduit.id,
+                            wpIndex: idx,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            origWpX: conduit.waypoints![idx].x,
+                            origWpY: conduit.waypoints![idx].y,
+                            moved: false
+                          };
+                        }}
+                        onPointerMove={(e) => {
+                          if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
+                            e.stopPropagation();
+                            const drag = activeWaypointDragRef.current;
+                            const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+                            if (dist > 3) drag.moved = true;
+                            const dxWorld = (e.clientX - drag.startX) / zoom;
+                            const dyWorld = (e.clientY - drag.startY) / zoom;
+                            const candX = Number((drag.origWpX + dxWorld).toFixed(3));
+                            const candY = Number((drag.origWpY + dyWorld).toFixed(3));
+
+                            // Restricción 1.a: los ángulos no pueden ser mayores a 90°
+                            const pPrev = idx === 0 ? { x: elFrom.x, y: elFrom.y } : conduit.waypoints![idx - 1];
+                            const pNext =
+                              idx === conduit.waypoints!.length - 1
+                                ? { x: elTo.x, y: elTo.y }
+                                : conduit.waypoints![idx + 1];
+                            if (isBendAngleValid(pPrev, { x: candX, y: candY }, pNext)) {
+                              onUpdateConduitWaypoint?.(conduit.id, idx, {
+                                x: candX,
+                                y: candY
+                              });
+                            }
+                          }
+                        }}
+                        onPointerUp={(e) => {
+                          if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
+                            e.stopPropagation();
+                            try {
+                              (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                            } catch {
+                              // Ignore
+                            }
+                            activeWaypointDragRef.current = null;
+                            isDraggingObjectRef.current = false;
+                          }
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          isDraggingObjectRef.current = true;
+                          if (e.touches.length === 1) {
+                            const t = e.touches[0];
+                            activeWaypointDragRef.current = {
+                              conduitId: conduit.id,
+                              wpIndex: idx,
+                              startX: t.clientX,
+                              startY: t.clientY,
+                              origWpX: conduit.waypoints![idx].x,
+                              origWpY: conduit.waypoints![idx].y,
+                              moved: false
+                            };
+                          }
+                        }}
+                        onTouchMove={(e) => {
+                          if (
+                            activeWaypointDragRef.current &&
+                            activeWaypointDragRef.current.wpIndex === idx &&
+                            e.touches.length === 1
+                          ) {
+                            e.stopPropagation();
+                            const t = e.touches[0];
+                            const drag = activeWaypointDragRef.current;
+                            const dist = Math.hypot(t.clientX - drag.startX, t.clientY - drag.startY);
+                            if (dist > 3) drag.moved = true;
+                            const dxWorld = (t.clientX - drag.startX) / zoom;
+                            const dyWorld = (t.clientY - drag.startY) / zoom;
+                            const candX = Number((drag.origWpX + dxWorld).toFixed(3));
+                            const candY = Number((drag.origWpY + dyWorld).toFixed(3));
+
+                            const pPrev = idx === 0 ? { x: elFrom.x, y: elFrom.y } : conduit.waypoints![idx - 1];
+                            const pNext =
+                              idx === conduit.waypoints!.length - 1
+                                ? { x: elTo.x, y: elTo.y }
+                                : conduit.waypoints![idx + 1];
+                            if (isBendAngleValid(pPrev, { x: candX, y: candY }, pNext)) {
+                              onUpdateConduitWaypoint?.(conduit.id, idx, {
+                                x: candX,
+                                y: candY
+                              });
+                            }
+                          }
+                        }}
+                        onTouchEnd={(e) => {
+                          e.stopPropagation();
+                          activeWaypointDragRef.current = null;
+                          isDraggingObjectRef.current = false;
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onRemoveConduitWaypoint?.(conduit.id, idx);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveConduitWaypoint?.(conduit.id, idx);
+                        }}
+                        className="cursor-move"
+                      >
+                        {/* Diana táctil amplia de 36px de diámetro invisible (sin rebote ni jitter) */}
+                        <circle cx={wp.x} cy={wp.y} r={18} fill="transparent" />
+                        <circle
+                          cx={wp.x}
+                          cy={wp.y}
+                          r={13}
+                          fill="none"
+                          stroke="#f59e0b"
+                          strokeWidth={1.5}
+                          strokeDasharray="3 3"
+                          className="pointer-events-none"
+                        />
+                        <circle
+                          cx={wp.x}
+                          cy={wp.y}
+                          r={9}
+                          fill="#f59e0b"
+                          stroke="#ffffff"
+                          strokeWidth={2}
+                          className="hover:stroke-amber-300 hover:stroke-[3px] transition-colors pointer-events-none"
+                        />
+                        <text
+                          x={wp.x}
+                          y={wp.y + 3}
+                          textAnchor="middle"
+                          fontSize={8}
+                          fill="#ffffff"
+                          className="font-mono font-bold select-none pointer-events-none"
+                        >
+                          P{idx + 1}
+                        </text>
+                      </g>
+
+                      {/* Si no es un salto de nivel, botón rápido para convertirlo en salto de cota */}
+                      {!isElev && (
+                        <g
+                          transform={`translate(${wp.x}, ${wp.y - 22})`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const existingTags = project.conduits.flatMap((c) =>
+                              (c.waypoints || []).map((w) => w.tag).filter(Boolean) as string[]
+                            );
+                            const nextTag = getNextElevationDetailTag(existingTags);
+                            onUpdateConduitWaypoint?.(conduit.id, idx, {
+                              kind: 'elevation_change',
+                              transitionAngleDeg: 90,
+                              elevationFromZ: 2.60,
+                              elevationToZ: 1.10,
+                              tag: nextTag,
+                              isOpenInSitu: true
+                            });
+                          }}
+                          className="cursor-pointer group/elevbtn"
+                        >
+                          <rect
+                            x="-20"
+                            y="-8"
+                            width="40"
+                            height="16"
+                            rx="8"
+                            fill="#0f172a"
+                            stroke="#f59e0b"
+                            strokeWidth={1}
+                            className="group-hover/elevbtn:fill-amber-950 transition-colors shadow-xs"
+                          />
+                          <text
+                            x="0"
+                            y="3.5"
+                            textAnchor="middle"
+                            fontSize={8}
+                            fontWeight="bold"
+                            fill="#fbbf24"
+                            className="font-mono select-none"
+                          >
+                            ↕ Vista
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
               </g>
             )}
         </g>
@@ -1960,6 +2492,48 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     setSelectedEntity,
     deleteDimensionLine
   ]);
+
+  // 8. Lista de detalles de transiciones verticales en canalizaciones (Vistas de corte A, B, C...)
+  const elevationDetailsList = useMemo(() => {
+    const items: Array<{
+      conduit: Conduit;
+      wp: ConduitWaypoint;
+      wpIndex: number;
+      tag: string;
+      posPx: { x: number; y: number };
+      metrics: WaypointTransitionMetrics;
+      materialName: string;
+    }> = [];
+
+    project.conduits.forEach((conduit) => {
+      if (conduit.fromLevelId !== project.activeLevelId && conduit.toLevelId !== project.activeLevelId) return;
+      if (!conduit.waypoints) return;
+
+      conduit.waypoints.forEach((wp, idx) => {
+        const isElev =
+          wp.kind === 'elevation_change' ||
+          wp.isVerticalTransition ||
+          (wp.elevationFromZ !== undefined && wp.elevationToZ !== undefined);
+        if (!isElev) return;
+
+        const tag = wp.tag || 'A';
+        const metrics = computeWaypointTransitionMetrics(wp);
+        const materialName = getConduitMaterialDisplayName(conduit.material, project.materialCatalog);
+
+        items.push({
+          conduit,
+          wp,
+          wpIndex: idx,
+          tag,
+          posPx: { x: wp.x * zoom, y: wp.y * zoom },
+          metrics,
+          materialName
+        });
+      });
+    });
+
+    return items;
+  }, [project.conduits, project.activeLevelId, project.materialCatalog, zoom]);
 
   return (
     <div
@@ -2661,8 +3235,107 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               )}
             </g>
           )}
+
+          {/* Líneas guía para detalles de corte in situ activos */}
+          {elevationDetailsList.map((item) => {
+            if (!item.wp.isOpenInSitu || item.wp.isPlacedOnSheet) return null;
+            const originX = item.posPx.x;
+            const originY = item.posPx.y;
+            const targetX = item.posPx.x + 28;
+            const targetY = item.posPx.y - 40;
+            return (
+              <g key={`leader-${item.conduit.id}-${item.wpIndex}`} className="pointer-events-none">
+                <circle cx={originX} cy={originY} r={3} fill="#f59e0b" />
+                <polyline
+                  points={`${originX},${originY} ${originX + 16},${targetY} ${targetX},${targetY}`}
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth={1.5}
+                  strokeDasharray="3 3"
+                />
+              </g>
+            );
+          })}
         </g>
       </svg>
+
+      {/* 9. Tarjetas Flotantes de Cortes de Elevación (In Situ o en Lámina) */}
+      {elevationDetailsList.map((item) => {
+        const { conduit, wp, wpIndex, tag, posPx, metrics, materialName } = item;
+        const isInSitu = wp.isOpenInSitu && !wp.isPlacedOnSheet;
+        const isSheet = wp.isPlacedOnSheet === true;
+
+        if (!isInSitu && !isSheet) return null;
+
+        const leftPx = isSheet
+          ? (wp.sheetPosition?.x ?? (wp.x + 3)) * zoom + pan.x
+          : posPx.x + pan.x + 28;
+        const topPx = isSheet
+          ? (wp.sheetPosition?.y ?? (wp.y - 3)) * zoom + pan.y
+          : posPx.y + pan.y - 80;
+
+        return (
+          <div
+            key={`elev-card-${conduit.id}-${wpIndex}`}
+            className="absolute z-30 transition-transform duration-75 ease-out"
+            style={{
+              left: `${leftPx}px`,
+              top: `${topPx}px`
+            }}
+          >
+            <ConduitElevationSectionCard
+              conduit={conduit}
+              wp={wp}
+              wpIndex={wpIndex}
+              tag={tag}
+              metrics={metrics}
+              materialName={materialName}
+              mode={isSheet ? 'sheet' : 'in_situ'}
+              onClose={() => {
+                onUpdateConduitWaypoint?.(conduit.id, wpIndex, {
+                  isOpenInSitu: false,
+                  isPlacedOnSheet: false
+                });
+              }}
+              onPlaceOnSheet={() => {
+                onUpdateConduitWaypoint?.(conduit.id, wpIndex, {
+                  isOpenInSitu: false,
+                  isPlacedOnSheet: true,
+                  sheetPosition: wp.sheetPosition ?? {
+                    x: Number((wp.x + 2.5).toFixed(2)),
+                    y: Number((wp.y - 2.0).toFixed(2))
+                  }
+                });
+              }}
+              onReintegrateInSitu={() => {
+                onUpdateConduitWaypoint?.(conduit.id, wpIndex, {
+                  isOpenInSitu: true,
+                  isPlacedOnSheet: false
+                });
+              }}
+              onUpdateWaypoint={(patch) => {
+                onUpdateConduitWaypoint?.(conduit.id, wpIndex, patch);
+              }}
+              onStartDragSheet={(e) => {
+                isDraggingObjectRef.current = true;
+                const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+                const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+                const currentSheetX = wp.sheetPosition?.x ?? (wp.x + 2.5);
+                const currentSheetY = wp.sheetPosition?.y ?? (wp.y - 2.0);
+
+                activeSheetVignetteDragRef.current = {
+                  conduitId: conduit.id,
+                  wpIndex,
+                  startX: clientX,
+                  startY: clientY,
+                  origSheetX: currentSheetX,
+                  origSheetY: currentSheetY
+                };
+              }}
+            />
+          </div>
+        );
+      })}
 
       {/* Banner / Píldora superior cuando se conecta cañería (visible solo en escritorio) */}
       {isConnectingConduit && isDesktop && (
@@ -2670,7 +3343,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
           <span className="truncate max-w-[280px] sm:max-w-none">
             {!pendingConduitStartId
-              ? '⚡ Trazar Cañería: Tocá la primera boca o tablero'
+              ? '⚡ Trazar Canalización: Tocá la primera boca o tablero'
               : sequenceRoutingMode === 'schematic_arc'
               ? '⚡ 1° Extremo fijado · Tocá la boca o tablero de destino'
               : (pendingConduitWaypoints?.length || 0) === 0
@@ -2715,7 +3388,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   onCancelConnectingConduit();
                 }}
                 className="p-0.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white text-[11px] transition-colors cursor-pointer ml-0.5"
-                title="Cancelar conexión de cañería (Esc)"
+                title="Cancelar conexión de canalización (Esc)"
               >
                 ✕
               </button>

@@ -104,11 +104,16 @@ export function getConduitLengthBreakdown(params: {
     dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
   }
 
-  // Sumar desniveles explícitos en waypoints intermedios si existen
+  // Sumar desniveles explícitos y transiciones verticales en waypoints intermedios si existen
   if (waypoints && waypoints.length > 0) {
     for (const wp of waypoints) {
-      if (typeof wp.dzLocal === 'number' && wp.dzLocal > 0) {
-        dzLocal += wp.dzLocal;
+      if (
+        wp.kind === 'elevation_change' ||
+        (wp.elevationFromZ !== undefined && wp.elevationToZ !== undefined) ||
+        (typeof wp.dzLocal === 'number' && wp.dzLocal > 0)
+      ) {
+        const metrics = computeWaypointTransitionMetrics(wp);
+        dzLocal += metrics.hypotenuseM;
       }
     }
   }
@@ -556,3 +561,81 @@ export function getConduitVerticalTransitions(
     };
   }
 }
+
+export interface WaypointTransitionMetrics {
+  dz: number;
+  angleDeg: number;
+  hypotenuseM: number;
+  offsetPlantaM: number;
+}
+
+/**
+ * Calcula la trigonometría precisa de una transición vertical en un quiebre de canalización:
+ * - A 90° (a plomo): la contracurva coincide en planta (desplazamiento 0) y H = dz.
+ * - A < 90° (desvío): la contracurva se desplaza según la hipotenusa (H = dz / sin(α), ΔL = dz / tan(α)).
+ */
+export function computeWaypointTransitionMetrics(wp: ConduitWaypoint): WaypointTransitionMetrics {
+  const dz = (wp.elevationFromZ !== undefined && wp.elevationToZ !== undefined)
+    ? Math.abs(wp.elevationToZ - wp.elevationFromZ)
+    : (typeof wp.dzLocal === 'number' && wp.dzLocal > 0 ? wp.dzLocal : 0);
+
+  const angleDeg = Math.min(90, Math.max(15, wp.transitionAngleDeg || 90));
+  const rad = (angleDeg * Math.PI) / 180;
+  const sinVal = Math.sin(rad);
+  const tanVal = Math.tan(rad);
+
+  const hypotenuseM = sinVal > 0.001 ? Number((dz / sinVal).toFixed(3)) : dz;
+  const offsetPlantaM = (angleDeg < 90 && tanVal > 0.001) ? Number((dz / tanVal).toFixed(3)) : 0;
+
+  return {
+    dz: Number(dz.toFixed(3)),
+    angleDeg,
+    hypotenuseM,
+    offsetPlantaM
+  };
+}
+
+/**
+ * Verifica si el ángulo de deflexión entre dos tramos consecutivos no supera 90°.
+ * En canalizaciones eléctricas, giros de más de 90° (vuelta en U / ángulo interior agudo < 90°)
+ * están prohibidos porque impiden enhebrar conductores sin caja de paso.
+ */
+export function isBendAngleValid(
+  pPrev: { x: number; y: number },
+  pCorner: { x: number; y: number },
+  pNext: { x: number; y: number }
+): boolean {
+  const ux = pCorner.x - pPrev.x;
+  const uy = pCorner.y - pPrev.y;
+  const vx = pNext.x - pCorner.x;
+  const vy = pNext.y - pCorner.y;
+
+  const lenU = Math.hypot(ux, uy);
+  const lenV = Math.hypot(vx, vy);
+  if (lenU < 0.01 || lenV < 0.01) return true;
+
+  // Producto punto normalizado (coseno del ángulo de deflexión).
+  // Giro <= 90° equivale a dot >= -0.0001 (cos(90°) = 0)
+  const dot = (ux * vx + uy * vy) / (lenU * lenV);
+  return dot >= -0.0001;
+}
+
+/**
+ * Calcula la siguiente letra disponible para la vista de corte (A, B, C... Z, A1, B1...)
+ */
+export function getNextElevationDetailTag(existingTags: string[]): string {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const set = new Set(existingTags);
+  for (let i = 0; i < letters.length; i++) {
+    if (!set.has(letters[i])) return letters[i];
+  }
+  let count = 1;
+  while (true) {
+    for (let i = 0; i < letters.length; i++) {
+      const candidate = `${letters[i]}${count}`;
+      if (!set.has(candidate)) return candidate;
+    }
+    count++;
+  }
+}
+

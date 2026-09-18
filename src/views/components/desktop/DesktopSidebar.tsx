@@ -2034,7 +2034,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold text-slate-700">
-                            Ocupación de cañería:
+                            Ocupación de canalización:
                           </span>
                           <span className="font-mono font-bold text-slate-700">
                             {occupancy.occupancyPercent}% (Capacidad máx: 35.0%)

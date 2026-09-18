@@ -155,6 +155,16 @@ export interface ConduitWaypoint {
   isVerticalTransition?: boolean;
   transitionType?: 'none' | 'subida' | 'bajada';
   dzLocal?: number;
+  // Propiedades enriquecidas para corte lateral de canalización, vistas y lámina
+  kind?: 'planar' | 'elevation_change';
+  elevationFromZ?: number;
+  elevationToZ?: number;
+  transitionAngleDeg?: number; // 90° (a plomo) o 45° (desvío con hipotenusa)
+  tag?: string;                // Letra identificatoria de vista normalizada (ej: "A", "B")
+  viewDirection?: 'left' | 'right'; // Sentido de observación respecto a la marcha
+  isOpenInSitu?: boolean;      // Callout in situ abierto para edición
+  isPlacedOnSheet?: boolean;   // Viñeta colocada en un sector libre de la lámina
+  sheetPosition?: { x: number; y: number }; // Coordenadas en el plano donde se ubica la viñeta
 }
 
 export type ConduitRoutingMode = 'orthogonal' | 'schematic_arc';

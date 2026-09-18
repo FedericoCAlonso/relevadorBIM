@@ -170,7 +170,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-1.5 w-full min-w-0">
           <div className="flex items-center gap-1.5 truncate min-w-0">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-            <span className="font-bold text-amber-300 truncate">✏️ Quiebres en Cañería</span>
+            <span className="font-bold text-amber-300 truncate">✏️ Quiebres en Canalización</span>
             <span className="text-[11px] font-mono text-slate-400 shrink-0">
               ({selectedConduit.waypoints?.length || 0} pts)
             </span>
@@ -730,7 +730,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
                 <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
                   <Cable size={14} className="text-amber-500 shrink-0" />
-                  <span className="font-bold shrink-0">Cañería:</span>
+                  <span className="font-bold shrink-0">Canalización:</span>
                   <span className="font-mono font-bold text-amber-700 shrink-0">Ø{selectedConduit.diameterMM}mm</span>
                   {selectedConduit.routingMode === 'orthogonal' && (
                     <span className="bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0">
@@ -768,15 +768,16 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 </button>
 
                 {/* Si es ortogonal: botones de edición de quiebres y rediseño */}
-                {selectedConduit.routingMode === 'orthogonal' && (
+                {selectedConduit.routingMode !== 'schematic_arc' && (
                   <>
                     <button
                       type="button"
                       onClick={() => onStartEditingConduitRoute?.(selectedConduit.id)}
-                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer"
-                      title="Editar quiebres directamente en el plano"
+                      className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Editar o mover quiebres en pantalla"
                     >
-                      <span>✏️ Quiebres</span>
+                      <span>✏️</span>
+                      <span>Quiebres</span>
                       {selectedConduit.waypoints?.length ? (
                         <span className="bg-amber-200 px-1 rounded text-[10px] font-mono">{selectedConduit.waypoints.length}</span>
                       ) : null}
@@ -785,7 +786,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                       type="button"
                       onClick={() => onStartRedesigningConduitRoute?.(selectedConduit.id)}
                       className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer"
-                      title="Rediseñar recorrido de cañería"
+                      title="Rediseñar recorrido de canalización"
                     >
                       <RotateCw size={12} />
                       <span>Rediseñar</span>
@@ -808,7 +809,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('open-conduit-edit-modal'))}
                   className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer"
-                  title="Configuración completa de caño y cables"
+                  title="Configuración completa de canalización y conductores"
                 >
                   <SlidersHorizontal size={12} />
                   <span>Configurar</span>
@@ -829,15 +830,9 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   Ø {selectedConduit.diameterMM}
                 </button>
 
-                {/* Badge Ocupación AEA */}
-                <span
-                  className={`px-2 py-1 rounded-xl text-[11px] font-mono font-bold whitespace-nowrap border shrink-0 ${
-                    occupancy.isCompliant
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                      : 'bg-red-50 text-red-800 border-red-300 animate-pulse'
-                  }`}
-                >
-                  {occupancy.isCompliant ? `✓ ${occupancy.occupancyPercent}%` : `⚠️ ${occupancy.occupancyPercent}%`}
+                {/* Ocupación Técnica Informativa (Sin semáforos punitivos) */}
+                <span className="px-2 py-1 rounded-xl text-[11px] font-mono font-bold whitespace-nowrap border shrink-0 bg-slate-100 text-slate-700 border-slate-300">
+                  Ocup: {occupancy.occupancyPercent}%
                 </span>
 
                 <button
@@ -847,7 +842,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                     setSelectedEntity(null);
                   }}
                   className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto shrink-0 cursor-pointer"
-                  title="Eliminar cañería"
+                  title="Eliminar canalización"
                 >
                   <Trash2 size={15} />
                 </button>
