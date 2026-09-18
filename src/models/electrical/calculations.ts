@@ -14,3 +14,4 @@ export * from './conduitMetrics';
 export * from './electricalPhysics';
 export * from './elementLabelling';
 export * from './cadGeometry';
+export * from './cableManufacturerCatalog';

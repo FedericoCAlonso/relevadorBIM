@@ -7,7 +7,12 @@
  */
 
 import { create } from 'zustand';
-import type { BuildingProject, ProjectMetadata } from '../models/architecture/BuildingProject';
+import type {
+  BuildingProject,
+  ProjectMetadata,
+  ElectricalCalculationSettings,
+  CircuitCalculationOverride
+} from '../models/architecture/BuildingProject';
 import { createEmptyProject } from '../models/architecture/BuildingProject';
 import type { Wall, WallVertex, Vector2D } from '../models/architecture/Wall';
 import { getWallVector, getWallLength, getWallLeftNormal } from '../models/architecture/Wall';
@@ -143,6 +148,8 @@ interface ProjectStoreState {
   loadProject: (project: BuildingProject) => void;
   resetProject: () => void;
   updateProjectMeta: (patch: Partial<ProjectMetadata>) => void;
+  updateElectricalSettings: (patch: Partial<ElectricalCalculationSettings>) => void;
+  updateCircuitCalculationOverride: (circuitId: string, patch: Partial<CircuitCalculationOverride>) => void;
 
   // Visualización CAD
   showDimensions: boolean;
@@ -174,6 +181,46 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         }
       }
     })),
+
+  updateElectricalSettings: (patch) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        electricalSettings: {
+          ...state.project.electricalSettings,
+          ...patch
+        },
+        meta: {
+          ...state.project.meta,
+          updatedAt: Date.now()
+        }
+      }
+    })),
+
+  updateCircuitCalculationOverride: (circuitId, patch) =>
+    set((state) => {
+      const currentOverrides = state.project.electricalSettings?.circuitOverrides || {};
+      const existing = currentOverrides[circuitId] || {};
+      return {
+        project: {
+          ...state.project,
+          electricalSettings: {
+            ...state.project.electricalSettings,
+            circuitOverrides: {
+              ...currentOverrides,
+              [circuitId]: {
+                ...existing,
+                ...patch
+              }
+            }
+          },
+          meta: {
+            ...state.project.meta,
+            updatedAt: Date.now()
+          }
+        }
+      };
+    }),
 
   addConduitType: (def) =>
     set((state) => {

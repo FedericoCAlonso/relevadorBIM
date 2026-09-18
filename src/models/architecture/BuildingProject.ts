@@ -22,8 +22,29 @@ import type {
 } from '../electrical/ElectricalModel';
 import { createDefaultMaterialCatalog } from '../electrical/electricalStandards';
 
+import type {
+  InstallationMethodCode,
+  CableManufacturerCatalog
+} from '../electrical/cableManufacturerCatalog';
 import { type UnderlaySheet } from '../underlay/UnderlaySheet';
 import { type DimensionLine } from './DimensionLine';
+
+export interface CircuitCalculationOverride {
+  installationMethod?: InstallationMethodCode;
+  customCurrentA?: number;
+  customLengthM?: number;
+  customCosPhi?: number;
+  customCatalogId?: string;
+  notes?: string;
+}
+
+export interface ElectricalCalculationSettings {
+  defaultCableCatalogId?: string;
+  ambientTempC?: number;
+  globalCosPhi?: number;
+  customCableCatalogs?: CableManufacturerCatalog[];
+  circuitOverrides?: Record<string, CircuitCalculationOverride>;
+}
 
 export interface ProjectMetadata {
   id: string;
@@ -55,6 +76,7 @@ export interface BuildingProject {
   materialCatalog?: ProjectMaterialCatalog; // Catálogo abierto de materiales de este proyecto
   underlaySheets?: Record<string, UnderlaySheet>; // Láminas de fondo por nivel (levelId -> UnderlaySheet)
   dimensions?: DimensionLine[]; // Cotas métricas libres en el plano
+  electricalSettings?: ElectricalCalculationSettings; // Configuración de cálculo eléctrico y catálogos de cables
 }
 
 /**

@@ -9,7 +9,8 @@
 import React, { useState, useMemo } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { generarComputoCotizador } from '../../../services/cotizadorBridge';
-import { X, Copy, Check, Zap, Building2, Cable } from 'lucide-react';
+import { downloadFlexibleCsv } from '../../../services/materialExportService';
+import { X, Copy, Check, Zap, Building2, Cable, Download } from 'lucide-react';
 
 interface ComputoModalProps {
   isOpen: boolean;
@@ -115,16 +116,24 @@ export const ComputoModal: React.FC<ComputoModalProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Botón de Exportación */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-[11px] text-slate-500">
-            Formato compatible con <code>pwaCotizadorIeba</code>
-          </span>
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
           <button
+            type="button"
+            onClick={() => downloadFlexibleCsv(project, { format: 'commercial', delimiter: ';' })}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            title="Descargar Planilla CSV de Materiales agrupada por rubros"
+          >
+            <Download size={14} />
+            <span>Descargar CSV</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleCopyJSON}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-            <span>{copied ? '¡Copiado al Portapapeles!' : 'Copiar Cómputo JSON'}</span>
+            <span>{copied ? '¡Copiado!' : 'Copiar JSON IEBA'}</span>
           </button>
         </div>
       </div>

@@ -23,6 +23,8 @@ export function calculateVoltageDropPercent(params: {
   voltageV?: number;       // Tensión nominal (default 220V monofásico)
   isThreePhase?: boolean;  // Monofásico o trifásico
   cosPhi?: number;         // Factor de potencia (default 0.9)
+  resistanceOhmKm?: number; // Resistencia de fabricante en Ohm/km a temp. de régimen
+  reactanceOhmKm?: number;  // Reactancia de fabricante en Ohm/km a 50 Hz
 }): { deltaVVolts: number; deltaVPercent: number; isCompliant: boolean } {
   const {
     currentA,
@@ -30,16 +32,28 @@ export function calculateVoltageDropPercent(params: {
     sectionMM2,
     voltageV = AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
     isThreePhase = false,
-    cosPhi = AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_FACTOR_COS_PHI
+    cosPhi = AEA_CALCULATION_CONSTANTS.DEFAULT_POWER_FACTOR_COS_PHI,
+    resistanceOhmKm,
+    reactanceOhmKm = 0
   } = params;
 
-  if (sectionMM2 <= 0 || voltageV <= 0) {
-    return { deltaVVolts: 0, deltaVPercent: 0, isCompliant: false };
+  if (sectionMM2 <= 0 || voltageV <= 0 || currentA <= 0 || lengthM <= 0) {
+    return { deltaVVolts: 0, deltaVPercent: 0, isCompliant: true };
   }
 
   const k = isThreePhase ? Math.sqrt(3) : 2.0;
-  // Delta V = (k * L * I * cos(phi)) / (gamma * S)
-  const deltaVVolts = (k * lengthM * currentA * cosPhi) / (CONDUCTIVIDAD_COBRE * sectionMM2);
+  let deltaVVolts = 0;
+
+  if (typeof resistanceOhmKm === 'number' && resistanceOhmKm > 0) {
+    // Cálculo riguroso con impedancia de fabricante: Delta V = k * I * (L/1000) * (R*cosPhi + X*sinPhi)
+    const sinPhi = Math.sqrt(Math.max(0, 1 - Math.pow(cosPhi, 2)));
+    const zEffective = resistanceOhmKm * cosPhi + reactanceOhmKm * sinPhi;
+    deltaVVolts = k * currentA * (lengthM / 1000) * zEffective;
+  } else {
+    // Fórmula simplificada por conductividad de cobre comercial AEA: Delta V = (k * L * I * cosPhi) / (gamma * S)
+    deltaVVolts = (k * lengthM * currentA * cosPhi) / (CONDUCTIVIDAD_COBRE * sectionMM2);
+  }
+
   const deltaVPercent = (deltaVVolts / voltageV) * 100;
 
   // Límite reglamentario AEA: 3% para iluminación, 5% para fuerza motriz/tomas

@@ -25,6 +25,7 @@ import { ElectricalElementModal } from './views/components/electrical/Electrical
 import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { BranchEditModal } from './views/components/electrical/BranchEditModal';
 import { CircuitsModal } from './views/components/electrical/CircuitsModal';
+import { ElectricalReportModal } from './views/components/electrical/ElectricalReportModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
@@ -156,6 +157,7 @@ export function App() {
   const [showConduitModal, setShowConduitModal] = useState(false);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [showCircuitsModal, setShowCircuitsModal] = useState(false);
+  const [showElectricalReportModal, setShowElectricalReportModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
   // Entidades eléctricas seleccionadas para modales
@@ -363,6 +365,7 @@ export function App() {
             isConnectingConduit={isConnectingConduit}
             onToggleConnectConduit={() => setIsConnectingConduit(!isConnectingConduit)}
             onOpenCircuits={() => setShowCircuitsModal(true)}
+            onOpenElectricalReport={() => setShowElectricalReportModal(true)}
             editingConduitRouteId={editingConduitRouteId}
             onStartEditingConduitRoute={startEditingConduitRoute}
             onFinishEditingConduitRoute={finishEditingConduitRoute}
@@ -861,6 +864,7 @@ export function App() {
         onOpenExport={() => setShowExportModal(true)}
         onOpenComputo={() => setShowComputoModal(true)}
         onOpenCircuits={() => setShowCircuitsModal(true)}
+        onOpenElectricalReport={() => setShowElectricalReportModal(true)}
         hasUnderlay={Boolean(activeUnderlay)}
         onLoadUnderlay={handleLoadUnderlayFile}
         onStartUnderlayCalibration={startUnderlayCalibration}
@@ -910,6 +914,13 @@ export function App() {
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         onOpenComputo={() => setShowComputoModal(true)}
+        onOpenElectricalReport={() => setShowElectricalReportModal(true)}
+      />
+
+      {/* Memoria de Cálculo Eléctrico y Cuadro de Cargas AEA 90364-771 */}
+      <ElectricalReportModal
+        isOpen={showElectricalReportModal}
+        onClose={() => setShowElectricalReportModal(false)}
       />
 
       {/* 7. Modal de Propiedades de Boca Eléctrica */}

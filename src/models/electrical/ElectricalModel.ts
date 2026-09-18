@@ -180,6 +180,7 @@ export interface Conduit {
   isRiserTerminal?: boolean; // Termina en montante vertical / pase de losa
   additionalLengthM?: number; // Metros adicionales restantes cargados a mano (ej: hasta subsuelo o azotea)
   targetDescription?: string; // Descripción del destino de montante (ej: "A Tablero General")
+  status?: 'existente' | 'proyectado' | 'a_reemplazar'; // Estado de relevamiento físico
   notes?: string;
 }
 

@@ -54,6 +54,7 @@ interface DesktopSidebarProps {
   isConnectingConduit: boolean;
   onToggleConnectConduit: () => void;
   onOpenCircuits?: () => void;
+  onOpenElectricalReport?: () => void;
   editingConduitRouteId?: string | null;
   onStartEditingConduitRoute?: (conduitId: string) => void;
   onFinishEditingConduitRoute?: () => void;
@@ -74,6 +75,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   isConnectingConduit,
   onToggleConnectConduit,
   onOpenCircuits,
+  onOpenElectricalReport,
   editingConduitRouteId,
   onStartEditingConduitRoute,
   onFinishEditingConduitRoute,
@@ -1162,6 +1164,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         title="Abrir ventana modal completa de Circuitos y Tableros"
                       >
                         ⛶ Extendido
+                      </button>
+                    )}
+                    {onOpenElectricalReport && (
+                      <button
+                        type="button"
+                        onClick={onOpenElectricalReport}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                        title="Ver Memoria de Cálculo y Cuadro de Cargas AEA"
+                      >
+                        <Zap size={11} className="text-amber-500" />
+                        <span>Memoria</span>
                       </button>
                     )}
                     <button
