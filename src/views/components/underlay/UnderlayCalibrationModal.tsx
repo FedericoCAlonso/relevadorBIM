@@ -22,17 +22,25 @@ export const UnderlayCalibrationModal: React.FC<UnderlayCalibrationModalProps> =
   onConfirm
 }) => {
   const [distanceInput, setDistanceInput] = useState<string>(initialDistanceM.toFixed(2));
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setDistanceInput(initialDistanceM > 0 ? initialDistanceM.toFixed(2) : '3.50');
+    }
+  }
 
   useEffect(() => {
     if (isOpen) {
-      setDistanceInput(initialDistanceM > 0 ? initialDistanceM.toFixed(2) : '3.50');
-      setTimeout(() => {
+      const t = setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 50);
+      return () => clearTimeout(t);
     }
-  }, [isOpen, initialDistanceM]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

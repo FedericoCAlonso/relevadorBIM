@@ -647,7 +647,7 @@ export function usePatternDetectorViewModel() {
       clearMatches();
       return count;
     },
-    [activeMatches, activeLevelId, addElectricalElement, setSelectedEntity, clearMatches]
+    [activeMatches, activeLevelId, addElectricalElement, setSelectedEntity, clearMatches, project.spaces]
   );
 
   /**

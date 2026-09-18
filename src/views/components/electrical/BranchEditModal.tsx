@@ -6,7 +6,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSizesForConduitType, getDefaultSizeForConduitType } from '../../../models/electrical/electricalStandards';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
@@ -43,8 +43,10 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
   const [status, setStatus] = useState<'existente' | 'proyectado' | 'a_reemplazar'>('proyectado');
   const [appliedNotification, setAppliedNotification] = useState(false);
 
-  // Inicializar estado local al abrir o cambiar de rama
-  useEffect(() => {
+  const [prevBranchKey, setPrevBranchKey] = useState<string | null>(null);
+  const currentBranchKey = isOpen && selectedBranch ? (selectedBranch.conduitIds[0] || selectedBranch.elementIds[0] || 'branch') : null;
+  if (currentBranchKey !== prevBranchKey) {
+    setPrevBranchKey(currentBranchKey);
     if (selectedBranch && isOpen) {
       setCircuitId(selectedBranch.predominantCircuitId || '');
       setConduitMaterial(selectedBranch.predominantMaterial || (catalogs.materials[0]?.id as ConduitMaterial) || 'hierro_semipesado_rs');
@@ -62,7 +64,7 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
       }
       setAppliedNotification(false);
     }
-  }, [selectedBranch, isOpen, catalogs.materials, catalogs.cableStandards]);
+  }
 
   // Calibres válidos para el material actualmente elegido
   const availableSizes = useMemo(() => {

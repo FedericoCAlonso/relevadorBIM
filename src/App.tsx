@@ -7,7 +7,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from './viewmodels/useProjectStore';
 import { useSurveyViewModel } from './viewmodels/useSurveyViewModel';
 import { useMediaQuery } from './viewmodels/useMediaQuery';
@@ -167,8 +167,10 @@ export function App() {
     selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
 
   // Atajos de teclado CAD (Ctrl+Z para deshacer, Escape para deseleccionar, Supr para borrar, Enter para confirmar muestra)
+  const handleKeyDownRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+  
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    handleKeyDownRef.current = (e: KeyboardEvent) => {
       // Ignorar si el usuario está escribiendo en un input o textarea
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
@@ -251,26 +253,13 @@ export function App() {
         }
       }
     };
+  });
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    selectedEntity,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    undoLastWall,
-    deleteWall,
-    deleteOpening,
-    deleteElectricalElement,
-    deleteConduit,
-    deleteDimensionLine,
-    cancelConduitConnection,
-    cancelUnderlayCalibration,
-    cancelAddingDimension,
-    setSelectedEntity,
-    setSelectedSymbolId
-  ]);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => handleKeyDownRef.current?.(e);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Escuchar eventos de apertura de modales de acción contextual
   useEffect(() => {

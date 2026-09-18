@@ -133,27 +133,28 @@ describe('GramSvd - Descomposición Espectral y Consenso Morfológico', () => {
   describe('rotateNormalizedPatch', () => {
     it('debe rotar parches en 90°, 180°, 270° y volver a la identidad a los 360°', () => {
       const size = 10;
+      const idx = (r: number, c: number) => r * size + c;
       const data = new Float32Array(size * size);
       // Poner un píxel en esquina superior derecha: (9, 0)
-      data[0 * size + 9] = 1.0;
+      data[idx(0, 9)] = 1.0;
 
       const p0: NormalizedPatch = { size, data, mean: 0.1, std: 0.3 };
 
       // 90° horario: (9, 0) -> (9, 9) (esquina inferior derecha)
       const p90 = rotateNormalizedPatch(p0, 90);
-      expect(p90.data[9 * size + 9]).toBe(1.0);
+      expect(p90.data[idx(9, 9)]).toBe(1.0);
 
       // 180°: (9, 0) -> (0, 9) (esquina inferior izquierda)
       const p180 = rotateNormalizedPatch(p0, 180);
-      expect(p180.data[9 * size + 0]).toBe(1.0);
+      expect(p180.data[idx(9, 0)]).toBe(1.0);
 
       // 270°: (9, 0) -> (0, 0) (esquina superior izquierda)
       const p270 = rotateNormalizedPatch(p0, 270);
-      expect(p270.data[0 * size + 0]).toBe(1.0);
+      expect(p270.data[idx(0, 0)]).toBe(1.0);
 
       // 4 rotaciones de 90° consecutivas
       const p360 = rotateNormalizedPatch(rotateNormalizedPatch(rotateNormalizedPatch(p90, 90), 90), 90);
-      expect(p360.data[0 * size + 9]).toBe(1.0);
+      expect(p360.data[idx(0, 9)]).toBe(1.0);
     });
   });
 

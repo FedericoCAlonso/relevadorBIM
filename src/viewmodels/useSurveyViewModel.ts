@@ -244,18 +244,21 @@ export function useSurveyViewModel() {
     [addOpeningReferenced]
   );
 
+  // ─── ESTADO DE ACOTACIÓN MÉTRICA LIBRE ───
+  const [isAddingDimension, setIsAddingDimension] = useState(false);
+  const [dimensionP1, setDimensionP1] = useState<{ x: number; y: number } | null>(null);
+
   const handleSetIsConnectingConduit = useCallback((connecting: boolean | ((prev: boolean) => boolean)) => {
     setIsConnectingConduit((prev) => {
       const next = typeof connecting === 'function' ? connecting(prev) : connecting;
       if (!next) {
         setPendingConduitStartId(null);
         setPendingConduitWaypoints([]);
-      } else {
-        setIsAddingDimension(false);
-        setDimensionP1(null);
       }
       return next;
     });
+    setIsAddingDimension(false);
+    setDimensionP1(null);
   }, []);
 
   const cancelConduitConnection = useCallback(() => {
@@ -263,10 +266,6 @@ export function useSurveyViewModel() {
     setPendingConduitStartId(null);
     setPendingConduitWaypoints([]);
   }, []);
-
-  // ─── ESTADO DE ACOTACIÓN MÉTRICA LIBRE ───
-  const [isAddingDimension, setIsAddingDimension] = useState(false);
-  const [dimensionP1, setDimensionP1] = useState<{ x: number; y: number } | null>(null);
 
   const startAddingDimension = useCallback(() => {
     setIsAddingDimension(true);
@@ -397,6 +396,7 @@ export function useSurveyViewModel() {
       updateConduit,
       project.activeLevelId,
       project.electricalElements,
+      project.panels,
       project.circuits,
       setSelectedEntity
     ]

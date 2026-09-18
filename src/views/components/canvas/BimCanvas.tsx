@@ -236,6 +236,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   // Control para evitar clics espurios al finalizar un gesto de arrastre o paneo
   const lastDragEndTimeRef = useRef<number>(0);
   const wasDraggingRecently = () => Date.now() - lastDragEndTimeRef.current < 200;
+  const wasDraggingRecentlyRef = useRef(wasDraggingRecently);
+  useEffect(() => {
+    wasDraggingRecentlyRef.current = wasDraggingRecently;
+  });
 
   // Estados locales para arrastre y redimensión del recuadro provisional de Muestra #1
   type AdjustHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;
@@ -283,9 +287,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   };
 
   // Limpiar punto inicial de muestreo al alternar el modo de muestreo
-  useEffect(() => {
+  const [prevSamplingPatternMode, setPrevSamplingPatternMode] = useState(isSamplingPattern);
+  if (isSamplingPattern !== prevSamplingPatternMode) {
+    setPrevSamplingPatternMode(isSamplingPattern);
     setSamplingStartWorldPos(null);
-  }, [isSamplingPattern]);
+  }
 
   // Cálculo de coordenadas de cursor y acople magnético (snap)
   const updateHoverCoordinates = (clientX: number, clientY: number, isShiftPressed: boolean = false) => {
@@ -798,8 +804,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     );
   };
 
+  const triggerPlacementRef = useRef(triggerPlacement);
+  useEffect(() => {
+    triggerPlacementRef.current = triggerPlacement;
+  });
+
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (wasDraggingRecently()) return;
+    if (wasDraggingRecentlyRef.current()) return;
     if (justCompletedSamplingRef.current) {
       justCompletedSamplingRef.current = false;
       return;
@@ -808,7 +819,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       mouseDragRef.current = null;
       return;
     }
-    triggerPlacement(e.clientX, e.clientY);
+    triggerPlacementRef.current(e.clientX, e.clientY);
   };
 
   // ─── RENDERIZADORES DE CAPAS ─────────────────────────────────────────────
@@ -829,9 +840,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={space.id}
             onClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
@@ -896,10 +907,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseEnter={() => setHoveredWallId(wall.id)}
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
                 // Modo inserción de elemento eléctrico o conexión de cañerías
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
@@ -994,6 +1005,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     isCalibratingUnderlay,
     isAddingDimension,
     showDimensions,
+    hoveredWallId,
     onWallClick
   ]);
 
@@ -1020,9 +1032,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={opening.id}
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
-            if (wasDraggingRecently()) return;
+            if (wasDraggingRecentlyRef.current()) return;
             if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-              triggerPlacement(e.clientX, e.clientY);
+              triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
             e.stopPropagation();
@@ -1144,9 +1156,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={v.id}
           transform={`translate(${pxX}, ${pxY})`}
           onClick={(e) => {
-            if (wasDraggingRecently()) return;
+            if (wasDraggingRecentlyRef.current()) return;
             if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-              triggerPlacement(e.clientX, e.clientY);
+              triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
             e.stopPropagation();
@@ -1299,9 +1311,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         <g
           key={conduit.id}
           onClick={(e) => {
-            if (wasDraggingRecently()) return;
+            if (wasDraggingRecentlyRef.current()) return;
             if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-              triggerPlacement(e.clientX, e.clientY);
+              triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
             e.stopPropagation();
@@ -1556,6 +1568,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   }, [
     project.conduits,
     project.circuits,
+    project.spaces,
     project.activeLevelId,
     elementsMap,
     zoom,
@@ -1565,8 +1578,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     isCalibratingUnderlay,
     isAddingDimension,
     setSelectedEntity,
-    triggerPlacement,
-    onUpdateConduitWaypoint
+    onUpdateConduitWaypoint,
+    onRemoveConduitWaypoint
   ]);
 
   // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
@@ -1593,18 +1606,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
             onClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
               onElectricalElementClick?.(element.id);
             }}
             onDoubleClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
@@ -1743,9 +1756,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={panel.id}
             transform={`translate(${pxX}, ${pxY})`}
             onClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
@@ -1758,9 +1771,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               }
             }}
             onDoubleClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();
@@ -1877,8 +1890,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     onElectricalElementClick,
     onElectricalElementDoubleClick,
     onPanelClick,
-    onPanelDoubleClick,
-    triggerPlacement
+    onPanelDoubleClick
   ]);
 
   // 8. Cotas Métricas Libres en el Plano CAD
@@ -1919,9 +1931,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={dim.id}
             onClick={(e) => {
-              if (wasDraggingRecently()) return;
+              if (wasDraggingRecentlyRef.current()) return;
               if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacement(e.clientX, e.clientY);
+                triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
               e.stopPropagation();

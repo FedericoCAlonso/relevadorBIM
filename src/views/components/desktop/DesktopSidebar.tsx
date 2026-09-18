@@ -7,7 +7,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import { getWallLength } from '../../../models/architecture/Wall';
@@ -135,7 +135,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [panelDiffA, setPanelDiffA] = useState<number>(25);
 
   // Cambiar pestaña automáticamente cuando el usuario toca un elemento en el lienzo
-  useEffect(() => {
+  const [prevSelectedEntityKey, setPrevSelectedEntityKey] = useState<string | null>(null);
+  const currentSelectedEntityKey = selectedEntity ? `${selectedEntity.type}:${selectedEntity.id}` : null;
+  if (currentSelectedEntityKey !== prevSelectedEntityKey) {
+    setPrevSelectedEntityKey(currentSelectedEntityKey);
     if (selectedEntity?.type === 'space') {
       setActiveTab('spaces');
     } else if (selectedEntity?.type === 'wall' || selectedEntity?.type === 'opening') {
@@ -144,7 +147,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       setActiveTab('electrical');
       setElectricalSubTab('network');
     }
-  }, [selectedEntity]);
+  }
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
   const wallsMap = new Map(project.walls.map((w) => [w.id, w]));

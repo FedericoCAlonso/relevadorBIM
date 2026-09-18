@@ -82,3 +82,24 @@ Este documento establece las directivas técnicas, arquitectónicas, normativas 
      4. Desplegar a GitHub Pages (`npm run deploy`).
 3. **Respeto a las Instrucciones del Usuario:**
    - Si el usuario indica *"no programes"*, priorizar el análisis arquitectónico, conceptual y de diseño. No ejecutar escrituras ni modificaciones de código hasta recibir la confirmación explícita.
+
+---
+
+## 6. Principios SOLID e Higiene de Código (Clean Code)
+
+1. **Responsabilidad Única (Single Responsibility Principle - SRP):**
+   - Cada módulo, clase o función debe tener un único motivo de cambio.
+   - Las responsabilidades de cálculo físico, ruteo métrico 3D, algoritmos CAD/SVG y etiquetado relacional deben vivir en submódulos de dominio aislados e independientes (ej. `conduitMetrics.ts`, `electricalPhysics.ts`, `cadGeometry.ts`, `elementLabelling.ts`), unificados mediante fachadas limpias si es necesario para retrocompatibilidad.
+2. **Abierto / Cerrado (Open/Closed Principle - OCP):**
+   - El sistema debe ser extensible a nuevos materiales, normas de cable, tipos de bocas o dispositivos de maniobra sin modificar los algoritmos centrales de cálculo ni las vistas.
+   - Los catálogos y presets se consumen por inyección o registro, nunca mediante bifurcaciones `switch/case` rígidas en los componentes.
+3. **Sustitución de Liskov (Liskov Substitution Principle - LSP):**
+   - Las entidades que comparten interfaces polimórficas (ej. `SpatialElectricalNode` implementado por bocas y tableros) deben poder sustituirse mutuamente sin alterar el comportamiento de las canalizaciones ni requerir conversiones forzadas (`as any`).
+4. **Segregación de Interfaces (Interface Segregation Principle - ISP):**
+   - Preferir interfaces y props pequeñas, cohesivas y especializadas en lugar de contratos monolíticos con propiedades innecesarias.
+5. **Inversión de Dependencias (Dependency Inversion Principle - DIP):**
+   - Los módulos de alto nivel (vistas, orquestadores) no deben depender directamente de detalles de bajo nivel o mutaciones de estado no gestionadas. Toda comunicación fluye a través de contratos expuestos por el ViewModel y almacenes de estado centralizados.
+6. **Higiene de Código y Cero Advertencias:**
+   - **Cero código muerto:** Prohibido dejar funciones no invocadas, variables no leídas, imports huérfanos o archivos en desuso.
+   - **Cero advertencias de linter (`oxlint` / `eslint`):** Ningún commit debe introducir advertencias de dependencias faltantes en hooks (`exhaustive-deps`), accesos fuera de tiempo (`TDZ`), impurezas en render ni llamadas síncronas a `setState` dentro de `useEffect`.
+   - **Manejo de Eventos y Callbacks Estables:** Para listeners globales de ventana o gestos CAD de alta frecuencia, sincronizar funciones dinámicas mediante referencias estables (`useRef` / `useEffectEvent`) para evitar re-suscripciones innecesarias o invalidaciones en cascada de capas SVG memoizadas.
