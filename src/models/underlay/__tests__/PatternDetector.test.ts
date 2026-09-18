@@ -18,7 +18,10 @@ import {
   detectPatternMatchesWithExemplars,
   detectPatternMatches,
   findLocalInkCentroidSnap,
-  type BoundingBoxPx
+  calculateBoxIoU,
+  applyNonMaximumSuppression,
+  type BoundingBoxPx,
+  type DetectedPatternMatch
 } from '../PatternDetector';
 
 describe('PatternDetector - Modelo de Detección por Autovalores', () => {
@@ -442,5 +445,82 @@ describe('PatternDetector - Modelo de Detección por Autovalores', () => {
     expect(exemplar!.boxPx.width).toBe(exemplar!.boxPx.height);
     expect(exemplar!.patch.size).toBe(24);
   });
+
+  it('debe calcular con exactitud geométrica el índice IoU (Intersection over Union)', () => {
+    // 1. Cajas idénticas -> IoU = 1.0
+    const b1: BoundingBoxPx = { x: 10, y: 10, width: 20, height: 20 };
+    expect(calculateBoxIoU(b1, b1)).toBe(1.0);
+
+    // 2. Cajas disjuntas -> IoU = 0.0
+    const b2: BoundingBoxPx = { x: 40, y: 40, width: 20, height: 20 };
+    expect(calculateBoxIoU(b1, b2)).toBe(0.0);
+
+    // 3. Cajas que se tocan en el borde sin solapamiento de área -> IoU = 0.0
+    const bEdge: BoundingBoxPx = { x: 30, y: 10, width: 20, height: 20 };
+    expect(calculateBoxIoU(b1, bEdge)).toBe(0.0);
+
+    // 4. Cajas con solapamiento parcial conocido:
+    // b1: 20x20 = 400
+    // bPartial: (20, 10, 20, 20) -> solapan en x entre [20, 30] (10 px), y entre [10, 30] (20 px)
+    // Área de intersección = 10 * 20 = 200
+    // Área de unión = 400 + 400 - 200 = 600
+    // IoU esperado = 200 / 600 = 1/3 ≈ 0.3333
+    const bPartial: BoundingBoxPx = { x: 20, y: 10, width: 20, height: 20 };
+    expect(calculateBoxIoU(b1, bPartial)).toBeCloseTo(1 / 3, 4);
+  });
+
+  it('debe suprimir recuadros duplicados o superpuestos en NMS por distancia e IoU preservando el de mayor similitud', () => {
+    // Candidato dominante (score 0.95)
+    const bestMatch: DetectedPatternMatch = {
+      id: 'm1',
+      boxPx: { x: 50, y: 50, width: 20, height: 20 },
+      centerPx: { x: 60, y: 60 },
+      worldPos: { x: 3, y: 3 },
+      orientationDeg: 0,
+      similarityScore: 0.95
+    };
+
+    // Candidato desplazado apenitas (score 0.82) - muy cercano en distancia
+    const nearDuplicate: DetectedPatternMatch = {
+      id: 'm2',
+      boxPx: { x: 53, y: 52, width: 20, height: 20 },
+      centerPx: { x: 63, y: 62 },
+      worldPos: { x: 3.15, y: 3.1 },
+      orientationDeg: 0,
+      similarityScore: 0.82
+    };
+
+    // Candidato con solapamiento moderado pero IoU > 0.30
+    const overlappingMatch: DetectedPatternMatch = {
+      id: 'm3',
+      boxPx: { x: 58, y: 50, width: 20, height: 20 },
+      centerPx: { x: 68, y: 60 },
+      worldPos: { x: 3.4, y: 3 },
+      orientationDeg: 0,
+      similarityScore: 0.78
+    };
+
+    // Símbolo vecino independiente y no superpuesto (score 0.90)
+    const distinctNeighbor: DetectedPatternMatch = {
+      id: 'm4',
+      boxPx: { x: 100, y: 50, width: 20, height: 20 },
+      centerPx: { x: 110, y: 60 },
+      worldPos: { x: 5.5, y: 3 },
+      orientationDeg: 0,
+      similarityScore: 0.90
+    };
+
+    // Ejecuta NMS con minDistancePx = 15 y umbral IoU = 0.30
+    const suppressed = applyNonMaximumSuppression(
+      [nearDuplicate, bestMatch, overlappingMatch, distinctNeighbor],
+      15,
+      0.30
+    );
+
+    // Debe quedar únicamente el mejor match (m1) y el vecino independiente (m4)
+    expect(suppressed).toHaveLength(2);
+    expect(suppressed.map((m) => m.id)).toEqual(['m1', 'm4']);
+  });
 });
+
 

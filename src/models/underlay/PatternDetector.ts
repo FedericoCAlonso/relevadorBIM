@@ -91,7 +91,7 @@ export const PATTERN_DETECTOR_CONSTANTS = {
   PATCH_SIZE: 24, // Malla de 24x24 para correlación fina
   MAX_BLOB_DIMENSION_FACTOR: 2.5,
   MIN_BLOB_DIMENSION_FACTOR: 0.4,
-  NMS_DISTANCE_RATIO: 0.5, // Supresión de no-máximos
+  NMS_DISTANCE_RATIO: 0.75, // Supresión de no-máximos (distancia mínima de separación entre centros)
   SNAP_TOLERANCE_METERS: 0.40, // Tolerancia magnética al cursor en metros
   NEGATIVE_PENALTY_WEIGHT: 0.75 // Ponderación de rechazo a falsos positivos
 } as const;
@@ -765,11 +765,30 @@ export function extractDensityCandidates(
 }
 
 /**
- * Aplica Supresión de No-Máximos (NMS) para eliminar recuadros duplicados
+ * Calcula el índice de solapamiento IoU (Intersection over Union) entre dos cajas delimitadoras
+ */
+export function calculateBoxIoU(b1: BoundingBoxPx, b2: BoundingBoxPx): number {
+  const xLeft = Math.max(b1.x, b2.x);
+  const yTop = Math.max(b1.y, b2.y);
+  const xRight = Math.min(b1.x + b1.width, b2.x + b2.width);
+  const yBottom = Math.min(b1.y + b1.height, b2.y + b2.height);
+
+  if (xRight <= xLeft || yBottom <= yTop) return 0;
+
+  const intersectionArea = (xRight - xLeft) * (yBottom - yTop);
+  const unionArea = b1.width * b1.height + b2.width * b2.height - intersectionArea;
+
+  return unionArea > 0 ? intersectionArea / unionArea : 0;
+}
+
+/**
+ * Aplica Supresión de No-Máximos (NMS) para eliminar recuadros duplicados o superpuestos.
+ * Combina distancia euclídea entre centros y solapamiento de área (IoU).
  */
 export function applyNonMaximumSuppression(
   matches: DetectedPatternMatch[],
-  minDistancePx: number
+  minDistancePx: number,
+  iouThreshold: number = 0.30
 ): DetectedPatternMatch[] {
   const sorted = [...matches].sort((a, b) => b.similarityScore - a.similarityScore);
   const selected: DetectedPatternMatch[] = [];
@@ -778,7 +797,11 @@ export function applyNonMaximumSuppression(
     const tooClose = selected.some((s) => {
       const dx = candidate.centerPx.x - s.centerPx.x;
       const dy = candidate.centerPx.y - s.centerPx.y;
-      return Math.hypot(dx, dy) < minDistancePx;
+      const dist = Math.hypot(dx, dy);
+      if (dist < minDistancePx) return true;
+
+      const iou = calculateBoxIoU(candidate.boxPx, s.boxPx);
+      return iou > iouThreshold;
     });
 
     if (!tooClose) {
@@ -992,7 +1015,7 @@ export function detectPatternMatchesWithExemplars(
 
   // 2. Extraer candidatos por densidad con imagen integral (para símbolos conectados a muros o cañerías)
   const integral = computeIntegralImage(binaryMask, imgWidth, imgHeight);
-  const densityCandidates = extractDensityCandidates(
+  const rawDensityCandidates = extractDensityCandidates(
     integral,
     imgWidth,
     imgHeight,
@@ -1000,9 +1023,33 @@ export function detectPatternMatchesWithExemplars(
     avgPixelCount
   );
 
-  const candidateBlobs = [...blobCandidates, ...densityCandidates];
+  // Deduplicar candidatos de densidad contra componentes conexas y entre sí para eliminar ventanas superpuestas y acelerar el motor
+  const minCandidateSep = avgSize * 0.6;
+  const filteredDensityCandidates: BoundingBoxPx[] = [];
+  for (let i = 0; i < rawDensityCandidates.length; i++) {
+    const dc = rawDensityCandidates[i];
+    const dcX = dc.x + dc.width / 2;
+    const dcY = dc.y + dc.height / 2;
+
+    const nearBlob = blobCandidates.some((bc) => {
+      const bcX = bc.x + bc.width / 2;
+      const bcY = bc.y + bc.height / 2;
+      return Math.hypot(dcX - bcX, dcY - bcY) < minCandidateSep;
+    });
+    if (nearBlob) continue;
+
+    const nearDensity = filteredDensityCandidates.some((fc) => {
+      const fcX = fc.x + fc.width / 2;
+      const fcY = fc.y + fc.height / 2;
+      return Math.hypot(dcX - fcX, dcY - fcY) < minCandidateSep;
+    });
+    if (!nearDensity) {
+      filteredDensityCandidates.push(dc);
+    }
+  }
+
+  const candidateBlobs = [...blobCandidates, ...filteredDensityCandidates];
   const rawMatches: DetectedPatternMatch[] = [];
-  const targetRadiusPx = avgSize / 2;
 
   // 3. Inyectar ejemplares positivos como candidatos semilla garantizados (Ground Truth)
   // con similitud máxima (1.0). Al someterse a NMS con ordenamiento por score,
@@ -1153,9 +1200,9 @@ export function detectPatternMatchesWithExemplars(
     }
   }
 
-  // 4. Supresión de no-máximos
-  const minSeparationPx = targetRadiusPx * PATTERN_DETECTOR_CONSTANTS.NMS_DISTANCE_RATIO;
-  return applyNonMaximumSuppression(rawMatches, minSeparationPx);
+  // 4. Supresión de no-máximos híbrida: distancia mínima del 75% del tamaño promedio y umbral IoU de 0.30
+  const minSeparationPx = avgSize * PATTERN_DETECTOR_CONSTANTS.NMS_DISTANCE_RATIO;
+  return applyNonMaximumSuppression(rawMatches, minSeparationPx, 0.30);
 }
 
 /**
