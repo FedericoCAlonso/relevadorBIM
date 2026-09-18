@@ -33,7 +33,7 @@ import { createDefaultMaterialCatalog } from '../models/electrical/electricalSta
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 import type { DimensionLine } from '../models/architecture/DimensionLine';
 import type { ElectricalBranch, BranchUpdatePayload } from '../models/electrical/electricalBranch';
-import { applyBranchUpdates } from '../models/electrical/electricalBranch';
+import { applyBranchUpdates, syncPassingCircuits } from '../models/electrical/electricalBranch';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -757,15 +757,32 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     })),
 
   updateElectricalElement: (elementId, updates) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        electricalElements: state.project.electricalElements.map((el) =>
-          el.id === elementId ? { ...el, ...updates } : el
-        ),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
+    set((state) => {
+      const allElements = state.project.electricalElements.map((el) =>
+        el.id === elementId ? { ...el, ...updates } : el
+      );
+      if (updates.circuitId !== undefined || updates.passingCircuitIds !== undefined) {
+        const synced = syncPassingCircuits({
+          elements: allElements,
+          conduits: state.project.conduits
+        });
+        return {
+          project: {
+            ...state.project,
+            electricalElements: synced.updatedElements,
+            conduits: synced.updatedConduits,
+            meta: { ...state.project.meta, updatedAt: Date.now() }
+          }
+        };
       }
-    })),
+      return {
+        project: {
+          ...state.project,
+          electricalElements: allElements,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   deleteElectricalElement: (elementId) =>
     set((state) => ({
@@ -781,34 +798,58 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     })),
 
   addConduit: (conduit) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        conduits: [...state.project.conduits, conduit],
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
-    })),
+    set((state) => {
+      const allConduits = [...state.project.conduits, conduit];
+      const synced = syncPassingCircuits({
+        elements: state.project.electricalElements,
+        conduits: allConduits
+      });
+      return {
+        project: {
+          ...state.project,
+          electricalElements: synced.updatedElements,
+          conduits: synced.updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   updateConduit: (conduitId, updates) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        conduits: state.project.conduits.map((c) =>
-          c.id === conduitId ? { ...c, ...updates } : c
-        ),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
-    })),
+    set((state) => {
+      const allConduits = state.project.conduits.map((c) =>
+        c.id === conduitId ? { ...c, ...updates } : c
+      );
+      const synced = syncPassingCircuits({
+        elements: state.project.electricalElements,
+        conduits: allConduits
+      });
+      return {
+        project: {
+          ...state.project,
+          electricalElements: synced.updatedElements,
+          conduits: synced.updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   deleteConduit: (conduitId) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        conduits: state.project.conduits.filter((c) => c.id !== conduitId),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      },
-      selectedEntity: state.selectedEntity?.id === conduitId ? null : state.selectedEntity
-    })),
+    set((state) => {
+      const remainingConduits = state.project.conduits.filter((c) => c.id !== conduitId);
+      const synced = syncPassingCircuits({
+        elements: state.project.electricalElements,
+        conduits: remainingConduits
+      });
+      return {
+        project: {
+          ...state.project,
+          electricalElements: synced.updatedElements,
+          conduits: synced.updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        },
+        selectedEntity: state.selectedEntity?.id === conduitId ? null : state.selectedEntity
+      };
+    }),
 
   addCircuit: (circuit) =>
     set((state) => ({

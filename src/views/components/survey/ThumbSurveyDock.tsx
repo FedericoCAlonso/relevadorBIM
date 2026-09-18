@@ -76,6 +76,7 @@ interface ThumbSurveyDockProps {
   onFinishEditingConduitRoute?: () => void;
   onStartRedesigningConduitRoute?: (conduitId: string) => void;
   onUndoEditingConduitWaypoint?: () => void;
+  onCommitConduitWithTerminalReference?: () => void;
 }
 
 export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
@@ -112,7 +113,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   onStartEditingConduitRoute,
   onFinishEditingConduitRoute,
   onStartRedesigningConduitRoute,
-  onUndoEditingConduitWaypoint
+  onUndoEditingConduitWaypoint,
+  onCommitConduitWithTerminalReference
 }) => {
   const {
     activeAnchorVertexId,
@@ -297,6 +299,18 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             >
               <Undo2 size={12} />
               <span>{pendingConduitWaypoints.length}</span>
+            </button>
+          )}
+
+          {/* Remate en etiqueta de referencia */}
+          {pendingConduitStartId && onCommitConduitWithTerminalReference && (
+            <button
+              type="button"
+              onClick={onCommitConduitWithTerminalReference}
+              className="px-2.5 py-1 bg-sky-950/90 border border-sky-600 text-sky-300 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer hover:bg-sky-900 transition-colors"
+              title="Rematar cañería en una etiqueta de referencia / pase"
+            >
+              <span>➔ Rematar Etiqueta</span>
             </button>
           )}
         </div>

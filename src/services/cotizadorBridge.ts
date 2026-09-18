@@ -48,7 +48,7 @@ export function generarComputoCotizador(project: BuildingProject): ComputoMetric
     superficieTotalM2 += area;
 
     const bocasCount = project.electricalElements.filter(
-      el => el.spaceId === space.id && !el.isPanel
+      el => el.spaceId === space.id && !el.isPanel && !el.isTerminalReference && el.symbolId !== 'sym-terminal-referencia'
     ).length;
     ambientesComputados.push({
       nombre: space.name,

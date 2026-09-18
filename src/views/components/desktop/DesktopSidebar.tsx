@@ -18,6 +18,7 @@ import { CircuitColorPicker } from '../electrical/CircuitColorPicker';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
 import { calculateConduitRealLength, calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
 import type { CircuitType, ConduitMaterial, ConductorRole } from '../../../models/electrical/ElectricalModel';
+import { countPanelBocas } from '../../../models/electrical/electricalBranch';
 import {
   Compass,
   Plus,
@@ -1437,7 +1438,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         )}
 
                         {panelCircuits.map((circ) => {
-                          const bocasCount = project.electricalElements.filter((e) => e.circuitId === circ.id).length;
+                          const bocasCount = project.electricalElements.filter(
+                            (e) => !e.isPanel && !e.isTerminalReference && e.symbolId !== 'sym-terminal-referencia' && e.circuitId === circ.id
+                          ).length;
                           const isOverloaded = (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;
                           const targetPanel = circ.targetPanelId
                             ? project.panels.find((p) => p.id === circ.targetPanelId)
@@ -1617,38 +1620,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">TERMOMAGNÉTICA</label>
-                        <select
-                          value={panelBreakerA}
-                          onChange={(e) => setPanelBreakerA(Number(e.target.value))}
-                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
-                        >
-                          {[16, 20, 25, 32, 40, 50, 63].map((amp) => (
-                            <option key={amp} value={amp}>
-                              {amp} A
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">DISYUNTOR (30mA)</label>
-                        <select
-                          value={panelDiffA}
-                          onChange={(e) => setPanelDiffA(Number(e.target.value))}
-                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
-                        >
-                          {[25, 40, 63].map((amp) => (
-                            <option key={amp} value={amp}>
-                              {amp} A
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
                     <div className="flex justify-end gap-2 pt-1 border-t">
                       <button
                         type="button"
@@ -1718,9 +1689,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 <div className="space-y-2">
                   {project.panels.map((p) => {
                     const circuitsFed = project.circuits.filter((c) => c.panelId === p.id);
-                    const totalBocas = project.electricalElements.filter((e) =>
-                      circuitsFed.some((c) => c.id === e.circuitId)
-                    ).length;
+                    const totalBocas = countPanelBocas(p.id, project.electricalElements, project.circuits, project.conduits);
                     const feederCircuit = project.circuits.find(
                       (c) => c.targetPanelId === p.id && (c.type === 'LP' || c.type === 'LS')
                     );
@@ -1769,8 +1738,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 setPanelName(p.name);
                                 setPanelType(p.type);
                                 setPanelIsThreePhase(p.isThreePhase ?? false);
-                                setPanelBreakerA(p.mainBreakerAmperageA || 25);
-                                setPanelDiffA(p.mainDifferentialAmperageA || 25);
                                 setIsCreatingPanel(false);
                               }}
                               className="p-1 text-slate-400 hover:text-blue-600 rounded cursor-pointer"
@@ -1804,8 +1771,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </div>
 
                         <div className="flex items-center justify-between text-[10px] text-slate-600 pt-1.5 border-t border-slate-100 font-mono">
-                          <span>
-                            TM: <strong>{p.mainBreakerAmperageA || 32}A</strong> · ID: <strong>{p.mainDifferentialAmperageA || 40}A</strong>
+                          <span className="text-slate-500 font-sans">
+                            {p.type === 'principal' ? 'Cabecera de Instalación' : 'Subtablero Seccional'}
                           </span>
                           <div className="flex items-center gap-1.5">
                             <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold">

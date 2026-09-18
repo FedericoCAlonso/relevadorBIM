@@ -82,6 +82,17 @@ export function isPanelElement(
 }
 
 /**
+ * Determina si un elemento representa una etiqueta de referencia o remate de caño (no es boca física ni caja de paso).
+ */
+export function isTerminalReference(
+  element: { isTerminalReference?: boolean; symbolId?: string }
+): boolean {
+  if (element.isTerminalReference) return true;
+  if (element.symbolId === 'sym-terminal-referencia') return true;
+  return false;
+}
+
+/**
  * Encuentra la rama interconectada a partir de una boca, cañería o tablero dado.
  *
  * Propiedades del recorrido:
@@ -478,10 +489,143 @@ export function applyBranchUpdates(params: {
     }
   }
 
+  // Sincronizar automáticamente circuitos en tránsito para que cajas y canalizaciones coincidan estrictamente
+  const synced = syncPassingCircuits({
+    elements: updatedElements,
+    conduits: updatedConduits
+  });
+
   return {
-    updatedElements,
-    updatedConduits,
+    updatedElements: synced.updatedElements,
+    updatedConduits: synced.updatedConduits,
     updatedPanels,
     updatedCircuits
   };
 }
+
+/**
+ * Obtiene todos los circuitos que viajan por una canalización dada (multi-circuito y conductores).
+ */
+export function getConduitCarriedCircuits(conduit: Conduit): string[] {
+  const ids = new Set<string>();
+  if (conduit.circuitId) ids.add(conduit.circuitId);
+  if (conduit.circuitIds) {
+    for (const id of conduit.circuitIds) {
+      if (id) ids.add(id);
+    }
+  }
+  for (const cond of conduit.conductors) {
+    if (cond.circuitId) ids.add(cond.circuitId);
+  }
+  return Array.from(ids);
+}
+
+/**
+ * Sincroniza los circuitos en tránsito entre las cajas/bocas y las canalizaciones conectadas.
+ * Garantiza coherencia bidireccional: las cajas saben qué circuitos las atraviesan (passingCircuitIds)
+ * y las canalizaciones registran todos los circuitos que transportan.
+ */
+export function syncPassingCircuits(params: {
+  elements: readonly ElectricalElement[];
+  conduits: readonly Conduit[];
+}): {
+  updatedElements: ElectricalElement[];
+  updatedConduits: Conduit[];
+} {
+  const { elements, conduits } = params;
+  const conduitsMap = new Map<string, Conduit>(conduits.map((c) => [c.id, { ...c }]));
+  const elementsMap = new Map<string, ElectricalElement>(elements.map((e) => [e.id, { ...e }]));
+
+  // Índice de adyacencia de elemento a conductos
+  const elementToConduits = new Map<string, Conduit[]>();
+  for (const c of conduits) {
+    const listFrom = elementToConduits.get(c.fromElementId) || [];
+    listFrom.push(c);
+    elementToConduits.set(c.fromElementId, listFrom);
+
+    const listTo = elementToConduits.get(c.toElementId) || [];
+    listTo.push(c);
+    elementToConduits.set(c.toElementId, listTo);
+  }
+
+  for (const [elId, el] of elementsMap.entries()) {
+    if (isPanelElement(el) || isTerminalReference(el)) continue;
+    const connectedConduits = elementToConduits.get(elId) || [];
+    if (connectedConduits.length === 0) continue;
+
+    // Circuitos que tocan este elemento a través de sus canalizaciones conectadas
+    const allTouchingCircuits = new Set<string>();
+    for (const c of connectedConduits) {
+      const carried = getConduitCarriedCircuits(c);
+      carried.forEach((id) => allTouchingCircuits.add(id));
+    }
+
+    // Circuitos en tránsito: aquellos que tocan la caja pero no alimentan su consumo terminal
+    const expectedPassing = Array.from(allTouchingCircuits).filter((id) => id !== el.circuitId);
+    const combinedPassing = new Set([...(el.passingCircuitIds || []), ...expectedPassing]);
+    const finalPassing = Array.from(combinedPassing).filter((id) => id !== el.circuitId);
+
+    el.passingCircuitIds = finalPassing;
+
+    // Propagar circuitos hacia las canalizaciones conectadas
+    for (const c of connectedConduits) {
+      const conduitEntry = conduitsMap.get(c.id);
+      if (conduitEntry) {
+        const carried = new Set(getConduitCarriedCircuits(conduitEntry));
+        finalPassing.forEach((id) => carried.add(id));
+        if (el.circuitId) carried.add(el.circuitId);
+        conduitEntry.circuitIds = Array.from(carried);
+      }
+    }
+  }
+
+  return {
+    updatedElements: Array.from(elementsMap.values()),
+    updatedConduits: Array.from(conduitsMap.values())
+  };
+}
+
+/**
+ * Contabiliza las bocas de consumo reales asociadas a un tablero.
+ * 
+ * Reglas de negocio estrictas:
+ * 1. Las etiquetas de remate o referencias de caño (isTerminalReference) NUNCA se contabilizan como bocas.
+ * 2. Los tableros eléctricos (isPanel) NUNCA se contabilizan como bocas.
+ * 3. Si la rama tiene un circuito que pertenece a este tablero y converge en una etiqueta de referencia,
+ *    todas las bocas físicas de esa rama se contabilizan formalmente para este tablero.
+ */
+export function countPanelBocas(
+  panelId: string,
+  elements: readonly ElectricalElement[],
+  circuits: readonly Circuit[],
+  conduits?: readonly Conduit[]
+): number {
+  const panelCircuitIds = new Set(
+    circuits.filter((c) => c.panelId === panelId).map((c) => c.id)
+  );
+
+  return elements.filter((el) => {
+    if (isPanelElement(el) || isTerminalReference(el)) return false;
+    if (el.circuitId && panelCircuitIds.has(el.circuitId)) return true;
+
+    // Si el elemento no tiene circuitId directo pero está en una rama cuya cañería o remate apunta a este panel:
+    if (conduits && conduits.length > 0) {
+      const branch = findConnectedBranch({
+        startEntity: { type: 'electrical_element', id: el.id },
+        elements,
+        conduits
+      });
+      if (branch) {
+        if (branch.predominantCircuitId && panelCircuitIds.has(branch.predominantCircuitId)) {
+          return true;
+        }
+        const hasTerminalToPanel = branch.elements.some(
+          (be) => isTerminalReference(be) && be.targetPanelId === panelId
+        );
+        if (hasTerminalToPanel) return true;
+      }
+    }
+    return false;
+  }).length;
+}
+

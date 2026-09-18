@@ -16,7 +16,7 @@ import {
   DEFAULT_CONDUIT_DIAMETER_MM,
   AEA_CONDUCTOR_COLORS
 } from '../models/electrical/electricalStandards';
-import type { ConduitWaypoint } from '../models/electrical/ElectricalModel';
+import type { ConduitWaypoint, ElectricalElement } from '../models/electrical/ElectricalModel';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -46,6 +46,7 @@ export function useSurveyViewModel() {
     addWallFromAnchor,
     addBranchWallFromOffset,
     addOpeningReferenced,
+    addElectricalElement,
     addConduit,
     updateConduit,
     addDimensionLine,
@@ -402,6 +403,98 @@ export function useSurveyViewModel() {
     ]
   );
 
+  /**
+   * Finaliza el trazado de una cañería rematándola en una etiqueta de referencia (pase a montante / continuación).
+   * Genera el elemento terminal tipo 'sym-terminal-referencia' y conecta la cañería hacia él.
+   */
+  const commitConduitWithTerminalReference = useCallback(
+    (targetPos?: { x: number; y: number }, targetDescription?: string) => {
+      if (!isConnectingConduit || !pendingConduitStartId) return null;
+
+      const startEl =
+        project.electricalElements.find((e) => e.id === pendingConduitStartId) ||
+        project.panels.find((p) => p.id === pendingConduitStartId);
+
+      const resolvedPos =
+        targetPos ||
+        (pendingConduitWaypoints && pendingConduitWaypoints.length > 0
+          ? pendingConduitWaypoints[pendingConduitWaypoints.length - 1]
+          : startEl
+          ? { x: startEl.x + 1.0, y: startEl.y }
+          : { x: 0, y: 0 });
+
+      const fromCircuitId = startEl && 'circuitId' in startEl ? (startEl as any).circuitId : null;
+      const inheritedCircuitId = fromCircuitId || project.circuits[0]?.id || null;
+      const circ = project.circuits.find((c) => c.id === inheritedCircuitId);
+      const wireSec = circ?.wireSectionBaseMM2 || 2.5;
+
+      const seqStore = useElectricalSequenceStore.getState();
+      const seqMode = seqStore.sequenceRoutingMode || 'schematic_arc';
+      const seqPlane = seqStore.sequenceRoutingPlane || 'ceiling_slab';
+      const seqDiam = seqStore.sequenceConduitDiameterMM || DEFAULT_CONDUIT_DIAMETER_MM;
+      const seqMat = seqStore.sequenceConduitMaterial || DEFAULT_CONDUIT_MATERIAL;
+
+      const terminalId = `el-term-${Date.now()}`;
+      const terminalElement: ElectricalElement = {
+        id: terminalId,
+        levelId: project.activeLevelId,
+        spaceId: 'espacio-principal',
+        x: Number(resolvedPos.x.toFixed(3)),
+        y: Number(resolvedPos.y.toFixed(3)),
+        heightZ: startEl?.heightZ ?? 2.60,
+        symbolId: 'sym-terminal-referencia',
+        placement: 'ceiling',
+        isTerminalReference: true,
+        targetDescription: targetDescription || 'A Tablero General',
+        targetPanelId: circ?.panelId || project.panels[0]?.id || null,
+        circuitId: inheritedCircuitId
+      };
+
+      addElectricalElement(terminalElement);
+
+      const newConduitId = `cond-${Date.now()}`;
+      addConduit({
+        id: newConduitId,
+        circuitId: inheritedCircuitId,
+        circuitIds: inheritedCircuitId ? [inheritedCircuitId] : [],
+        fromElementId: pendingConduitStartId,
+        toElementId: terminalId,
+        fromLevelId: project.activeLevelId,
+        toLevelId: project.activeLevelId,
+        diameterMM: seqDiam,
+        material: seqMat,
+        isVerticalRiser: false,
+        routingMode: seqMode,
+        routingPlane: seqPlane,
+        waypoints: seqMode !== 'schematic_arc' && pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
+        targetDescription: targetDescription || 'A Tablero General',
+        conductors: [
+          { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
+          { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },
+          { role: 'pe', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.pe }
+        ]
+      });
+
+      setIsConnectingConduit(false);
+      setPendingConduitStartId(null);
+      setPendingConduitWaypoints([]);
+      setSelectedEntity({ type: 'electrical_element', id: terminalId });
+      return terminalId;
+    },
+    [
+      isConnectingConduit,
+      pendingConduitStartId,
+      pendingConduitWaypoints,
+      addElectricalElement,
+      addConduit,
+      project.activeLevelId,
+      project.electricalElements,
+      project.panels,
+      project.circuits,
+      setSelectedEntity
+    ]
+  );
+
   return {
     relativeTurn,
     setRelativeTurn,
@@ -421,6 +514,7 @@ export function useSurveyViewModel() {
     undoLastConduitWaypoint,
     clearConduitWaypoints,
     cancelConduitConnection,
+    commitConduitWithTerminalReference,
     editingConduitRouteId,
     startEditingConduitRoute,
     finishEditingConduitRoute,

@@ -6,7 +6,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   RotateCw,
   RotateCcw,
@@ -46,15 +46,16 @@ export const UnderlayAdjustModal: React.FC<UnderlayAdjustModalProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Reiniciar estado cada vez que se abre el modal
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) {
       setRotationDeg(0);
       setCropBox(null);
       setIsDragging(false);
       setDragStart(null);
     }
-  }, [isOpen]);
+  }
 
   // Dimensiones efectivas tras aplicar la rotación
   const effectiveWidth =

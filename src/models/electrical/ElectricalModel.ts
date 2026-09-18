@@ -58,6 +58,10 @@ export interface ElectricalElement extends SpatialElectricalNode {
   isPanel?: boolean;       // Indica si representa un tablero eléctrico
   boxTypeId?: string;     // Tipo de caja / contenedor físico asociado
   attributes?: Array<{ key: string; value: string }>; // Metadatos técnicos libres clave-valor (TRAZA)
+  isTerminalReference?: boolean; // Verdadero si representa un remate o etiqueta de caño/referencia (no es caja física ni boca de consumo)
+  targetDescription?: string; // Destino de la referencia (ej: "A Tablero General en SS", "Continúa en Plano IE-02")
+  targetPanelId?: string | null; // ID del tablero destino si aplica
+  additionalLengthM?: number; // Metros adicionales de conducto/montante fuera de plano
   earthMeasurement?: {
     ohms: number;
     method: 'caida_tension' | 'dos_puntas';

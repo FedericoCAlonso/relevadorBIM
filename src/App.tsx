@@ -87,7 +87,8 @@ export function App() {
     dimensionP1,
     startAddingDimension,
     cancelAddingDimension,
-    handleDimensionCanvasClick
+    handleDimensionCanvasClick,
+    commitConduitWithTerminalReference
   } = useSurveyViewModel();
 
   const {
@@ -512,6 +513,7 @@ export function App() {
             onUndoConduitWaypoint={undoLastConduitWaypoint}
             onClearConduitWaypoints={clearConduitWaypoints}
             onCancelConnectingConduit={cancelConduitConnection}
+            onCommitConduitWithTerminalReference={commitConduitWithTerminalReference}
             underlaySheet={activeUnderlay}
             isCalibratingUnderlay={isCalibratingUnderlay}
             calibrationP1={calibrationP1}
@@ -819,6 +821,7 @@ export function App() {
           onUndoConduitWaypoint={undoLastConduitWaypoint}
           onClearConduitWaypoints={clearConduitWaypoints}
           onCancelConnectingConduit={cancelConduitConnection}
+          onCommitConduitWithTerminalReference={() => commitConduitWithTerminalReference()}
           sequenceRoutingMode={sequence.routingMode}
           onChangeSequenceRoutingMode={sequence.setRoutingMode}
           sequenceRoutingPlane={sequence.routingPlane}

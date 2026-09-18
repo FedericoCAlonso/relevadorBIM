@@ -175,6 +175,7 @@ export function extractDetailedMaterialItems(
   // 2. Bocas Eléctricas, Cajas y Mecanismos
   for (const el of project.electricalElements) {
     if (el.isPanel) continue; // Los tableros se procesan aparte
+    if (el.symbolId === 'sym-terminal-referencia' || el.isTerminalReference) continue; // Las etiquetas/remates de caño no son cajas físicas
 
     if (levelId && el.levelId !== levelId) continue;
 
@@ -258,7 +259,7 @@ export function extractDetailedMaterialItems(
       category: 'Tablero',
       elementName: panelTypeLabel,
       material: 'Gabinete DIN Embutir / Superficie',
-      sizeOrSection: `In: ${panel.mainBreakerAmperageA || 25}A · Id: ${panel.mainDifferentialAmperageA || 25}A`,
+      sizeOrSection: panel.isThreePhase ? 'Trifásico (380V)' : 'Monofásico (220V)',
       unit: 'u',
       quantity: 1,
       status: panelStatus,

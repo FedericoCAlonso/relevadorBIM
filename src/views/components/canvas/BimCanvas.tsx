@@ -22,7 +22,8 @@ import {
   generateRoundedPolylineSvgPath,
   computeOrthogonalConduitPoints,
   getConduitVerticalTransitions,
-  formatElementLabel
+  formatElementLabel,
+  calculateConduitRealLength
 } from '../../../models/electrical/calculations';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
 import type { SpatialElectricalNode, ConduitWaypoint } from '../../../models/electrical/ElectricalModel';
@@ -39,6 +40,7 @@ interface BimCanvasProps {
   onUndoConduitWaypoint?: () => void;
   onClearConduitWaypoints?: () => void;
   onCancelConnectingConduit?: () => void;
+  onCommitConduitWithTerminalReference?: (targetPos: { x: number; y: number }, targetDescription?: string) => void;
   isDesktop?: boolean;
   editingConduitRouteId?: string | null;
   onUpdateConduitWaypoint?: (conduitId: string, index: number, patch: Partial<ConduitWaypoint>) => void;
@@ -113,6 +115,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onUndoConduitWaypoint,
   onClearConduitWaypoints,
   onCancelConnectingConduit,
+  onCommitConduitWithTerminalReference,
   isDesktop = true,
   editingConduitRouteId = null,
   onUpdateConduitWaypoint,
@@ -822,6 +825,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
     triggerPlacementRef.current(e.clientX, e.clientY);
+  };
+
+  const handleSvgDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (wasDraggingRecentlyRef.current()) return;
+    if (isConnectingConduit && pendingConduitStartId && onCommitConduitWithTerminalReference) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const worldX = (mouseX - pan.x) / zoom;
+      const worldY = (mouseY - pan.y) / zoom;
+      onCommitConduitWithTerminalReference({ x: worldX, y: worldY });
+    }
   };
 
   // ─── RENDERIZADORES DE CAPAS ─────────────────────────────────────────────
@@ -1686,6 +1702,64 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               rotationDeg={element.rotation || 0}
             />
 
+            {/* Ficha técnica flotante para etiquetas / remates de caño */}
+            {(element.isTerminalReference || element.symbolId === 'sym-terminal-referencia') && (() => {
+              const connectedConduit = project.conduits.find(
+                (c) => c.fromElementId === element.id || c.toElementId === element.id
+              );
+              const otherId = connectedConduit
+                ? connectedConduit.fromElementId === element.id
+                  ? connectedConduit.toElementId
+                  : connectedConduit.fromElementId
+                : null;
+              const otherEl = otherId ? elementsMap.get(otherId) : null;
+              const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
+              const autoLen = otherEl
+                ? calculateConduitRealLength({
+                    fromElement: element,
+                    toElement: otherEl,
+                    levelsMap
+                  })
+                : 0;
+              const totalLen =
+                (connectedConduit?.manualLengthM || autoLen) +
+                (connectedConduit?.additionalLengthM || element.additionalLengthM || 0);
+              const diam = connectedConduit?.diameterMM || 19;
+              const conductorsCount = connectedConduit?.conductors?.length || 0;
+              const condDesc =
+                conductorsCount > 0
+                  ? `${conductorsCount}x${connectedConduit?.conductors[0]?.sectionMM2 || 2.5}mm²`
+                  : '';
+              const targetText =
+                element.targetDescription ||
+                connectedConduit?.targetDescription ||
+                'A Tablero';
+
+              const boxWidth = Math.max(120, targetText.length * 6.5 + 24);
+
+              return (
+                <g transform="translate(14, -14)" pointerEvents="none" className="select-none font-sans">
+                  <rect
+                    x="0"
+                    y="-9"
+                    width={boxWidth}
+                    height={30}
+                    rx="6"
+                    fill="rgba(15, 23, 42, 0.92)"
+                    stroke="#38bdf8"
+                    strokeWidth="1.2"
+                    className="shadow-md"
+                  />
+                  <text x="6" y="3.5" fill="#38bdf8" fontSize="9.5" fontWeight="bold">
+                    ➔ {targetText}
+                  </text>
+                  <text x="6" y="15" fill="#94a3b8" fontSize="8" fontFamily="monospace">
+                    Ø{diam}mm · L={totalLen.toFixed(1)}m {condDesc ? `· ${condDesc}` : ''}
+                  </text>
+                </g>
+              );
+            })()}
+
             {/* Si está seleccionado y NO estamos enlazando cañerías, botón contextual flotante */}
             {isSelected && !isConnectingConduit && (
               <g
@@ -1727,6 +1801,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     project.electricalElements,
     project.circuits,
     project.panels,
+    project.levels,
+    project.conduits,
+    elementsMap,
     labelDisplayMode,
     project.activeLevelId,
     zoom,
@@ -2049,7 +2126,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <svg className="w-full h-full" onClick={handleSvgClick}>
+      <svg className="w-full h-full" onClick={handleSvgClick} onDoubleClick={handleSvgDoubleClick}>
         <defs>
           <pattern
             id="grid-pattern"
@@ -2781,6 +2858,31 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             >
               {sequenceRoutingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco AEA'}
             </button>
+            {onCommitConduitWithTerminalReference && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  let targetPos: { x: number; y: number } | null = hoverWorldPos;
+                  if (!targetPos && pendingConduitWaypoints && pendingConduitWaypoints.length > 0) {
+                    targetPos = pendingConduitWaypoints[pendingConduitWaypoints.length - 1];
+                  }
+                  if (!targetPos && pendingConduitStartId) {
+                    const start = elementsMap.get(pendingConduitStartId);
+                    if (start) {
+                      targetPos = { x: start.x + 1.0, y: start.y };
+                    }
+                  }
+                  if (targetPos) {
+                    onCommitConduitWithTerminalReference(targetPos);
+                  }
+                }}
+                className="px-2 py-0.5 rounded-full bg-sky-950/90 border border-sky-600 hover:bg-sky-800 text-sky-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1"
+                title="Rematar cañería en una etiqueta de referencia / pase a montante"
+              >
+                <span>➔ Rematar Etiqueta</span>
+              </button>
+            )}
             {onCancelConnectingConduit && (
               <button
                 type="button"

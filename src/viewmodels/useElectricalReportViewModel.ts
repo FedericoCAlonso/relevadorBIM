@@ -192,7 +192,9 @@ export function computeElectricalReport(project: BuildingProject): ElectricalRep
         ? AEA_CALCULATION_CONSTANTS.VOLTAGE_THREE_PHASE_V
         : AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V);
 
-    const connectedElements = project.electricalElements.filter((e) => e.circuitId === circuit.id);
+    const connectedElements = project.electricalElements.filter(
+      (e) => !e.isPanel && !e.isTerminalReference && e.symbolId !== 'sym-terminal-referencia' && e.circuitId === circuit.id
+    );
     const circuitConduits = project.conduits.filter(
       (c) => c.circuitId === circuit.id || c.circuitIds?.includes(circuit.id)
     );

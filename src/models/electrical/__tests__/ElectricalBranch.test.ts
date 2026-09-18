@@ -10,6 +10,9 @@ import { describe, it, expect } from 'vitest';
 import {
   findConnectedBranch,
   applyBranchUpdates,
+  syncPassingCircuits,
+  countPanelBocas,
+  isTerminalReference,
   type BranchUpdatePayload
 } from '../electricalBranch';
 import type {
@@ -433,5 +436,105 @@ describe('Modelo de Ramas del Grafo Eléctrico (electricalBranch)', () => {
     expect(c1.material).toBe('bandeja_perforada_20');
     // Debe haber hecho fallback al default de bandeja (50mm o 100mm)
     expect(c1.diameterMM).toBeGreaterThanOrEqual(50);
+  });
+
+  it('countPanelBocas debe contabilizar las bocas de una rama que converge en una etiqueta de referencia y excluir la etiqueta y los tableros', () => {
+    const circuits: Circuit[] = [
+      { id: 'c-tp-1', panelId: 'panel-tp', name: 'C1', type: 'IUG', breakerAmperageA: 10, wireSectionBaseMM2: 1.5, voltageV: 220 },
+      { id: 'c-ts-1', panelId: 'panel-ts', name: 'C2', type: 'TUG', breakerAmperageA: 16, wireSectionBaseMM2: 2.5, voltageV: 220 }
+    ];
+
+    const elements: ElectricalElement[] = [
+      // Boca 1 alimentada por c-tp-1
+      { id: 'b1', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 0, y: 0, heightZ: 2.6, circuitId: 'c-tp-1' },
+      // Boca 2 alimentada por c-tp-1
+      { id: 'b2', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 2, y: 0, heightZ: 2.6, circuitId: 'c-tp-1' },
+      // Remate en etiqueta de referencia que apunta a panel-tp
+      {
+        id: 'term-ref',
+        symbolId: 'sym-terminal-referencia',
+        levelId: 'l1',
+        spaceId: 's1',
+        placement: 'ceiling',
+        x: 4,
+        y: 0,
+        heightZ: 2.6,
+        isTerminalReference: true,
+        targetPanelId: 'panel-tp',
+        circuitId: 'c-tp-1'
+      },
+      // Tablero
+      {
+        id: 'tp-elem',
+        symbolId: 'sym-planta-tp',
+        levelId: 'l1',
+        spaceId: 's1',
+        placement: 'wall',
+        x: -2,
+        y: 0,
+        heightZ: 1.4,
+        isPanel: true
+      },
+      // Boca ajena (pertenece a otro panel)
+      { id: 'b-other', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 10, y: 10, heightZ: 2.6, circuitId: 'c-ts-1' }
+    ];
+
+    const conduits: Conduit[] = [
+      { id: 'c-1-2', fromElementId: 'b1', toElementId: 'b2', fromLevelId: 'l1', toLevelId: 'l1', diameterMM: 19, material: 'pvc_rigido_metrico', isVerticalRiser: false, circuitId: 'c-tp-1', conductors: [] },
+      { id: 'c-2-term', fromElementId: 'b2', toElementId: 'term-ref', fromLevelId: 'l1', toLevelId: 'l1', diameterMM: 19, material: 'pvc_rigido_metrico', isVerticalRiser: false, circuitId: 'c-tp-1', conductors: [] }
+    ];
+
+    // La cuenta para panel-tp debe ser exactamente 2 (b1 y b2), excluyendo term-ref y tp-elem
+    const countTp = countPanelBocas('panel-tp', elements, circuits, conduits);
+    expect(countTp).toBe(2);
+
+    // Para panel-ts debe ser 1 (b-other)
+    const countTs = countPanelBocas('panel-ts', elements, circuits, conduits);
+    expect(countTs).toBe(1);
+
+    // Comprobación de isTerminalReference
+    expect(isTerminalReference(elements[2])).toBe(true);
+    expect(isTerminalReference(elements[0])).toBe(false);
+  });
+
+  it('syncPassingCircuits debe sincronizar bidireccionalmente los circuitos que pasan entre cajas y canalizaciones', () => {
+    // Caja B1 (Circuito 1), conectada por Cañería 1 a Caja B2 (Circuito 2)
+    const elements: ElectricalElement[] = [
+      { id: 'box-1', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 0, y: 0, heightZ: 2.6, circuitId: 'circ-1', passingCircuitIds: [] },
+      { id: 'box-2', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 3, y: 0, heightZ: 2.6, circuitId: 'circ-2', passingCircuitIds: [] }
+    ];
+
+    const conduits: Conduit[] = [
+      {
+        id: 'cond-1-2',
+        fromElementId: 'box-1',
+        toElementId: 'box-2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'circ-1',
+        circuitIds: ['circ-1'],
+        conductors: []
+      }
+    ];
+
+    const synced = syncPassingCircuits({ elements, conduits });
+
+    const syncedBox1 = synced.updatedElements.find((e) => e.id === 'box-1')!;
+    const syncedBox2 = synced.updatedElements.find((e) => e.id === 'box-2')!;
+    const syncedCond = synced.updatedConduits.find((c) => c.id === 'cond-1-2')!;
+
+    // La canalización debe transportar circ-1 y circ-2
+    expect(syncedCond.circuitIds).toContain('circ-1');
+    expect(syncedCond.circuitIds).toContain('circ-2');
+
+    // Box 2 (su circuito propio es circ-2) debe tener circ-1 como circuito en tránsito
+    expect(syncedBox2.passingCircuitIds).toContain('circ-1');
+    expect(syncedBox2.passingCircuitIds).not.toContain('circ-2');
+
+    // Box 1 (su circuito propio es circ-1) no debe tener circ-1 como passing
+    expect(syncedBox1.passingCircuitIds).not.toContain('circ-1');
   });
 });

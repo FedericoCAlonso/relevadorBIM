@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { Circuit, CircuitType, Panel } from '../../../models/electrical/ElectricalModel';
+import { countPanelBocas } from '../../../models/electrical/electricalBranch';
 import { CircuitColorPicker } from './CircuitColorPicker';
 import {
   CIRCUIT_COLOR_PALETTE,
@@ -621,43 +622,6 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                     </div>
                   </div>
 
-                  {/* Protecciones de Cabecera: Termomagnética e Interruptor Diferencial */}
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                        TERMOMAGNÉTICA CABECERA
-                      </label>
-                      <select
-                        value={panelBreakerA}
-                        onChange={(e) => setPanelBreakerA(Number(e.target.value))}
-                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {[16, 20, 25, 32, 40, 50, 63].map((amp) => (
-                          <option key={amp} value={amp}>
-                            {amp} A (Curva C)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                        DISYUNTOR CABECERA
-                      </label>
-                      <select
-                        value={panelDiffA}
-                        onChange={(e) => setPanelDiffA(Number(e.target.value))}
-                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {[25, 40, 63].map((amp) => (
-                          <option key={amp} value={amp}>
-                            {amp} A / 30 mA
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
                   {/* Botones Guardar / Cancelar */}
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
                     <button
@@ -689,9 +653,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
               <div className="space-y-3">
                 {project.panels.map((p) => {
                   const circuitsFed = project.circuits.filter((c) => c.panelId === p.id);
-                  const totalBocas = project.electricalElements.filter((e) =>
-                    circuitsFed.some((c) => c.id === e.circuitId)
-                  ).length;
+                  const totalBocas = countPanelBocas(p.id, project.electricalElements, project.circuits, project.conduits);
 
                   // Verificar si este tablero es alimentado por una LS desde otro tablero
                   const feederCircuit = project.circuits.find(
@@ -816,11 +778,6 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                {inc.mainBreakerAmperageA && (
-                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                    TM {inc.mainBreakerAmperageA}A
-                                  </span>
-                                )}
                                 {inc.sourceType === 'generator' && (
                                   <button
                                     type="button"
@@ -846,16 +803,10 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         )}
                       </div>
 
-                      {/* Fila 2: Protecciones de Cabecera y Métricas */}
+                      {/* Fila 2: Cabecera y Métricas */}
                       <div className="flex items-center justify-between text-[11px] text-slate-600 pt-2 border-t border-slate-100 flex-wrap gap-2">
-                        <div className="flex items-center gap-2 font-mono">
-                          <span>
-                            TM: <strong>{p.mainBreakerAmperageA || 32}A</strong>
-                          </span>
-                          <span>·</span>
-                          <span>
-                            ID: <strong>{p.mainDifferentialAmperageA || 40}A/30mA</strong>
-                          </span>
+                        <div className="flex items-center gap-2 text-slate-500 font-sans">
+                          <span>{p.type === 'principal' ? 'Cabecera de Distribución' : 'Subtablero Seccional'}</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -1173,7 +1124,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                       <div className="space-y-2">
                         {panelCircuits.map((circ) => {
                           const bocasCount = project.electricalElements.filter(
-                            (e) => e.circuitId === circ.id
+                            (e) => !e.isPanel && !e.isTerminalReference && e.symbolId !== 'sym-terminal-referencia' && e.circuitId === circ.id
                           ).length;
                           const isOverloaded =
                             (circ.type === 'IUG' || circ.type === 'TUG') && bocasCount > 15;

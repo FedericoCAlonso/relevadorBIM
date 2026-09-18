@@ -55,3 +55,12 @@ export function getSymbolsByCategory(categoryId: string): ElectricalSymbolDefini
 export function getSymbolById(symbolId: string): ElectricalSymbolDefinition | undefined {
   return ALL_SYMBOLS.find(s => s.id === symbolId);
 }
+
+/**
+ * Determina si un símbolo corresponde a una etiqueta o remate de caño / referencia.
+ */
+export function isTerminalReferenceSymbol(symbolId?: string | null): boolean {
+  if (!symbolId) return false;
+  return symbolId === 'sym-terminal-referencia';
+}
+
