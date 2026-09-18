@@ -17,7 +17,6 @@ import {
   AEA_CONDUCTOR_COLORS
 } from '../models/electrical/electricalStandards';
 import type { ConduitWaypoint } from '../models/electrical/ElectricalModel';
-import { getNextElevationDetailTag } from '../models/electrical/calculations';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -121,21 +120,9 @@ export function useSurveyViewModel() {
       if (!cond || !cond.waypoints) return;
       const nextWp = [...cond.waypoints];
       if (index >= 0 && index < nextWp.length) {
-        const currentWp = nextWp[index];
-        let assignedTag = patch.tag || currentWp.tag;
-
-        // Si se marca como cambio de nivel y no tiene etiqueta, asignar una correlativa A, B, C...
-        if ((patch.kind === 'elevation_change' || patch.isVerticalTransition) && !assignedTag) {
-          const existingTags = project.conduits.flatMap((c) =>
-            (c.waypoints || []).map((w) => w.tag).filter(Boolean) as string[]
-          );
-          assignedTag = getNextElevationDetailTag(existingTags);
-        }
-
         nextWp[index] = {
-          ...currentWp,
+          ...nextWp[index],
           ...patch,
-          ...(assignedTag ? { tag: assignedTag } : {}),
           ...(patch.x !== undefined ? { x: Number(patch.x.toFixed(3)) } : {}),
           ...(patch.y !== undefined ? { y: Number(patch.y.toFixed(3)) } : {})
         };

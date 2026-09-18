@@ -14,10 +14,7 @@ import {
   generateRoundedPolylineSvgPath,
   computeOrthogonalConduitPoints,
   getConduitVerticalTransitions,
-  getConduitLengthBreakdown,
-  computeWaypointTransitionMetrics,
-  isBendAngleValid,
-  getNextElevationDetailTag
+  getConduitLengthBreakdown
 } from '../calculations';
 
 describe('generateNextUniqueLabel (Unicidad determinista)', () => {
@@ -341,99 +338,6 @@ describe('getConduitLengthBreakdown (Vías de tendido y waypoints)', () => {
     expect(breakdown.additionalLengthM).toBe(10.0);
     expect(breakdown.totalLengthM).toBe(24.31);
   });
-
-  it('calcula la hipotenusa cuando el quiebre vertical tiene ángulo de 45°', () => {
-    // Transición vertical de 1.50m a 45°
-    const waypoints = [
-      {
-        x: 3,
-        y: 0,
-        kind: 'elevation_change' as const,
-        elevationFromZ: 2.60,
-        elevationToZ: 1.10,
-        transitionAngleDeg: 45
-      }
-    ];
-
-    const breakdown = getConduitLengthBreakdown({
-      fromElement: elA,
-      toElement: elB,
-      levelsMap,
-      routingPlane: 'ceiling_slab',
-      ceilingHeightM: 2.60,
-      waypoints
-    });
-
-    // ΔZ = 1.50m, a 45° => H = 1.50 / sin(45°) = 2.121m
-    // dzLocal = 4.60 (subida/bajada extremos) + 2.121 = 6.72m
-    expect(breakdown.dzLocal).toBeCloseTo(6.72, 1);
-  });
 });
 
-describe('computeWaypointTransitionMetrics (Geometría curva, contracurva e hipotenusa)', () => {
-  it('resuelve bajada a plomo de 90° con desplazamiento en planta cero', () => {
-    const metrics = computeWaypointTransitionMetrics({
-      x: 5,
-      y: 5,
-      elevationFromZ: 2.60,
-      elevationToZ: 1.10,
-      transitionAngleDeg: 90
-    });
-
-    expect(metrics.dz).toBe(1.50);
-    expect(metrics.angleDeg).toBe(90);
-    expect(metrics.hypotenuseM).toBe(1.50);
-    expect(metrics.offsetPlantaM).toBe(0);
-  });
-
-  it('resuelve desvío inclinado a 45° con hipotenusa y desplazamiento en planta', () => {
-    const metrics = computeWaypointTransitionMetrics({
-      x: 5,
-      y: 5,
-      elevationFromZ: 2.60,
-      elevationToZ: 1.10,
-      transitionAngleDeg: 45
-    });
-
-    expect(metrics.dz).toBe(1.50);
-    expect(metrics.angleDeg).toBe(45);
-    // H = 1.50 * sqrt(2) ≈ 2.121
-    expect(metrics.hypotenuseM).toBeCloseTo(2.121, 2);
-    // ΔL = 1.50 / tan(45°) = 1.50
-    expect(metrics.offsetPlantaM).toBeCloseTo(1.50, 2);
-  });
-});
-
-describe('isBendAngleValid (Restricción de deflexión <= 90°)', () => {
-  it('permite tramo recto (deflexión 0°)', () => {
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 })).toBe(true);
-  });
-
-  it('permite giro exacto a escuadra a 90°', () => {
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 })).toBe(true);
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: -5 })).toBe(true);
-  });
-
-  it('permite curva suave menor a 90° (ej: 45°)', () => {
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 8, y: 3 })).toBe(true);
-  });
-
-  it('prohíbe curvas cerradas en U con deflexión mayor a 90° (retroceso prohibido)', () => {
-    // El caño viene de (0,0) a (5,0) y luego dobla hacia atrás a (2, 2)
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 2, y: 2 })).toBe(false);
-    // Vuelve hacia atrás completamente (180°)
-    expect(isBendAngleValid({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 0, y: 0 })).toBe(false);
-  });
-});
-
-describe('getNextElevationDetailTag (Nomenclatura normalizada de vistas A, B, C...)', () => {
-  it('asigna A cuando no existen vistas previas', () => {
-    expect(getNextElevationDetailTag([])).toBe('A');
-  });
-
-  it('asigna correlativamente sin colisionar con vistas existentes', () => {
-    expect(getNextElevationDetailTag(['A', 'B'])).toBe('C');
-    expect(getNextElevationDetailTag(['A', 'C'])).toBe('B');
-  });
-});
 
