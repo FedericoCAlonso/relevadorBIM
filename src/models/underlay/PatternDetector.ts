@@ -20,9 +20,11 @@ export interface BoundingBoxPx {
 
 import {
   computeGramSvdConsensus,
-  calculateMultiRotationWeightedZNCC
+  calculateMultiRotationWeightedZNCC,
+  rotateNormalizedPatch
 } from './GramSvd';
-import { extractWarpedPatchBilinear } from './EccAlignment';
+import { extractWarpedPatchBilinear, alignPatchEccEuclidean } from './EccAlignment';
+import { extractDominantLabColor, deltaE, type LabColor } from './ColorLab';
 
 export interface ImageMoments {
   m00: number; // Área / masa (cantidad de píxeles oscuros)
@@ -65,6 +67,7 @@ export interface PatternExemplar {
   boxPx: BoundingBoxPx;
   signature: EigenSignature;
   patch: NormalizedPatch;
+  dominantLab?: LabColor;
   isNegative?: boolean;
 }
 
@@ -582,13 +585,27 @@ export function compareEigenSignatures(target: EigenSignature, candidate: EigenS
 export function calculateExemplarSimilarity(
   candSignature: EigenSignature,
   candPatch: NormalizedPatch,
-  exemplar: PatternExemplar
+  exemplar: PatternExemplar,
+  candLab?: LabColor | null
 ): number {
   const eigenScore = compareEigenSignatures(exemplar.signature, candSignature);
   const znccScore = calculateMultiRotationZNCC(candPatch, exemplar.patch);
+  let score = 0.35 * eigenScore + 0.65 * znccScore;
+
+  // Filtrado suave de color si el ejemplar tiene color cromático definido
+  if (exemplar.dominantLab && candLab) {
+    const chroma = Math.hypot(exemplar.dominantLab[1], exemplar.dominantLab[2]);
+    if (chroma > 15) {
+      const dE = deltaE(exemplar.dominantLab, candLab);
+      if (dE > 35) {
+        const penalty = Math.min(0.30, ((dE - 35) / 50) * 0.30);
+        score = Math.max(0, score - penalty);
+      }
+    }
+  }
 
   // Fusión discriminante
-  return Number((0.35 * eigenScore + 0.65 * znccScore).toFixed(3));
+  return Number(score.toFixed(3));
 }
 
 /**
@@ -785,12 +802,111 @@ export function createPatternExemplar(
         )
       : extractNormalizedPatch(binaryMask, imgWidth, squareBox, PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE, rgbaData);
 
+  const dominantLab =
+    rgbaData && resolvedHeight > 0
+      ? extractDominantLabColor(rgbaData, imgWidth, squareBox, binaryMask)
+      : undefined;
+
   return {
     id: `ex-${Date.now()}-${Math.round(squareBox.x)}_${Math.round(squareBox.y)}`,
     boxPx: squareBox,
     signature,
     patch,
+    dominantLab: dominantLab || undefined,
     isNegative
+  };
+}
+
+/**
+ * Co-registra con precisión milimétrica subpíxel y orientación canónica un nuevo ejemplar
+ * positivo respecto a un ejemplar ancla de referencia (Muestra #1).
+ * 
+ * 1. Resuelve la rotación cardinal óptima (0°, 90°, 180°, 270°) contra el parche ancla.
+ * 2. Ejecuta optimización continua ECC en SE(2) (tx, ty, dTheta) para alinear trazos al subpíxel.
+ * 3. Extrae el parche resampleado por interpolación bilineal, co-registrado 1:1 con el ancla.
+ * 4. Extrae la signatura espectral y color CIELAB del recuadro refinado.
+ */
+export function coRegisterExemplarToAnchor(
+  binaryMask: Uint8Array,
+  imgWidth: number,
+  imgHeight: number,
+  rawBox: BoundingBoxPx,
+  anchorExemplar: PatternExemplar,
+  rgbaData?: Uint8ClampedArray | Uint8Array
+): PatternExemplar | null {
+  const tightBox = tightenBoundingBox(binaryMask, imgWidth, rawBox);
+  const targetSize = Math.max(anchorExemplar.boxPx.width, anchorExemplar.boxPx.height);
+  const initialCenter = {
+    x: tightBox.x + tightBox.width / 2,
+    y: tightBox.y + tightBox.height / 2
+  };
+
+  // 1. Evaluar mejor rotación cardinal previa (0°, 90°, 180°, 270°) para entrar en la cuenca de atracción ECC
+  const roughBox: BoundingBoxPx = {
+    x: Math.round(initialCenter.x - targetSize / 2),
+    y: Math.round(initialCenter.y - targetSize / 2),
+    width: targetSize,
+    height: targetSize
+  };
+
+  const roughPatch = extractNormalizedPatch(
+    binaryMask,
+    imgWidth,
+    roughBox,
+    anchorExemplar.patch.size,
+    rgbaData
+  );
+
+  const angles: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+  let bestAngle: 0 | 90 | 180 | 270 = 0;
+  let bestScore = -1;
+
+  for (const angle of angles) {
+    const unrotateDeg = ((360 - angle) % 360) as 0 | 90 | 180 | 270;
+    const rotPatch = rotateNormalizedPatch(roughPatch, unrotateDeg);
+    const score = calculateMultiRotationZNCC(rotPatch, anchorExemplar.patch);
+    if (score > bestScore) {
+      bestScore = score;
+      bestAngle = angle;
+    }
+  }
+
+  // 2. Alineación fina continua euclídea por ECC alrededor del ángulo cardinal seleccionado
+  const initialAngleRad = (bestAngle * Math.PI) / 180;
+  const eccResult = alignPatchEccEuclidean(
+    binaryMask,
+    imgWidth,
+    imgHeight,
+    initialCenter,
+    { width: targetSize, height: targetSize },
+    anchorExemplar.patch,
+    initialAngleRad,
+    { rgbaData }
+  );
+
+  const refinedBox: BoundingBoxPx = {
+    x: Math.round(eccResult.refinedCenterPx.x - targetSize / 2),
+    y: Math.round(eccResult.refinedCenterPx.y - targetSize / 2),
+    width: targetSize,
+    height: targetSize
+  };
+
+  const moments = calculateImageMoments(binaryMask, imgWidth, refinedBox);
+  const signature =
+    calculateEigenSignature(moments, refinedBox.width, refinedBox.height) ||
+    anchorExemplar.signature;
+
+  const dominantLab = rgbaData
+    ? extractDominantLabColor(rgbaData, imgWidth, refinedBox, binaryMask)
+    : undefined;
+
+  return {
+    id: `ex-${Date.now()}-${Math.round(eccResult.refinedCenterPx.x)}_${Math.round(eccResult.refinedCenterPx.y)}`,
+    boxPx: refinedBox,
+    signature,
+    patch: eccResult.alignedPatch,
+    dominantLab: dominantLab || anchorExemplar.dominantLab,
+    isNegative: false
   };
 }
 
@@ -805,7 +921,8 @@ export function detectPatternMatchesWithExemplars(
   negativeExemplars: PatternExemplar[],
   scaleMetersPerPx: number,
   originWorld: { x: number; y: number },
-  similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD
+  similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD,
+  rgbaData?: Uint8ClampedArray | Uint8Array
 ): DetectedPatternMatch[] {
   if (positiveExemplars.length === 0) return [];
 
@@ -875,6 +992,9 @@ export function detectPatternMatchesWithExemplars(
     });
   }
 
+  // Verificar si algún ejemplar positivo tiene color CIELAB activo
+  const hasExemplarLab = positiveExemplars.some((e) => e.dominantLab !== undefined);
+
   // 4. Evaluar cada candidato heurístico contra ejemplares positivos y penalizar con negativos
   for (let i = 0; i < candidateBlobs.length; i++) {
     const blob = candidateBlobs[i];
@@ -908,11 +1028,15 @@ export function detectPatternMatchesWithExemplars(
 
     if (candSignature) {
       const candPatch = extractNormalizedPatch(binaryMask, imgWidth, centeredBox);
+      const candLab =
+        rgbaData && hasExemplarLab
+          ? extractDominantLabColor(rgbaData, imgWidth, centeredBox, binaryMask)
+          : null;
 
       // Similitud máxima con las muestras positivas
       let maxPositiveScore = 0;
       for (const posEx of positiveExemplars) {
-        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx);
+        const score = calculateExemplarSimilarity(candSignature, candPatch, posEx, candLab);
         if (score > maxPositiveScore) {
           maxPositiveScore = score;
         }
@@ -934,7 +1058,7 @@ export function detectPatternMatchesWithExemplars(
       // Penalización con las muestras negativas (falsos positivos descartados)
       let maxNegativePen = 0;
       for (const negEx of negativeExemplars) {
-        const pen = calculateExemplarSimilarity(candSignature, candPatch, negEx);
+        const pen = calculateExemplarSimilarity(candSignature, candPatch, negEx, candLab);
         if (pen > maxNegativePen) {
           maxNegativePen = pen;
         }
@@ -982,9 +1106,10 @@ export function detectPatternMatches(
   sampleBox: BoundingBoxPx,
   scaleMetersPerPx: number,
   originWorld: { x: number; y: number },
-  similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD
+  similarityThreshold: number = PATTERN_DETECTOR_CONSTANTS.DEFAULT_SIMILARITY_THRESHOLD,
+  rgbaData?: Uint8ClampedArray | Uint8Array
 ): DetectedPatternMatch[] {
-  const exemplar = createPatternExemplar(binaryMask, imgWidth, sampleBox, false);
+  const exemplar = createPatternExemplar(binaryMask, imgWidth, sampleBox, false, imgHeight, rgbaData);
   if (!exemplar) return [];
 
   return detectPatternMatchesWithExemplars(
@@ -995,6 +1120,7 @@ export function detectPatternMatches(
     [],
     scaleMetersPerPx,
     originWorld,
-    similarityThreshold
+    similarityThreshold,
+    rgbaData
   );
 }

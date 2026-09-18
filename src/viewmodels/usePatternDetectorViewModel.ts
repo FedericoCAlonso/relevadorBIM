@@ -11,6 +11,7 @@ import { useProjectStore } from './useProjectStore';
 import {
   detectPatternMatchesWithExemplars,
   createPatternExemplar,
+  coRegisterExemplarToAnchor,
   calculateImageMoments,
   calculateEigenSignature,
   extractNormalizedPatch,
@@ -26,6 +27,7 @@ import {
   type SvdConsensusResult
 } from '../models/underlay/GramSvd';
 import { alignPatchEccEuclidean } from '../models/underlay/EccAlignment';
+import { extractDominantLabColor } from '../models/underlay/ColorLab';
 import { getUnderlayBinaryMask, getCachedUnderlayBinaryMask } from '../services/imageProcessingService';
 
 export interface PlacingTemplate {
@@ -181,7 +183,12 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        const newExemplar = createPatternExemplar(mask, width, boxPx, false, height, rgbaData);
+        const newExemplar =
+          isAddingSample && positiveExemplars.length > 0
+            ? coRegisterExemplarToAnchor(mask, width, height, boxPx, positiveExemplars[0], rgbaData) ||
+              createPatternExemplar(mask, width, boxPx, false, height, rgbaData)
+            : createPatternExemplar(mask, width, boxPx, false, height, rgbaData);
+
         if (!newExemplar) {
           throw new Error('La región seleccionada no contiene suficiente trazo de tinta o color para extraer un símbolo.');
         }
@@ -212,7 +219,8 @@ export function usePatternDetectorViewModel() {
           nextNegatives,
           scale,
           { x: originX, y: originY },
-          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD,
+          rgbaData
         );
 
         setDetectedMatches(matches);
@@ -280,7 +288,12 @@ export function usePatternDetectorViewModel() {
           };
         }
 
-        const newExemplar = createPatternExemplar(mask, width, finalBox, false, height, rgbaData);
+        const newExemplar =
+          isAddingSample && positiveExemplars.length > 0
+            ? coRegisterExemplarToAnchor(mask, width, height, finalBox, positiveExemplars[0], rgbaData) ||
+              createPatternExemplar(mask, width, finalBox, false, height, rgbaData)
+            : createPatternExemplar(mask, width, finalBox, false, height, rgbaData);
+
         if (!newExemplar) {
           throw new Error('No se detectó suficiente trazo o símbolo en el punto clickeado. Intentá hacer clic más cerca del centro del símbolo.');
         }
@@ -312,7 +325,8 @@ export function usePatternDetectorViewModel() {
           nextNegatives,
           scale,
           { x: originX, y: originY },
-          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD,
+          rgbaData
         );
 
         setDetectedMatches(matches);
@@ -456,11 +470,16 @@ export function usePatternDetectorViewModel() {
           calculateEigenSignature(moments, refinedBox.width, refinedBox.height) ||
           positiveExemplars[0].signature;
 
+        const dominantLab = rgbaData
+          ? extractDominantLabColor(rgbaData, width, refinedBox, mask)
+          : undefined;
+
         const newExemplar: PatternExemplar = {
           id: `ex-${Date.now()}-${Math.round(eccResult.refinedCenterPx.x)}_${Math.round(eccResult.refinedCenterPx.y)}`,
           boxPx: refinedBox,
           signature,
           patch: eccResult.alignedPatch,
+          dominantLab: dominantLab || positiveExemplars[0].dominantLab,
           isNegative: false
         };
 
@@ -475,7 +494,8 @@ export function usePatternDetectorViewModel() {
           negativeExemplars,
           scale,
           { x: originX, y: originY },
-          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD,
+          rgbaData
         );
 
         setDetectedMatches(matches);
@@ -557,7 +577,8 @@ export function usePatternDetectorViewModel() {
               nextNegatives,
               activeUnderlay.scaleMetersPerPx,
               { x: activeUnderlay.originWorldX, y: activeUnderlay.originWorldY },
-              PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+              PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD,
+              rgbaData
             );
             setDetectedMatches(updatedMatches);
           }
@@ -584,7 +605,7 @@ export function usePatternDetectorViewModel() {
     if (activeUnderlay) {
       setIsDetecting(true);
       try {
-        const { width, height, mask } = await getUnderlayBinaryMask(
+        const { width, height, mask, rgbaData } = await getUnderlayBinaryMask(
           activeUnderlay.id,
           activeUnderlay.imageUrl
         );
@@ -596,7 +617,8 @@ export function usePatternDetectorViewModel() {
           negativeExemplars,
           activeUnderlay.scaleMetersPerPx,
           { x: activeUnderlay.originWorldX, y: activeUnderlay.originWorldY },
-          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD
+          PATTERN_DETECTOR_CONSTANTS.CANDIDATE_SEARCH_THRESHOLD,
+          rgbaData
         );
         setDetectedMatches(updatedMatches);
       } catch (err) {
