@@ -24,7 +24,7 @@ import {
   rotateWeights,
   calculateWeightedCorrelation
 } from './GramSvd';
-import { extractWarpedPatchBilinear, alignPatchEccEuclidean } from './EccAlignment';
+import { alignPatchEccEuclidean } from './EccAlignment';
 import { extractDominantLabColor, deltaE, type LabColor } from './ColorLab';
 
 export interface ImageMoments {
@@ -91,7 +91,8 @@ export const PATTERN_DETECTOR_CONSTANTS = {
   PATCH_SIZE: 24, // Malla de 24x24 para correlación fina
   MAX_BLOB_DIMENSION_FACTOR: 2.5,
   MIN_BLOB_DIMENSION_FACTOR: 0.4,
-  NMS_DISTANCE_RATIO: 0.75, // Supresión de no-máximos (distancia mínima de separación entre centros)
+  NMS_DISTANCE_RATIO: 0.70, // Supresión de no-máximos (distancia mínima de separación entre centros)
+  NMS_IOU_THRESHOLD: 0.25, // Umbral de solapamiento IoU para supresión de no-máximos
   SNAP_TOLERANCE_METERS: 0.40, // Tolerancia magnética al cursor en metros
   NEGATIVE_PENALTY_WEIGHT: 0.75 // Ponderación de rechazo a falsos positivos
 } as const;
@@ -788,7 +789,7 @@ export function calculateBoxIoU(b1: BoundingBoxPx, b2: BoundingBoxPx): number {
 export function applyNonMaximumSuppression(
   matches: DetectedPatternMatch[],
   minDistancePx: number,
-  iouThreshold: number = 0.30
+  iouThreshold: number = PATTERN_DETECTOR_CONSTANTS.NMS_IOU_THRESHOLD
 ): DetectedPatternMatch[] {
   const sorted = [...matches].sort((a, b) => b.similarityScore - a.similarityScore);
   const selected: DetectedPatternMatch[] = [];
@@ -829,23 +830,15 @@ export function createPatternExemplar(
   const signature = calculateEigenSignature(moments, squareBox.width, squareBox.height);
   if (!signature) return null;
 
-  const resolvedHeight = imgHeight ?? (imgWidth > 0 ? Math.floor(binaryMask.length / imgWidth) : 0);
-  const patch =
-    resolvedHeight > 0
-      ? extractWarpedPatchBilinear(
-          binaryMask,
-          imgWidth,
-          resolvedHeight,
-          { x: squareBox.x + squareBox.width / 2, y: squareBox.y + squareBox.height / 2 },
-          { width: squareBox.width, height: squareBox.height },
-          0,
-          0,
-          0,
-          PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE,
-          rgbaData
-        )
-      : extractNormalizedPatch(binaryMask, imgWidth, squareBox, PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE, rgbaData);
+  const patch = extractNormalizedPatch(
+    binaryMask,
+    imgWidth,
+    squareBox,
+    PATTERN_DETECTOR_CONSTANTS.PATCH_SIZE,
+    rgbaData
+  );
 
+  const resolvedHeight = imgHeight ?? (imgWidth > 0 ? Math.floor(binaryMask.length / imgWidth) : 0);
   const dominantLab =
     rgbaData && resolvedHeight > 0
       ? extractDominantLabColor(rgbaData, imgWidth, squareBox, binaryMask)
@@ -1087,24 +1080,53 @@ export function detectPatternMatchesWithExemplars(
     const centerX = blob.x + blob.width / 2;
     const centerY = blob.y + blob.height / 2;
 
-    const testBox: BoundingBoxPx = {
-      x: Math.max(0, Math.round(centerX - avgSize / 2)),
-      y: Math.max(0, Math.round(centerY - avgSize / 2)),
-      width: avgSize,
-      height: avgSize
-    };
+    // Refinamiento centroidal subpíxel: 2 pasos de Mean-Shift con ventana circular Epanechnikov
+    // Aísla el núcleo del símbolo para evitar que muros o cañerías en esquinas desvíen el centroide
+    const radius = avgSize / 2;
+    const radiusSq = radius * radius;
+    let curX = centerX;
+    let curY = centerY;
+    let inkWeightSum = 0;
 
-    // Evaluamos en la máscara binaria original y aplicamos 1 paso de Mean-Shift
-    // para centrar el recuadro exactamente sobre el centroide de tinta del grafismo
-    const initialMoments = calculateImageMoments(binaryMask, imgWidth, testBox);
-    if (initialMoments.m00 < PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS) continue;
+    for (let iter = 0; iter < 2; iter++) {
+      const bMinX = Math.max(0, Math.floor(curX - radius));
+      const bMaxX = Math.min(imgWidth, Math.ceil(curX + radius));
+      const bMinY = Math.max(0, Math.floor(curY - radius));
+      const bMaxY = Math.min(imgHeight, Math.ceil(curY + radius));
 
-    const refinedCenterX = initialMoments.m10 / initialMoments.m00;
-    const refinedCenterY = initialMoments.m01 / initialMoments.m00;
+      let wSum = 0;
+      let wX = 0;
+      let wY = 0;
+
+      for (let y = bMinY; y < bMaxY; y++) {
+        const rowOff = y * imgWidth;
+        for (let x = bMinX; x < bMaxX; x++) {
+          if (binaryMask[rowOff + x] === 1) {
+            const dx = x - curX;
+            const dy = y - curY;
+            const d2 = dx * dx + dy * dy;
+            if (d2 <= radiusSq) {
+              const weight = 1 - d2 / radiusSq;
+              wSum += weight;
+              wX += weight * x;
+              wY += weight * y;
+            }
+          }
+        }
+      }
+
+      inkWeightSum = wSum;
+      if (wSum > 0) {
+        curX = wX / wSum;
+        curY = wY / wSum;
+      }
+    }
+
+    if (inkWeightSum < PATTERN_DETECTOR_CONSTANTS.MIN_BLOB_PIXELS) continue;
 
     const centeredBox: BoundingBoxPx = {
-      x: Math.max(0, Math.round(refinedCenterX - avgSize / 2)),
-      y: Math.max(0, Math.round(refinedCenterY - avgSize / 2)),
+      x: Math.max(0, Math.round(curX - avgSize / 2)),
+      y: Math.max(0, Math.round(curY - avgSize / 2)),
       width: avgSize,
       height: avgSize
     };
@@ -1182,7 +1204,10 @@ export function detectPatternMatchesWithExemplars(
       );
 
       if (finalScore >= similarityThreshold) {
-        const centerPx = candSignature.centroid;
+        const centerPx = {
+          x: Number(curX.toFixed(2)),
+          y: Number(curY.toFixed(2))
+        };
         const worldPos = {
           x: Number((originWorld.x + centerPx.x * scaleMetersPerPx).toFixed(3)),
           y: Number((originWorld.y + centerPx.y * scaleMetersPerPx).toFixed(3))
@@ -1200,9 +1225,9 @@ export function detectPatternMatchesWithExemplars(
     }
   }
 
-  // 4. Supresión de no-máximos híbrida: distancia mínima del 75% del tamaño promedio y umbral IoU de 0.30
+  // 4. Supresión de no-máximos híbrida: distancia mínima del 70% del tamaño promedio y umbral IoU de 0.25
   const minSeparationPx = avgSize * PATTERN_DETECTOR_CONSTANTS.NMS_DISTANCE_RATIO;
-  return applyNonMaximumSuppression(rawMatches, minSeparationPx, 0.30);
+  return applyNonMaximumSuppression(rawMatches, minSeparationPx, PATTERN_DETECTOR_CONSTANTS.NMS_IOU_THRESHOLD);
 }
 
 /**
