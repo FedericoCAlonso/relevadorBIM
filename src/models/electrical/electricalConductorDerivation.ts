@@ -64,6 +64,40 @@ export function getSwitchTypeInfo(symbolId?: string | null): SwitchTypeInfo {
   return { isSwitch: false, switchPoints: 0, isCombination: false };
 }
 
+/**
+ * Obtiene el color reglamentario de fase para un circuito según su configuración de fase.
+ */
+export function resolvePhaseColor(circuit?: Circuit | null): string {
+  if (!circuit) return AEA_CONDUCTOR_COLORS.fase;
+  if (circuit.phaseColor === 'negro') return AEA_CONDUCTOR_COLORS.fase_s;
+  if (circuit.phaseColor === 'rojo') return AEA_CONDUCTOR_COLORS.fase_t;
+  if (circuit.phaseColor === 'marron') return AEA_CONDUCTOR_COLORS.fase_r;
+  return AEA_CONDUCTOR_COLORS.fase;
+}
+
+/**
+ * Determina si un conductor pertenece a un circuito específico, contemplando
+ * PE compartido, asignaciones directas y herencia desde la canalización.
+ */
+export function conductorBelongsToCircuit(
+  conductor: ConductorLine,
+  targetCircuitId: string,
+  conduitCircuitIds?: readonly string[]
+): boolean {
+  if (conductor.circuitId === targetCircuitId) return true;
+  if (conductor.circuitIds && conductor.circuitIds.includes(targetCircuitId)) return true;
+  // Si tiene asignación explícita a otro circuito, no pertenece
+  if (conductor.circuitId && conductor.circuitId !== targetCircuitId) return false;
+  if (conductor.circuitIds && !conductor.circuitIds.includes(targetCircuitId)) return false;
+  // Si no tiene asignación explícita a nivel conductor, hereda los circuitos de la canalización
+  if (conduitCircuitIds && conduitCircuitIds.includes(targetCircuitId)) {
+    return true;
+  }
+  return false;
+}
+
+// ─── DERIVACIÓN PRINCIPAL DE CONDUCTORES ───
+
 export interface DeriveConduitConductorsParams {
   conduit: Conduit;
   circuits: readonly Circuit[];
@@ -121,6 +155,7 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
   // Sección base de la fase principal para el tramo
   const primaryCircuit = resolvedCircuits[0];
   const basePhaseSection = primaryCircuit?.wireSectionBaseMM2 || 1.5;
+  const peSection = primaryCircuit?.wireSectionPeMM2 || primaryCircuit?.wireSectionBaseMM2 || basePhaseSection;
   const primaryCircuitId = primaryCircuit?.id || conduit.circuitId || undefined;
 
   // CASO A: Tramo que conecta dos llaves de combinación entre sí
@@ -142,7 +177,7 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
       },
       {
         role: 'pe',
-        sectionMM2: basePhaseSection, // Misma sección que la fase
+        sectionMM2: peSection,
         color: AEA_CONDUCTOR_COLORS.pe,
         circuitId: primaryCircuitId
       }
@@ -158,11 +193,11 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
 
     const conductors: ConductorLine[] = [];
 
-    // 1. Conductor de Fase (alimentación al interruptor)
+    // 1. Conductor de Fase (alimentación al interruptor con color configurado)
     conductors.push({
       role: 'fase',
       sectionMM2: basePhaseSection,
-      color: AEA_CONDUCTOR_COLORS.fase,
+      color: resolvePhaseColor(primaryCircuit),
       circuitId: primaryCircuitId
     });
 
@@ -198,10 +233,10 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
       }
     }
 
-    // 3. Conductor de protección PE (obligatorio, misma sección de la fase)
+    // 3. Conductor de protección PE (obligatorio, sección configurada)
     conductors.push({
       role: 'pe',
-      sectionMM2: basePhaseSection,
+      sectionMM2: peSection,
       color: AEA_CONDUCTOR_COLORS.pe,
       circuitId: primaryCircuitId
     });
@@ -279,7 +314,7 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
         {
           role: 'fase',
           sectionMM2: phaseSec,
-          color: AEA_CONDUCTOR_COLORS.fase,
+          color: resolvePhaseColor(c),
           circuitId: c.id
         },
         {
@@ -298,7 +333,8 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
       role: 'pe',
       sectionMM2: maxPeSection,
       color: AEA_CONDUCTOR_COLORS.pe,
-      circuitId: resolvedCircuits.length === 1 ? resolvedCircuits[0].id : undefined
+      circuitId: resolvedCircuits.length === 1 ? resolvedCircuits[0].id : undefined,
+      circuitIds: resolvedCircuits.length > 1 ? resolvedCircuits.map((c) => c.id) : undefined
     });
   }
 

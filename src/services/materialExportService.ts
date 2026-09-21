@@ -16,13 +16,15 @@ import type { SpatialElectricalNode, ConduitMaterial, ConduitRoutingPlane } from
 import { calculateConduitRealLength } from '../models/electrical/calculations';
 import { calculatePolygonArea, resolveSpacePolygon } from '../models/architecture/Space';
 import { getSymbolById } from '../models/electrical/symbolsLib';
-import { CONDUIT_MATERIALS_CATALOG } from '../models/electrical/electricalStandards';
+import { CONDUIT_MATERIALS_CATALOG, getConductorColorLabel } from '../models/electrical/electricalStandards';
+import { conductorBelongsToCircuit } from '../models/electrical/electricalConductorDerivation';
 
 export interface CsvExportOptions {
   format?: 'commercial' | 'flat_database';
   delimiter?: ';' | ',';
   statusFilter?: Array<'existente' | 'proyectado' | 'a_reemplazar'>;
   levelId?: string; // undefined = todos los niveles
+  circuitId?: string; // undefined = todos los circuitos
   includeMeasurements?: boolean;
 }
 
@@ -74,7 +76,7 @@ export function extractDetailedMaterialItems(
   project: BuildingProject,
   options?: CsvExportOptions
 ): DetailedMaterialItem[] {
-  const { statusFilter, levelId } = options || {};
+  const { statusFilter, levelId, circuitId } = options || {};
 
   const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
   const spacesMap = new Map(project.spaces.map((s) => [s.id, s]));
@@ -95,6 +97,12 @@ export function extractDetailedMaterialItems(
 
     const condLevelId = conduit.fromLevelId || elFrom.levelId;
     if (levelId && condLevelId !== levelId) continue;
+
+    const carriesCircuit =
+      !circuitId ||
+      conduit.circuitId === circuitId ||
+      (conduit.circuitIds && conduit.circuitIds.includes(circuitId));
+    if (!carriesCircuit) continue;
 
     const condStatus = conduit.status || 'proyectado';
     if (statusFilter && statusFilter.length > 0 && !statusFilter.includes(condStatus)) continue;
@@ -142,25 +150,35 @@ export function extractDetailedMaterialItems(
     });
 
     // Registros de conductores alojados dentro de esta canalización
+    const conduitCircuitIds = conduit.circuitIds || (conduit.circuitId ? [conduit.circuitId] : []);
+
     if (conduit.conductors && conduit.conductors.length > 0) {
       for (const [cIdx, cond] of conduit.conductors.entries()) {
+        if (circuitId && !conductorBelongsToCircuit(cond, circuitId, conduitCircuitIds)) {
+          continue;
+        }
+
         const roleLabel =
-          cond.role === 'fase'
-            ? 'Fase'
+          cond.role === 'pe'
+            ? 'Puesta a Tierra (PE Verde-Amarillo)'
             : cond.role === 'neutro'
-            ? 'Neutro'
-            : cond.role === 'pe'
-            ? 'Puesta a Tierra (PE)'
-            : 'Retorno';
+            ? 'Neutro (Celeste)'
+            : cond.role === 'retorno'
+            ? `Retorno${cond.reference ? ` (${cond.reference})` : ''}`
+            : `Fase (${getConductorColorLabel(cond.color, cond.role)})`;
+
+        const condCircuitId = cond.circuitId || (cond.circuitIds ? cond.circuitIds[0] : circId);
+        const condCircObj = condCircuitId ? circuitsMap.get(condCircuitId) : circObj;
+        const condCircName = condCircObj ? condCircObj.name : circName;
 
         items.push({
           id: `${conduit.id}-c-${cIdx}`,
           levelName,
           spaceName,
           panelName,
-          circuitName: circName,
+          circuitName: condCircName,
           category: 'Conductor',
-          elementName: `Cable ${roleLabel} (${cond.color || 'Normalizado'})`,
+          elementName: `Cable ${roleLabel}`,
           material: 'Cobre electrolítico (IRAM NM 247-3)',
           sizeOrSection: `${cond.sectionMM2} mm²`,
           unit: 'm',
@@ -178,6 +196,7 @@ export function extractDetailedMaterialItems(
     if (el.symbolId === 'sym-terminal-referencia' || el.isTerminalReference) continue; // Las etiquetas/remates de caño no son cajas físicas
 
     if (levelId && el.levelId !== levelId) continue;
+    if (circuitId && el.circuitId !== circuitId) continue;
 
     const elStatus = el.status || 'proyectado';
     if (statusFilter && statusFilter.length > 0 && !statusFilter.includes(elStatus)) continue;
@@ -235,6 +254,11 @@ export function extractDetailedMaterialItems(
   for (const panel of project.panels || []) {
     if (panel.isPlaced === false) continue;
     if (levelId && panel.levelId !== levelId) continue;
+
+    if (circuitId) {
+      const circ = project.circuits.find((c) => c.id === circuitId);
+      if (!circ || circ.panelId !== panel.id) continue;
+    }
 
     const panelStatus = 'proyectado';
     if (statusFilter && statusFilter.length > 0 && !statusFilter.includes(panelStatus)) continue;

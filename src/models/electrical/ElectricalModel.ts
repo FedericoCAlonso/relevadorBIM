@@ -18,6 +18,8 @@ export type ConductorRole =
   | 'fase_t'
   | 'comando';
 
+export type PhaseConductorColor = 'marron' | 'negro' | 'rojo';
+
 export interface ConductorLine {
   role: ConductorRole;
   sectionMM2: number;      // Sección en mm² (ej: 1.5, 2.5, 4.0, 6.0)
@@ -25,6 +27,7 @@ export interface ConductorLine {
   reference?: string;      // Referencia o letra de retorno (ej: "a", "b", "c")
   cableStandard?: CableStandard;
   circuitId?: string;      // ID del circuito al que pertenece este conductor en el conducto
+  circuitIds?: string[];   // IDs de circuitos que comparten este conductor (ej: PE unificado)
 }
 
 export interface SpatialElectricalNode {
@@ -204,6 +207,7 @@ export interface Circuit {
   description?: string;
   phases?: 1 | 3;           // 1 = Monofásico (1F+N+PE), 3 = Trifásico (3F+N+PE o 3F+PE)
   wireSectionPeMM2?: number;// Sección del conductor de protección PE (por defecto igual a wireSectionBaseMM2)
+  phaseColor?: PhaseConductorColor; // Color de la fase para circuito monofásico ('marron' | 'negro' | 'rojo')
 }
 
 export type PanelType = 'principal' | 'seccional' | 'auxiliar';

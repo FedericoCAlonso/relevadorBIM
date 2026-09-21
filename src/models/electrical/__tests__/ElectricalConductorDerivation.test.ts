@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { Conduit, ElectricalElement, Circuit } from '../ElectricalModel';
 import {
   deriveConduitConductors,
-  getSwitchTypeInfo
+  getSwitchTypeInfo,
+  resolvePhaseColor,
+  conductorBelongsToCircuit
 } from '../electricalConductorDerivation';
 
 describe('electricalConductorDerivation', () => {
@@ -576,6 +578,217 @@ describe('electricalConductorDerivation', () => {
       expect(result.filter((c) => c.circuitId === 'c2')).toHaveLength(0);
       const pe = result.find((c) => c.role === 'pe');
       expect(pe?.sectionMM2).toBe(1.5);
+    });
+  });
+
+  describe('Configuración de Color de Conductor de Fase (Monofásico)', () => {
+    it('asigna marrón (Fase R) por defecto o cuando phaseColor es marron', () => {
+      const circuitM: Circuit = {
+        id: 'c-m',
+        panelId: 'p1',
+        name: 'C1',
+        type: 'IUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 1.5,
+        wireSectionPeMM2: 1.5,
+        breakerAmperageA: 10,
+        phaseColor: 'marron'
+      };
+      expect(resolvePhaseColor(circuitM)).toBe('#92400e');
+
+      const conduit: Conduit = {
+        id: 'cnd-m',
+        fromElementId: 'e1',
+        toElementId: 'e2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c-m',
+        conductors: []
+      };
+      const conductors = deriveConduitConductors({ conduit, circuits: [circuitM] });
+      const fase = conductors.find((c) => c.role === 'fase');
+      expect(fase?.color).toBe('#92400e');
+    });
+
+    it('asigna negro (Fase S) cuando phaseColor es negro', () => {
+      const circuitS: Circuit = {
+        id: 'c-s',
+        panelId: 'p1',
+        name: 'C2',
+        type: 'TUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 2.5,
+        wireSectionPeMM2: 2.5,
+        breakerAmperageA: 16,
+        phaseColor: 'negro'
+      };
+      expect(resolvePhaseColor(circuitS)).toBe('#0f172a');
+
+      const conduit: Conduit = {
+        id: 'cnd-s',
+        fromElementId: 'e1',
+        toElementId: 'e2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c-s',
+        conductors: []
+      };
+      const conductors = deriveConduitConductors({ conduit, circuits: [circuitS] });
+      const fase = conductors.find((c) => c.role === 'fase');
+      expect(fase?.color).toBe('#0f172a');
+    });
+
+    it('asigna rojo (Fase T) cuando phaseColor es rojo', () => {
+      const circuitT: Circuit = {
+        id: 'c-t',
+        panelId: 'p1',
+        name: 'C3',
+        type: 'TUE',
+        voltageV: 220,
+        wireSectionBaseMM2: 4.0,
+        wireSectionPeMM2: 2.5,
+        breakerAmperageA: 20,
+        phaseColor: 'rojo'
+      };
+      expect(resolvePhaseColor(circuitT)).toBe('#dc2626');
+
+      const conduit: Conduit = {
+        id: 'cnd-t',
+        fromElementId: 'e1',
+        toElementId: 'e2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 22,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c-t',
+        conductors: []
+      };
+      const conductors = deriveConduitConductors({ conduit, circuits: [circuitT] });
+      const fase = conductors.find((c) => c.role === 'fase');
+      expect(fase?.color).toBe('#dc2626');
+    });
+
+    it('aplica el color de fase configurado en la alimentación a interruptores (Caso B)', () => {
+      const circuitRojo: Circuit = {
+        id: 'c-rojo',
+        panelId: 'p1',
+        name: 'C1',
+        type: 'IUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 1.5,
+        wireSectionPeMM2: 1.5,
+        breakerAmperageA: 10,
+        phaseColor: 'rojo'
+      };
+
+      const switchEl: ElectricalElement = {
+        id: 'sw-1',
+        levelId: 'l1',
+        spaceId: 's1',
+        x: 0,
+        y: 0,
+        heightZ: 1.2,
+        symbolId: 'sym-planta-llave-1',
+        placement: 'wall',
+        circuitId: 'c-rojo'
+      };
+
+      const lightEl: ElectricalElement = {
+        id: 'lt-1',
+        levelId: 'l1',
+        spaceId: 's1',
+        x: 2,
+        y: 2,
+        heightZ: 2.6,
+        symbolId: 'sym-planta-boca-techo',
+        placement: 'ceiling',
+        circuitId: 'c-rojo'
+      };
+
+      const conduit: Conduit = {
+        id: 'cnd-sw',
+        fromElementId: 'lt-1',
+        toElementId: 'sw-1',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c-rojo',
+        conductors: []
+      };
+
+      const conductors = deriveConduitConductors({
+        conduit,
+        circuits: [circuitRojo],
+        fromElement: lightEl,
+        toElement: switchEl
+      });
+
+      const fase = conductors.find((c) => c.role === 'fase');
+      expect(fase?.color).toBe('#dc2626'); // Rojo
+    });
+
+    it('asigna circuitIds al PE compartido y permite verificar pertenencia con conductorBelongsToCircuit', () => {
+      const c1: Circuit = {
+        id: 'c1',
+        panelId: 'p1',
+        name: 'C1',
+        type: 'IUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 1.5,
+        wireSectionPeMM2: 1.5,
+        breakerAmperageA: 10
+      };
+      const c2: Circuit = {
+        id: 'c2',
+        panelId: 'p1',
+        name: 'C2',
+        type: 'TUG',
+        voltageV: 220,
+        wireSectionBaseMM2: 2.5,
+        wireSectionPeMM2: 2.5,
+        breakerAmperageA: 16
+      };
+
+      const conduit: Conduit = {
+        id: 'cnd-multi',
+        fromElementId: 'e1',
+        toElementId: 'e2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 22,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitIds: ['c1', 'c2'],
+        conductors: []
+      };
+
+      const conductors = deriveConduitConductors({ conduit, circuits: [c1, c2] });
+      const pe = conductors.find((c) => c.role === 'pe');
+      expect(pe).toBeDefined();
+      expect(pe?.circuitIds).toEqual(['c1', 'c2']);
+      expect(pe?.sectionMM2).toBe(2.5);
+
+      // El PE pertenece tanto a C1 como a C2
+      expect(conductorBelongsToCircuit(pe!, 'c1', ['c1', 'c2'])).toBe(true);
+      expect(conductorBelongsToCircuit(pe!, 'c2', ['c1', 'c2'])).toBe(true);
+      expect(conductorBelongsToCircuit(pe!, 'c3', ['c1', 'c2'])).toBe(false);
+
+      // Las fases pertenecen únicamente a su circuito respectivo
+      const faseC1 = conductors.find((c) => c.role === 'fase' && c.circuitId === 'c1');
+      const faseC2 = conductors.find((c) => c.role === 'fase' && c.circuitId === 'c2');
+      expect(conductorBelongsToCircuit(faseC1!, 'c1', ['c1', 'c2'])).toBe(true);
+      expect(conductorBelongsToCircuit(faseC1!, 'c2', ['c1', 'c2'])).toBe(false);
+      expect(conductorBelongsToCircuit(faseC2!, 'c2', ['c1', 'c2'])).toBe(true);
+      expect(conductorBelongsToCircuit(faseC2!, 'c1', ['c1', 'c2'])).toBe(false);
     });
   });
 });

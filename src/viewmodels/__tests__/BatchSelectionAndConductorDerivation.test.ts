@@ -301,5 +301,72 @@ describe('BatchSelectionAndConductorDerivation', () => {
       const pe = updated?.conductors.find((c) => c.role === 'pe');
       expect(pe?.sectionMM2).toBe(1.5);
     });
+
+    it('al llamar a updateCircuit, los conductores de los conductos asignados se actualizan automáticamente', () => {
+      const b1: ElectricalElement = {
+        id: 'b1',
+        symbolId: 'sym-planta-boca-techo',
+        placement: 'ceiling',
+        levelId: 'level-1',
+        spaceId: 's1',
+        x: 0,
+        y: 0,
+        heightZ: 2.6
+      };
+      const b2: ElectricalElement = {
+        id: 'b2',
+        symbolId: 'sym-planta-boca-techo',
+        placement: 'ceiling',
+        levelId: 'level-1',
+        spaceId: 's1',
+        x: 2,
+        y: 0,
+        heightZ: 2.6
+      };
+      const cond: Conduit = {
+        id: 'c-test',
+        fromElementId: 'b1',
+        toElementId: 'b2',
+        fromLevelId: 'level-1',
+        toLevelId: 'level-1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c1',
+        conductors: [
+          { role: 'fase', sectionMM2: 1.5, color: '#92400e', circuitId: 'c1' },
+          { role: 'neutro', sectionMM2: 1.5, color: '#0284c7', circuitId: 'c1' },
+          { role: 'pe', sectionMM2: 1.5, color: '#16a34a', circuitId: 'c1' }
+        ]
+      };
+
+      useProjectStore.setState((state) => ({
+        project: {
+          ...state.project,
+          electricalElements: [b1, b2],
+          conduits: [cond]
+        }
+      }));
+
+      // Actualizar el circuito C1 cambiando su sección a 2.5mm², PE a 4mm² y phaseColor a 'rojo'
+      useProjectStore.getState().updateCircuit('c1', {
+        wireSectionBaseMM2: 2.5,
+        wireSectionPeMM2: 4.0,
+        phaseColor: 'rojo'
+      });
+
+      const updatedCond = useProjectStore.getState().project.conduits.find((c) => c.id === 'c-test');
+      expect(updatedCond).toBeDefined();
+
+      const fase = updatedCond?.conductors.find((c) => c.role === 'fase');
+      expect(fase?.sectionMM2).toBe(2.5);
+      expect(fase?.color).toBe('#dc2626'); // Rojo
+
+      const neutro = updatedCond?.conductors.find((c) => c.role === 'neutro');
+      expect(neutro?.sectionMM2).toBe(2.5);
+
+      const pe = updatedCond?.conductors.find((c) => c.role === 'pe');
+      expect(pe?.sectionMM2).toBe(4.0);
+    });
   });
 });

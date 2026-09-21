@@ -1117,32 +1117,108 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     })),
 
   updateCircuit: (circuitId, updates) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        circuits: state.project.circuits.map((c) =>
-          c.id === circuitId ? { ...c, ...updates } : c
-        ),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
+    set((state) => {
+      const updatedCircuits = state.project.circuits.map((c) =>
+        c.id === circuitId ? { ...c, ...updates } : c
+      );
+
+      const affectsConductors =
+        updates.wireSectionBaseMM2 !== undefined ||
+        updates.wireSectionPeMM2 !== undefined ||
+        updates.phases !== undefined ||
+        updates.phaseColor !== undefined ||
+        updates.voltageV !== undefined;
+
+      let updatedConduits = state.project.conduits;
+
+      if (affectsConductors) {
+        const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+        const panelsMap = new Map((state.project.panels || []).map((p) => [p.id, p]));
+
+        updatedConduits = state.project.conduits.map((conduit) => {
+          const carriesCircuit =
+            conduit.circuitId === circuitId ||
+            (conduit.circuitIds && conduit.circuitIds.includes(circuitId));
+
+          if (!carriesCircuit) return conduit;
+
+          const fromEl = elementsMap.get(conduit.fromElementId) || panelsMap.get(conduit.fromElementId);
+          const toEl = elementsMap.get(conduit.toElementId) || panelsMap.get(conduit.toElementId);
+
+          const newConductors = deriveConduitConductors({
+            conduit,
+            circuits: updatedCircuits,
+            fromElement: fromEl,
+            toElement: toEl
+          });
+
+          return {
+            ...conduit,
+            conductors: newConductors
+          };
+        });
       }
-    })),
+
+      return {
+        project: {
+          ...state.project,
+          circuits: updatedCircuits,
+          conduits: updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   deleteCircuit: (circuitId) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        circuits: state.project.circuits.filter((c) => c.id !== circuitId),
-        electricalElements: state.project.electricalElements.map((el) =>
-          el.circuitId === circuitId ? { ...el, circuitId: null } : el
-        ),
-        conduits: state.project.conduits.map((cd) =>
-          cd.circuitId === circuitId
-            ? { ...cd, circuitId: null, circuitIds: cd.circuitIds?.filter((id) => id !== circuitId) }
-            : cd
-        ),
-        meta: { ...state.project.meta, updatedAt: Date.now() }
-      }
-    })),
+    set((state) => {
+      const remainingCircuits = state.project.circuits.filter((c) => c.id !== circuitId);
+      const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+      const panelsMap = new Map((state.project.panels || []).map((p) => [p.id, p]));
+
+      const updatedConduits = state.project.conduits.map((cd) => {
+        const carriesCircuit =
+          cd.circuitId === circuitId ||
+          (cd.circuitIds && cd.circuitIds.includes(circuitId));
+
+        if (!carriesCircuit) return cd;
+
+        const nextCircuitId = cd.circuitId === circuitId ? null : cd.circuitId;
+        const nextCircuitIds = cd.circuitIds?.filter((id) => id !== circuitId);
+
+        const candidate = {
+          ...cd,
+          circuitId: nextCircuitId,
+          circuitIds: nextCircuitIds
+        };
+
+        const fromEl = elementsMap.get(cd.fromElementId) || panelsMap.get(cd.fromElementId);
+        const toEl = elementsMap.get(cd.toElementId) || panelsMap.get(cd.toElementId);
+
+        const newConductors = deriveConduitConductors({
+          conduit: candidate,
+          circuits: remainingCircuits,
+          fromElement: fromEl,
+          toElement: toEl
+        });
+
+        return {
+          ...candidate,
+          conductors: newConductors
+        };
+      });
+
+      return {
+        project: {
+          ...state.project,
+          circuits: remainingCircuits,
+          electricalElements: state.project.electricalElements.map((el) =>
+            el.circuitId === circuitId ? { ...el, circuitId: null } : el
+          ),
+          conduits: updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
 
   updateElectricalBranch: (branch, updates) =>
     set((state) => {

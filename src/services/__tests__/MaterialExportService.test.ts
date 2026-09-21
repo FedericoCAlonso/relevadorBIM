@@ -151,4 +151,29 @@ describe('MaterialExportService (Cómputo Flexible CSV)', () => {
     expect(itemsProyectado.some((i) => i.id === 'el-1')).toBe(true);
     expect(itemsProyectado.some((i) => i.id === 'el-2')).toBe(false);
   });
+
+  it('debe filtrar cómputo métrico por circuito específico (circuitId)', () => {
+    const project = createMockProject();
+    const c1Id = project.circuits[0]?.id;
+    expect(c1Id).toBeDefined();
+
+    const itemsC1 = extractDetailedMaterialItems(project, { circuitId: c1Id });
+    expect(itemsC1.length).toBeGreaterThan(0);
+    // Todos los elementos de circuito deben corresponder a c1
+    const conduitItems = itemsC1.filter((i) => i.category === 'Canalización');
+    expect(conduitItems.length).toBe(1);
+
+    const conductorItems = itemsC1.filter((i) => i.category === 'Conductor');
+    expect(conductorItems.length).toBe(3); // Fase, Neutro, PE
+
+    // Verificar que la puesta a tierra esté identificada sin hex crudos
+    const peConductor = conductorItems.find((c) => c.elementName.includes('Puesta a Tierra'));
+    expect(peConductor).toBeDefined();
+    expect(peConductor?.elementName).toContain('PE Verde-Amarillo');
+    expect(peConductor?.elementName).not.toContain('#');
+
+    // Filtrar por un circuito inexistente debe devolver vacío
+    const itemsInexistente = extractDetailedMaterialItems(project, { circuitId: 'circ-inexistente' });
+    expect(itemsInexistente.length).toBe(0);
+  });
 });

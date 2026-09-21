@@ -11,12 +11,13 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import type { Circuit, CircuitType, Panel } from '../../../models/electrical/ElectricalModel';
+import type { Circuit, CircuitType, Panel, PhaseConductorColor } from '../../../models/electrical/ElectricalModel';
 import { countPanelBocas } from '../../../models/electrical/electricalBranch';
 import { CircuitColorPicker } from './CircuitColorPicker';
 import {
   CIRCUIT_COLOR_PALETTE,
-  AEA_CALCULATION_CONSTANTS
+  AEA_CALCULATION_CONSTANTS,
+  PHASE_CONDUCTOR_COLORS
 } from '../../../models/electrical/electricalStandards';
 import {
   Layers,
@@ -197,6 +198,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
   const [wireSection, setWireSection] = useState<number>(1.5);
   const [wireSectionPe, setWireSectionPe] = useState<number>(1.5);
   const [circuitPhases, setCircuitPhases] = useState<1 | 3>(1);
+  const [phaseColor, setPhaseColor] = useState<PhaseConductorColor>('marron');
   const [breakerAmperage, setBreakerAmperage] = useState<number>(10);
   const [circuitColor, setCircuitColor] = useState<string>('#2563eb');
   const [panelId, setPanelId] = useState<string>('');
@@ -222,6 +224,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setWireSection(preset.wireMM2);
     setWireSectionPe(preset.wireMM2);
     setCircuitPhases(preset.type === 'FM' ? 3 : 1);
+    setPhaseColor('marron');
     setBreakerAmperage(preset.breakerA);
     setCircuitColor(preset.color);
   };
@@ -232,6 +235,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setWireSection(2.5);
     setWireSectionPe(2.5);
     setCircuitPhases(1);
+    setPhaseColor('marron');
     setBreakerAmperage(16);
     setCircuitColor(CIRCUIT_COLOR_PALETTE[project.circuits.length % CIRCUIT_COLOR_PALETTE.length].hex);
     setPanelId(preferredPanelId || defaultPanelId);
@@ -253,6 +257,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
       type: circuitType,
       voltageV: circuitPhases === 3 ? 380 : AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
       phases: circuitPhases,
+      phaseColor: circuitPhases === 1 ? phaseColor : undefined,
       wireSectionBaseMM2: wireSection,
       wireSectionPeMM2: wireSectionPe,
       breakerAmperageA: breakerAmperage,
@@ -271,6 +276,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setWireSection(circ.wireSectionBaseMM2 || 2.5);
     setWireSectionPe(circ.wireSectionPeMM2 || circ.wireSectionBaseMM2 || 2.5);
     setCircuitPhases(circ.phases === 3 || circ.voltageV === 380 ? 3 : 1);
+    setPhaseColor(circ.phaseColor || 'marron');
     setBreakerAmperage(circ.breakerAmperageA || 16);
     setCircuitColor(circ.color || '#2563eb');
     setPanelId(circ.panelId || defaultPanelId);
@@ -289,6 +295,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
         (circuitType === 'LP' || circuitType === 'LS') && targetPanelId ? targetPanelId : null,
       voltageV: circuitPhases === 3 ? 380 : 220,
       phases: circuitPhases,
+      phaseColor: circuitPhases === 1 ? phaseColor : undefined,
       wireSectionBaseMM2: wireSection,
       wireSectionPeMM2: wireSectionPe,
       breakerAmperageA: breakerAmperage,
@@ -1105,6 +1112,43 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                     </div>
                   </div>
 
+                  {/* Selector de Color del Conductor de Fase (Monofásico) */}
+                  {circuitPhases === 1 && (
+                    <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-500 block">
+                          COLOR DEL CONDUCTOR DE FASE (AEA 90364-771)
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          Identificación de fase en cañería
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {PHASE_CONDUCTOR_COLORS.map((opt) => {
+                          const isSelected = phaseColor === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setPhaseColor(opt.id)}
+                              className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <span
+                                className="w-3.5 h-3.5 rounded-full border border-white/40 shadow-xs shrink-0"
+                                style={{ backgroundColor: opt.hex }}
+                              />
+                              <span className="truncate">{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Selector de Color */}
                   <div className="space-y-1.5 pt-1 border-t border-slate-200">
                     <label className="text-[10px] font-bold text-slate-500 block">
@@ -1315,6 +1359,31 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                                       {circ.wireSectionPeMM2 || circ.wireSectionBaseMM2 || 2.5} mm²
                                     </strong>
                                   </span>
+                                  {circ.phases !== 3 && (
+                                    <>
+                                      <span>·</span>
+                                      <span className="inline-flex items-center gap-1 font-sans">
+                                        <span
+                                          className="w-2 h-2 rounded-full inline-block border border-black/20"
+                                          style={{
+                                            backgroundColor:
+                                              circ.phaseColor === 'negro'
+                                                ? '#0f172a'
+                                                : circ.phaseColor === 'rojo'
+                                                ? '#dc2626'
+                                                : '#92400e'
+                                          }}
+                                        />
+                                        <span>
+                                          {circ.phaseColor === 'negro'
+                                            ? 'Fase S (Negro)'
+                                            : circ.phaseColor === 'rojo'
+                                            ? 'Fase T (Rojo)'
+                                            : 'Fase R (Marrón)'}
+                                        </span>
+                                      </span>
+                                    </>
+                                  )}
                                   {conduitsLengthM > 0 && (
                                     <>
                                       <span>·</span>

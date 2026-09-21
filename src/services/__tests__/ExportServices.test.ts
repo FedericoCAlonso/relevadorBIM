@@ -178,8 +178,42 @@ describe('Servicios de Exportación y Respaldo Técnico', () => {
       expect(csv).toContain('1. BOCAS ELÉCTRICAS');
       expect(csv).toContain('2. CAÑERÍAS Y CANALIZACIONES');
       expect(csv).toContain('3. CONDUCTORES DE COBRE');
+      expect(csv).toContain('3.1. CABLE DE PUESTA A TIERRA (PE VERDE-AMARILLO)');
+      expect(csv).toContain('3.2. CABLES DE FASE');
+      expect(csv).toContain('3.3. CABLES DE NEUTRO (CELESTE)');
       expect(csv).toContain('4. AMBIENTES Y RECINTOS RELEVADOS');
       expect(csv).toContain('"Estar Comedor"');
+    });
+
+    it('debe computar conductores detallados distinguiendo PE, fases y neutros', () => {
+      const project = createMockProject();
+      const computo = generarComputoCotizador(project);
+
+      expect(computo.conductoresDetallados).toBeDefined();
+      expect(computo.conductoresDetallados?.totalMetros).toBeGreaterThan(0);
+      expect(computo.conductoresDetallados?.tierraPePorSeccionM['2.5 mm²']).toBeGreaterThan(0);
+      expect(computo.conductoresDetallados?.neutrosPorSeccionM['2.5 mm²']).toBeGreaterThan(0);
+    });
+
+    it('debe permitir filtrar el cómputo del cotizador por un circuito específico', () => {
+      const project = createMockProject();
+      const c1Id = project.circuits[0]?.id;
+      expect(c1Id).toBeDefined();
+
+      // Forzar el conducto a pertenecer a C1
+      project.conduits[0].circuitId = c1Id;
+      project.conduits[0].conductors.forEach((c) => (c.circuitId = c1Id));
+
+      const computoC1 = generarComputoCotizador(project, c1Id);
+      expect(computoC1.circuitIdFilter).toBe(c1Id);
+      expect(computoC1.bocasPorTipo['IUG (Iluminación)']).toBe(1);
+      expect(computoC1.cañeriasPorDiametro['Ø19 mm']).toBeGreaterThan(0);
+      expect(computoC1.conductoresDetallados?.tierraPePorSeccionM['2.5 mm²']).toBeGreaterThan(0);
+
+      // Si filtramos por otro circuito sin cañerías asignadas
+      const computoVacio = generarComputoCotizador(project, 'circuito-inexistente');
+      expect(Object.keys(computoVacio.cañeriasPorDiametro).length).toBe(0);
+      expect(computoVacio.conductoresDetallados?.totalMetros).toBe(0);
     });
   });
 });

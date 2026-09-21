@@ -49,6 +49,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   // Opciones de exportación flexible de materiales
   const [csvFormat, setCsvFormat] = useState<'commercial' | 'flat_database'>('commercial');
   const [csvDelimiter, setCsvDelimiter] = useState<';' | ','>(';');
+  const [selectedCircuitId, setSelectedCircuitId] = useState<string>('');
   const [showCsvOptions, setShowCsvOptions] = useState(false);
 
   if (!isOpen) return null;
@@ -61,6 +62,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     downloadFlexibleCsv(project, {
       format: csvFormat,
       delimiter: csvDelimiter,
+      circuitId: selectedCircuitId || undefined,
       includeMeasurements: true
     });
   };
@@ -216,6 +218,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         , (Coma · Estándar Int.)
                       </button>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">Filtrar por Circuito:</label>
+                    <select
+                      value={selectedCircuitId}
+                      onChange={(e) => setSelectedCircuitId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      <option value="">Todos los Circuitos (Obra Completa)</option>
+                      {project.circuits.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.phases === 3 ? '380V' : '220V'} · {c.wireSectionBaseMM2}mm²)
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}

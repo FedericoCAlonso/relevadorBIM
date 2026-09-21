@@ -17,7 +17,8 @@ import type {
   BoxTypeDefinition,
   BoxCategory,
   BoxMaterialBase,
-  ProjectMaterialCatalog
+  ProjectMaterialCatalog,
+  PhaseConductorColor
 } from './ElectricalModel';
 
 export type {
@@ -27,7 +28,8 @@ export type {
   BoxTypeDefinition,
   BoxCategory,
   BoxMaterialBase,
-  ProjectMaterialCatalog
+  ProjectMaterialCatalog,
+  PhaseConductorColor
 };
 
 export interface BoxCategoryOption {
@@ -297,6 +299,36 @@ export const AEA_CONDUCTOR_COLORS: Record<ConductorRole, string> = {
   retorno: '#64748b',   // Gris o blanco (Retorno de interruptores)
   comando: '#d97706'    // Naranja (Circuitos de comando y control)
 };
+
+export interface PhaseColorOption {
+  readonly id: PhaseConductorColor;
+  readonly label: string;
+  readonly hex: string;
+  readonly aeaDesignation: string;
+}
+
+export const PHASE_CONDUCTOR_COLORS: readonly PhaseColorOption[] = [
+  { id: 'marron', label: 'Castaño / Marrón (Fase R)', hex: '#92400e', aeaDesignation: 'Fase R (L1 / Castaño)' },
+  { id: 'negro', label: 'Negro (Fase S)', hex: '#0f172a', aeaDesignation: 'Fase S (L2 / Negro)' },
+  { id: 'rojo', label: 'Rojo (Fase T)', hex: '#dc2626', aeaDesignation: 'Fase T (L3 / Rojo)' }
+] as const;
+
+export function getConductorColorLabel(color?: string, role?: ConductorRole): string {
+  if (role === 'pe') return 'Verde-Amarillo';
+  if (role === 'neutro') return 'Celeste';
+  if (role === 'retorno') return 'Gris';
+  if (role === 'comando') return 'Naranja';
+  if (role === 'fase_r') return 'Castaño / Marrón (Fase R)';
+  if (role === 'fase_s') return 'Negro (Fase S)';
+  if (role === 'fase_t') return 'Rojo (Fase T)';
+  if (color) {
+    const match = PHASE_CONDUCTOR_COLORS.find(
+      (p) => p.hex.toLowerCase() === color.toLowerCase() || p.id === color
+    );
+    if (match) return match.label;
+  }
+  return 'Normalizado';
+}
 
 /** Presets de Alturas de Montaje según AEA 90364 */
 export interface HeightPresetOption {
