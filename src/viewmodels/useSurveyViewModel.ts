@@ -16,7 +16,8 @@ import {
   DEFAULT_CONDUIT_DIAMETER_MM,
   AEA_CONDUCTOR_COLORS
 } from '../models/electrical/electricalStandards';
-import type { ConduitWaypoint, ElectricalElement } from '../models/electrical/ElectricalModel';
+import type { Conduit, ConduitWaypoint, ElectricalElement } from '../models/electrical/ElectricalModel';
+import { deriveConduitConductors } from '../models/electrical/electricalConductorDerivation';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -360,7 +361,7 @@ export function useSurveyViewModel() {
           }
 
           const newConduitId = `cond-${Date.now()}`;
-          addConduit({
+          const tempConduit: Conduit = {
             id: newConduitId,
             circuitId: inheritedCircuitId,
             circuitIds: inheritedCircuitId ? [inheritedCircuitId] : [],
@@ -374,7 +375,19 @@ export function useSurveyViewModel() {
             routingMode: seqMode,
             routingPlane: seqPlane,
             waypoints: seqMode !== 'schematic_arc' && pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
-            conductors: [
+            conductors: []
+          };
+
+          const derivedConductors = deriveConduitConductors({
+            conduit: tempConduit,
+            circuits: project.circuits,
+            fromElement: fromEl,
+            toElement: toEl
+          });
+
+          addConduit({
+            ...tempConduit,
+            conductors: derivedConductors.length > 0 ? derivedConductors : [
               { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
               { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },
               { role: 'pe', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.pe }

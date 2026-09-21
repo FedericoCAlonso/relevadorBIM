@@ -23,7 +23,8 @@ import {
   Ruler,
   Trash2,
   Layers,
-  Sliders
+  Sliders,
+  Filter
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -34,6 +35,7 @@ interface MainMenuModalProps {
   onOpenComputo: () => void;
   onOpenCircuits?: () => void;
   onOpenElectricalReport?: () => void;
+  onOpenBatchSelect?: () => void;
   hasUnderlay?: boolean;
   onLoadUnderlay?: (file: File) => void;
   onStartUnderlayCalibration?: () => void;
@@ -49,6 +51,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onOpenComputo,
   onOpenCircuits,
   onOpenElectricalReport,
+  onOpenBatchSelect,
   hasUnderlay = false,
   onLoadUnderlay,
   onStartUnderlayCalibration,
@@ -368,6 +371,30 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                     <div className="font-bold text-slate-800">Circuitos y Tableros</div>
                     <div className="text-[11px] text-slate-500">
                       {project.circuits?.length ?? 0} circuito(s) · {project.panels?.length ?? 1} tablero(s)
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400" />
+              </button>
+            )}
+
+            {onOpenBatchSelect && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenBatchSelect();
+                }}
+                className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 transition-all text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white text-indigo-600 rounded-xl border border-slate-200 shadow-xs">
+                    <Filter size={16} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">Filtro y Edición en Lote</div>
+                    <div className="text-[11px] text-slate-500">
+                      Selección masiva por circuito, caño o boca
                     </div>
                   </div>
                 </div>

@@ -24,6 +24,7 @@ import type {
   Conduit,
   Circuit,
   Panel,
+  ConduitMaterial,
   ConduitTypeDefinition,
   CableTypeDefinition,
   BoxTypeDefinition,
@@ -34,6 +35,7 @@ import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 import type { DimensionLine } from '../models/architecture/DimensionLine';
 import type { ElectricalBranch, BranchUpdatePayload } from '../models/electrical/electricalBranch';
 import { applyBranchUpdates, syncPassingCircuits } from '../models/electrical/electricalBranch';
+import { deriveConduitConductors } from '../models/electrical/electricalConductorDerivation';
 
 let idCounter = 0;
 export function generateUniqueId(prefix = 'id'): string {
@@ -49,10 +51,26 @@ export interface SelectedEntity {
 interface ProjectStoreState {
   project: BuildingProject;
   selectedEntity: SelectedEntity | null;
+  selectedEntities: SelectedEntity[];
   activeAnchorVertexId: string | null;
 
   // Selección y Navegación
   setSelectedEntity: (entity: SelectedEntity | null) => void;
+  setSelectedEntities: (entities: SelectedEntity[]) => void;
+  toggleSelectEntity: (entity: SelectedEntity, multiSelect?: boolean) => void;
+  clearSelection: () => void;
+  selectByCriteria: (criteria: {
+    levelId?: string;
+    circuitId?: string;
+    conduitMaterial?: ConduitMaterial;
+    conduitDiameterMM?: number;
+    elementSymbolId?: string;
+    status?: 'existente' | 'proyectado' | 'a_reemplazar';
+    entityType?: 'conduit' | 'electrical_element' | 'all';
+  }) => void;
+  batchUpdateConduits: (conduitIds: string[], updates: Partial<Conduit>) => void;
+  batchUpdateElectricalElements: (elementIds: string[], updates: Partial<ElectricalElement>) => void;
+  batchDeriveConduitConductors: (conduitIds?: string[]) => void;
   setActiveAnchorVertexId: (vertexId: string | null) => void;
   setActiveLevel: (levelId: string) => void;
 
@@ -162,6 +180,7 @@ interface ProjectStoreState {
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   project: createEmptyProject(),
   selectedEntity: null,
+  selectedEntities: [],
   activeAnchorVertexId: null,
   showDimensions: true,
   labelDisplayMode: 'full',
@@ -306,7 +325,186 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       };
     }),
 
-  setSelectedEntity: (entity) => set({ selectedEntity: entity }),
+  setSelectedEntity: (entity) =>
+    set({
+      selectedEntity: entity,
+      selectedEntities: entity ? [entity] : []
+    }),
+
+  setSelectedEntities: (entities) =>
+    set({
+      selectedEntities: entities,
+      selectedEntity: entities[0] || null
+    }),
+
+  toggleSelectEntity: (entity, multiSelect = false) =>
+    set((state) => {
+      if (!multiSelect) {
+        const isSame =
+          state.selectedEntity?.type === entity.type &&
+          state.selectedEntity?.id === entity.id &&
+          state.selectedEntities.length === 1;
+        return {
+          selectedEntity: isSame ? null : entity,
+          selectedEntities: isSame ? [] : [entity]
+        };
+      }
+
+      const exists = state.selectedEntities.some(
+        (e) => e.type === entity.type && e.id === entity.id
+      );
+      const nextList = exists
+        ? state.selectedEntities.filter((e) => !(e.type === entity.type && e.id === entity.id))
+        : [...state.selectedEntities, entity];
+
+      return {
+        selectedEntities: nextList,
+        selectedEntity: nextList[0] || null
+      };
+    }),
+
+  clearSelection: () =>
+    set({
+      selectedEntity: null,
+      selectedEntities: []
+    }),
+
+  selectByCriteria: (criteria) => {
+    const { project } = get();
+    const targetLevel = criteria.levelId;
+    const entities: SelectedEntity[] = [];
+
+    const matchesConduits =
+      criteria.entityType !== 'electrical_element' && !criteria.elementSymbolId;
+
+    const matchesElements =
+      criteria.entityType !== 'conduit' &&
+      !criteria.conduitMaterial &&
+      !criteria.conduitDiameterMM;
+
+    // 1. Cañerías
+    if (matchesConduits) {
+      for (const c of project.conduits) {
+        if (targetLevel && c.fromLevelId !== targetLevel && c.toLevelId !== targetLevel) continue;
+        if (criteria.circuitId) {
+          const hasCirc =
+            c.circuitId === criteria.circuitId ||
+            (c.circuitIds && c.circuitIds.includes(criteria.circuitId));
+          if (!hasCirc) continue;
+        }
+        if (criteria.conduitMaterial && c.material !== criteria.conduitMaterial) continue;
+        if (criteria.conduitDiameterMM && c.diameterMM !== criteria.conduitDiameterMM) continue;
+        if (criteria.status && c.status !== criteria.status) continue;
+        entities.push({ type: 'conduit', id: c.id });
+      }
+    }
+
+    // 2. Bocas / Elementos eléctricos
+    if (matchesElements) {
+      for (const el of project.electricalElements) {
+        if (targetLevel && el.levelId !== targetLevel) continue;
+        if (criteria.circuitId) {
+          const hasCirc =
+            el.circuitId === criteria.circuitId ||
+            (el.passingCircuitIds && el.passingCircuitIds.includes(criteria.circuitId));
+          if (!hasCirc) continue;
+        }
+        if (criteria.elementSymbolId && el.symbolId !== criteria.elementSymbolId) continue;
+        if (criteria.status && el.status !== criteria.status) continue;
+        entities.push({ type: 'electrical_element', id: el.id });
+      }
+    }
+
+    set({
+      selectedEntity: entities[0] || null,
+      selectedEntities: entities
+    });
+  },
+
+  batchUpdateConduits: (conduitIds, updates) =>
+    set((state) => {
+      const idSet = new Set(conduitIds);
+      const updatedConduits = state.project.conduits.map((c) =>
+        idSet.has(c.id) ? { ...c, ...updates } : c
+      );
+      const synced = syncPassingCircuits({
+        elements: state.project.electricalElements,
+        conduits: updatedConduits
+      });
+      return {
+        project: {
+          ...state.project,
+          electricalElements: synced.updatedElements,
+          conduits: synced.updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
+
+  batchUpdateElectricalElements: (elementIds, updates) =>
+    set((state) => {
+      const idSet = new Set(elementIds);
+      const updatedElements = state.project.electricalElements.map((e) =>
+        idSet.has(e.id) ? { ...e, ...updates } : e
+      );
+      const synced = syncPassingCircuits({
+        elements: updatedElements,
+        conduits: state.project.conduits
+      });
+      return {
+        project: {
+          ...state.project,
+          electricalElements: synced.updatedElements,
+          conduits: synced.updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
+
+  batchDeriveConduitConductors: (conduitIds) =>
+    set((state) => {
+      const targetIds =
+        conduitIds && conduitIds.length > 0
+          ? new Set(conduitIds)
+          : new Set(
+              state.selectedEntities
+                .filter((e) => e.type === 'conduit')
+                .map((e) => e.id)
+            );
+
+      if (targetIds.size === 0) return state;
+
+      const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+      const panelsMap = new Map(state.project.panels.map((p) => [p.id, p]));
+
+      const updatedConduits = state.project.conduits.map((conduit) => {
+        if (!targetIds.has(conduit.id)) return conduit;
+
+        const fromEl = elementsMap.get(conduit.fromElementId) || panelsMap.get(conduit.fromElementId);
+        const toEl = elementsMap.get(conduit.toElementId) || panelsMap.get(conduit.toElementId);
+
+        const newConductors = deriveConduitConductors({
+          conduit,
+          circuits: state.project.circuits,
+          fromElement: fromEl,
+          toElement: toEl
+        });
+
+        return {
+          ...conduit,
+          conductors: newConductors
+        };
+      });
+
+      return {
+        project: {
+          ...state.project,
+          conduits: updatedConduits,
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      };
+    }),
+
   setActiveAnchorVertexId: (vertexId) => set({ activeAnchorVertexId: vertexId }),
 
   setActiveLevel: (levelId) =>
@@ -794,12 +992,31 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         ),
         meta: { ...state.project.meta, updatedAt: Date.now() }
       },
-      selectedEntity: state.selectedEntity?.id === elementId ? null : state.selectedEntity
+      selectedEntity: state.selectedEntity?.id === elementId ? null : state.selectedEntity,
+      selectedEntities: state.selectedEntities.filter((e) => e.id !== elementId)
     })),
 
   addConduit: (conduit) =>
     set((state) => {
-      const allConduits = [...state.project.conduits, conduit];
+      let candidate = conduit;
+      if (!candidate.conductors || candidate.conductors.length === 0) {
+        const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+        const panelsMap = new Map(state.project.panels.map((p) => [p.id, p]));
+        const fromEl = elementsMap.get(candidate.fromElementId) || panelsMap.get(candidate.fromElementId);
+        const toEl = elementsMap.get(candidate.toElementId) || panelsMap.get(candidate.toElementId);
+
+        const derived = deriveConduitConductors({
+          conduit: candidate,
+          circuits: state.project.circuits,
+          fromElement: fromEl,
+          toElement: toEl
+        });
+        if (derived.length > 0) {
+          candidate = { ...candidate, conductors: derived };
+        }
+      }
+
+      const allConduits = [...state.project.conduits, candidate];
       const synced = syncPassingCircuits({
         elements: state.project.electricalElements,
         conduits: allConduits
@@ -816,8 +1033,32 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   updateConduit: (conduitId, updates) =>
     set((state) => {
+      const target = state.project.conduits.find((c) => c.id === conduitId);
+      let nextConductors = updates.conductors;
+
+      if (
+        nextConductors === undefined &&
+        (updates.circuitId !== undefined || updates.circuitIds !== undefined) &&
+        target
+      ) {
+        const candidateConduit = { ...target, ...updates };
+        const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+        const panelsMap = new Map(state.project.panels.map((p) => [p.id, p]));
+        const fromEl = elementsMap.get(candidateConduit.fromElementId) || panelsMap.get(candidateConduit.fromElementId);
+        const toEl = elementsMap.get(candidateConduit.toElementId) || panelsMap.get(candidateConduit.toElementId);
+
+        nextConductors = deriveConduitConductors({
+          conduit: candidateConduit,
+          circuits: state.project.circuits,
+          fromElement: fromEl,
+          toElement: toEl
+        });
+      }
+
+      const finalUpdates = nextConductors !== undefined ? { ...updates, conductors: nextConductors } : updates;
+
       const allConduits = state.project.conduits.map((c) =>
-        c.id === conduitId ? { ...c, ...updates } : c
+        c.id === conduitId ? { ...c, ...finalUpdates } : c
       );
       const synced = syncPassingCircuits({
         elements: state.project.electricalElements,
@@ -847,7 +1088,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           conduits: synced.updatedConduits,
           meta: { ...state.project.meta, updatedAt: Date.now() }
         },
-        selectedEntity: state.selectedEntity?.id === conduitId ? null : state.selectedEntity
+        selectedEntity: state.selectedEntity?.id === conduitId ? null : state.selectedEntity,
+        selectedEntities: state.selectedEntities.filter((e) => e.id !== conduitId)
       };
     }),
 

@@ -195,6 +195,8 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
   const [circuitName, setCircuitName] = useState('');
   const [circuitType, setCircuitType] = useState<CircuitType>('IUG');
   const [wireSection, setWireSection] = useState<number>(1.5);
+  const [wireSectionPe, setWireSectionPe] = useState<number>(1.5);
+  const [circuitPhases, setCircuitPhases] = useState<1 | 3>(1);
   const [breakerAmperage, setBreakerAmperage] = useState<number>(10);
   const [circuitColor, setCircuitColor] = useState<string>('#2563eb');
   const [panelId, setPanelId] = useState<string>('');
@@ -218,17 +220,20 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setCircuitType(preset.type);
     setCircuitName(`C${project.circuits.length + 1} - ${preset.defaultName}`);
     setWireSection(preset.wireMM2);
+    setWireSectionPe(preset.wireMM2);
+    setCircuitPhases(preset.type === 'FM' ? 3 : 1);
     setBreakerAmperage(preset.breakerA);
     setCircuitColor(preset.color);
   };
 
   const handleStartCreate = (preferredPanelId?: string) => {
-    const nextIdx = project.circuits.length + 1;
-    setCircuitName(`C${nextIdx} - `);
+    setCircuitName(`C${project.circuits.length + 1}`);
     setCircuitType('TUG');
     setWireSection(2.5);
+    setWireSectionPe(2.5);
+    setCircuitPhases(1);
     setBreakerAmperage(16);
-    setCircuitColor(CIRCUIT_COLOR_PALETTE[(nextIdx - 1) % CIRCUIT_COLOR_PALETTE.length].hex);
+    setCircuitColor(CIRCUIT_COLOR_PALETTE[project.circuits.length % CIRCUIT_COLOR_PALETTE.length].hex);
     setPanelId(preferredPanelId || defaultPanelId);
     setTargetPanelId('');
     setIsCreating(true);
@@ -236,7 +241,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setActiveTab('circuits');
   };
 
-  const handleSaveNewCircuit = () => {
+  const handleCreateCircuit = () => {
     if (!circuitName.trim()) return;
 
     const newCirc: Circuit = {
@@ -246,8 +251,10 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
         (circuitType === 'LP' || circuitType === 'LS') && targetPanelId ? targetPanelId : null,
       name: circuitName.trim(),
       type: circuitType,
-      voltageV: AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
+      voltageV: circuitPhases === 3 ? 380 : AEA_CALCULATION_CONSTANTS.VOLTAGE_SINGLE_PHASE_V,
+      phases: circuitPhases,
       wireSectionBaseMM2: wireSection,
+      wireSectionPeMM2: wireSectionPe,
       breakerAmperageA: breakerAmperage,
       color: circuitColor
     };
@@ -262,6 +269,8 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
     setCircuitName(circ.name);
     setCircuitType(circ.type);
     setWireSection(circ.wireSectionBaseMM2 || 2.5);
+    setWireSectionPe(circ.wireSectionPeMM2 || circ.wireSectionBaseMM2 || 2.5);
+    setCircuitPhases(circ.phases === 3 || circ.voltageV === 380 ? 3 : 1);
     setBreakerAmperage(circ.breakerAmperageA || 16);
     setCircuitColor(circ.color || '#2563eb');
     setPanelId(circ.panelId || defaultPanelId);
@@ -278,7 +287,10 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
       panelId: panelId || defaultPanelId,
       targetPanelId:
         (circuitType === 'LP' || circuitType === 'LS') && targetPanelId ? targetPanelId : null,
+      voltageV: circuitPhases === 3 ? 380 : 220,
+      phases: circuitPhases,
       wireSectionBaseMM2: wireSection,
+      wireSectionPeMM2: wireSectionPe,
       breakerAmperageA: breakerAmperage,
       color: circuitColor
     });
@@ -1000,16 +1012,72 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                     </div>
                   )}
 
-                  {/* Sección de Conductor y Térmica */}
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* Esquema de Fases */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      ESQUEMA DE LÍNEA
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCircuitPhases(1);
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                          circuitPhases === 1
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Monofásica (220V · 1F+N+PE)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCircuitPhases(3);
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                          circuitPhases === 3
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Trifásica (380V · 3F+N+PE)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sección de Conductor, PE y Térmica */}
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                        SECCIÓN CABLE
+                        FASE / NEUTRO
                       </label>
                       <select
                         value={wireSection}
-                        onChange={(e) => setWireSection(Number(e.target.value))}
-                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setWireSection(val);
+                          setWireSectionPe(val);
+                        }}
+                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      >
+                        {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec} mm²
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                        TIERRA (PE)
+                      </label>
+                      <select
+                        value={wireSectionPe}
+                        onChange={(e) => setWireSectionPe(Number(e.target.value))}
+                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
                         {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
                           <option key={sec} value={sec}>
@@ -1026,7 +1094,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                       <select
                         value={breakerAmperage}
                         onChange={(e) => setBreakerAmperage(Number(e.target.value))}
-                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
                         {[10, 16, 20, 25, 32, 40, 50, 63].map((amp) => (
                           <option key={amp} value={amp}>
@@ -1064,7 +1132,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                     <button
                       type="button"
                       onClick={() => {
-                        if (isCreating) handleSaveNewCircuit();
+                        if (isCreating) handleCreateCircuit();
                         else if (editingCircuitId) handleSaveEdit(editingCircuitId);
                       }}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1"
@@ -1240,7 +1308,12 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                                   </span>
                                   <span>·</span>
                                   <span>
-                                    Cable: <strong>{circ.wireSectionBaseMM2 || 2.5} mm²</strong>
+                                    Línea:{' '}
+                                    <strong>
+                                      {circ.phases === 3 ? '3x' : '2x'}
+                                      {circ.wireSectionBaseMM2 || 2.5} + PE{' '}
+                                      {circ.wireSectionPeMM2 || circ.wireSectionBaseMM2 || 2.5} mm²
+                                    </strong>
                                   </span>
                                   {conduitsLengthM > 0 && (
                                     <>

@@ -82,9 +82,9 @@ interface BimCanvasProps {
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
-  onElectricalElementClick?: (elementId: string) => void;
+  onElectricalElementClick?: (elementId: string, isMultiSelect?: boolean) => void;
   onElectricalElementDoubleClick?: (elementId: string) => void;
-  onPanelClick?: (panelId: string) => void;
+  onPanelClick?: (panelId: string, isMultiSelect?: boolean) => void;
   onPanelDoubleClick?: (panelId: string) => void;
   onCanvasClick?: (worldX: number, worldY: number, snapInfo?: WallPlacementSnap, rotationDeg?: number) => void;
   isArchitectureLocked?: boolean;
@@ -171,7 +171,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const {
     project,
     selectedEntity,
+    selectedEntities,
     setSelectedEntity,
+    toggleSelectEntity,
     activeAnchorVertexId,
     setActiveAnchorVertexId,
     showDimensions,
@@ -179,6 +181,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     deleteDimensionLine,
     labelDisplayMode
   } = useProjectStore();
+
+  const selectedEntityMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const se of selectedEntities) {
+      let set = map.get(se.type);
+      if (!set) {
+        set = new Set();
+        map.set(se.type, set);
+      }
+      set.add(se.id);
+    }
+    return map;
+  }, [selectedEntities]);
 
   const sequenceRoutingMode = useElectricalSequenceStore((s) => s.sequenceRoutingMode);
   const sequenceRoutingPlane = useElectricalSequenceStore((s) => s.sequenceRoutingPlane);
@@ -1309,7 +1324,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         midY = (pSegA.y + pSegB.y) / 2;
       }
 
-      const isSelected = selectedEntity?.type === 'conduit' && selectedEntity.id === conduit.id;
+      const isSelected = selectedEntityMap.get('conduit')?.has(conduit.id) || false;
 
       // Color del circuito asignado o anaranjado por defecto
       const assignedCircuitId = conduit.circuitId || conduit.circuitIds?.[0];
@@ -1335,7 +1350,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               return;
             }
             e.stopPropagation();
-            setSelectedEntity({ type: 'conduit', id: conduit.id });
+            toggleSelectEntity({ type: 'conduit', id: conduit.id }, e.shiftKey);
           }}
           onMouseDown={(e) => e.stopPropagation()}
           className="cursor-pointer group"
@@ -1590,12 +1605,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     project.activeLevelId,
     elementsMap,
     zoom,
-    selectedEntity,
+    selectedEntityMap,
     isConnectingConduit,
     editingConduitRouteId,
     isCalibratingUnderlay,
     isAddingDimension,
-    setSelectedEntity,
+    toggleSelectEntity,
     onUpdateConduitWaypoint,
     onRemoveConduitWaypoint
   ]);
@@ -1607,7 +1622,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       .map((element) => {
         const pxX = element.x * zoom;
         const pxY = element.y * zoom;
-        const isSelected = selectedEntity?.type === 'electrical_element' && selectedEntity.id === element.id;
+        const isSelected = selectedEntityMap.get('electrical_element')?.has(element.id) || false;
         const isPendingStart = pendingConduitStartId === element.id;
         const circ = element.circuitId ? project.circuits.find((c) => c.id === element.circuitId) : null;
         const panel = circ ? project.panels.find((p) => p.id === circ.panelId) : project.panels[0] || null;
@@ -1630,7 +1645,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 return;
               }
               e.stopPropagation();
-              onElectricalElementClick?.(element.id);
+              onElectricalElementClick?.(element.id, e.shiftKey);
             }}
             onDoubleClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
@@ -1807,7 +1822,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     labelDisplayMode,
     project.activeLevelId,
     zoom,
-    selectedEntity,
+    selectedEntityMap,
     isConnectingConduit,
     isCalibratingUnderlay,
     isAddingDimension,
@@ -1823,7 +1838,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       .map((panel) => {
         const pxX = panel.x * zoom;
         const pxY = panel.y * zoom;
-        const isSelected = selectedEntity?.type === 'panel' && selectedEntity.id === panel.id;
+        const isSelected = selectedEntityMap.get('panel')?.has(panel.id) || false;
         const isPendingStart = pendingConduitStartId === panel.id;
         const panelCircuits = project.circuits.filter((c) => c.panelId === panel.id);
         const symbolId =
@@ -1844,9 +1859,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               if (isConnectingConduit) {
                 onElectricalElementClick?.(panel.id);
               } else if (onPanelClick) {
-                onPanelClick(panel.id);
+                onPanelClick(panel.id, e.shiftKey);
               } else {
-                onElectricalElementClick?.(panel.id);
+                onElectricalElementClick?.(panel.id, e.shiftKey);
               }
             }}
             onDoubleClick={(e) => {
@@ -1961,7 +1976,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     project.circuits,
     project.activeLevelId,
     zoom,
-    selectedEntity,
+    selectedEntityMap,
     isConnectingConduit,
     isCalibratingUnderlay,
     isAddingDimension,

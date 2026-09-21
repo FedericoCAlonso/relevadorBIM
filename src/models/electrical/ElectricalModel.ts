@@ -202,6 +202,8 @@ export interface Circuit {
   differentialId?: string;    // ID del disyuntor que lo protege
   color?: string;
   description?: string;
+  phases?: 1 | 3;           // 1 = Monofásico (1F+N+PE), 3 = Trifásico (3F+N+PE o 3F+PE)
+  wireSectionPeMM2?: number;// Sección del conductor de protección PE (por defecto igual a wireSectionBaseMM2)
 }
 
 export type PanelType = 'principal' | 'seccional' | 'auxiliar';

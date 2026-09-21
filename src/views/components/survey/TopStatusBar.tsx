@@ -8,14 +8,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Menu, Maximize, Minimize, Ruler } from 'lucide-react';
+import { Menu, Maximize, Minimize, Ruler, Filter } from 'lucide-react';
 
 interface TopStatusBarProps {
   onOpenMenu: () => void;
+  onOpenBatchSelect?: () => void;
 }
 
-export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu }) => {
-  const { project, showDimensions, toggleDimensions, labelDisplayMode, setLabelDisplayMode } = useProjectStore();
+export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBatchSelect }) => {
+  const { project, showDimensions, toggleDimensions, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const cycleLabelMode = () => {
@@ -103,6 +104,25 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu }) => {
           <span className="text-[10px]">🏷️</span>
           <span>{labelDisplayMode === 'full' ? 'TP_C1_B1' : labelDisplayMode === 'circuit_element' ? 'C1_B1' : 'B1'}</span>
         </button>
+
+        {/* Botón de Filtro / Selección por Lote */}
+        {onOpenBatchSelect && (
+          <button
+            type="button"
+            onClick={onOpenBatchSelect}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+              selectedEntities.length > 0
+                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+            title="Seleccionar por Filtro o Criterio (Circuito, Caño, Boca, Estado)"
+          >
+            <Filter size={13} className={selectedEntities.length > 0 ? 'text-indigo-600' : 'text-slate-500'} />
+            <span className="hidden sm:inline">
+              {selectedEntities.length > 0 ? `Lote (${selectedEntities.length})` : 'Filtro'}
+            </span>
+          </button>
+        )}
 
         <button
           type="button"

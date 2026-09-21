@@ -26,6 +26,8 @@ import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { BranchEditModal } from './views/components/electrical/BranchEditModal';
 import { CircuitsModal } from './views/components/electrical/CircuitsModal';
 import { ElectricalReportModal } from './views/components/electrical/ElectricalReportModal';
+import { BatchSelectModal } from './views/components/electrical/BatchSelectModal';
+import { BulkEditModal } from './views/components/electrical/BulkEditModal';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
@@ -40,7 +42,10 @@ export function App() {
   const {
     project,
     selectedEntity,
+    selectedEntities,
     setSelectedEntity,
+    toggleSelectEntity,
+    clearSelection,
     undoLastWall,
     deleteWall,
     deleteOpening,
@@ -165,6 +170,8 @@ export function App() {
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [showCircuitsModal, setShowCircuitsModal] = useState(false);
   const [showElectricalReportModal, setShowElectricalReportModal] = useState(false);
+  const [showBatchSelectModal, setShowBatchSelectModal] = useState(false);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
 
   // Entidades eléctricas seleccionadas para modales
@@ -244,6 +251,9 @@ export function App() {
           sequence.resetSequence();
           return;
         }
+        if (selectedEntities.length > 0) {
+          clearSelection();
+        }
         setSelectedEntity(null);
         setSelectedSymbolId(null);
         resetPlacingTemplate();
@@ -251,6 +261,18 @@ export function App() {
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedEntities.length > 1) {
+          e.preventDefault();
+          selectedEntities.forEach((entity) => {
+            if (entity.type === 'wall') deleteWall(entity.id);
+            else if (entity.type === 'opening') deleteOpening(entity.id);
+            else if (entity.type === 'electrical_element') deleteElectricalElement(entity.id);
+            else if (entity.type === 'conduit') deleteConduit(entity.id);
+            else if (entity.type === 'dimension') deleteDimensionLine(entity.id);
+          });
+          clearSelection();
+          return;
+        }
         if (selectedEntity) {
           e.preventDefault();
           if (selectedEntity.type === 'wall') deleteWall(selectedEntity.id);
@@ -332,6 +354,7 @@ export function App() {
     }
 
     setSelectedEntity(null);
+    clearSelection();
   };
 
   const previewDist = parseFloat(currentDistanceInput) || 3.50;
@@ -339,7 +362,10 @@ export function App() {
   return (
     <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
       {/* 1. Barra Superior (Menú Minimalista, Planta, Cotas y Pantalla Completa) */}
-      <TopStatusBar onOpenMenu={() => setShowMainMenu(true)} />
+      <TopStatusBar
+        onOpenMenu={() => setShowMainMenu(true)}
+        onOpenBatchSelect={() => setShowBatchSelectModal(true)}
+      />
 
       {/* 2. Cuerpo Principal: Responsive Desktop vs Mobile */}
       <div className="flex-1 w-full h-full flex pt-14 overflow-hidden">
@@ -556,7 +582,11 @@ export function App() {
                 setEditingSpaceId(spaceId);
               }
             }}
-            onElectricalElementClick={(elementId) => {
+            onElectricalElementClick={(elementId, isMultiSelect) => {
+              if (isMultiSelect) {
+                toggleSelectEntity({ type: 'electrical_element', id: elementId }, true);
+                return;
+              }
               if (!isConnectingConduit && selectedEntity?.type === 'electrical_element' && selectedEntity.id === elementId) {
                 setShowElementModal(true);
               } else {
@@ -571,7 +601,11 @@ export function App() {
                 handleElectricalElementClick(elementId);
               }
             }}
-            onPanelClick={(panelId) => {
+            onPanelClick={(panelId, isMultiSelect) => {
+              if (isMultiSelect) {
+                toggleSelectEntity({ type: 'panel', id: panelId }, true);
+                return;
+              }
               if (isConnectingConduit) {
                 handleElectricalElementClick(panelId);
               } else if (selectedEntity?.type === 'panel' && selectedEntity.id === panelId) {
@@ -875,6 +909,7 @@ export function App() {
         onOpenComputo={() => setShowComputoModal(true)}
         onOpenCircuits={() => setShowCircuitsModal(true)}
         onOpenElectricalReport={() => setShowElectricalReportModal(true)}
+        onOpenBatchSelect={() => setShowBatchSelectModal(true)}
         hasUnderlay={Boolean(activeUnderlay)}
         onLoadUnderlay={handleLoadUnderlayFile}
         onStartUnderlayCalibration={startUnderlayCalibration}
@@ -967,6 +1002,19 @@ export function App() {
       <CircuitsModal
         isOpen={showCircuitsModal}
         onClose={() => setShowCircuitsModal(false)}
+      />
+
+      {/* 11. Modal de Selección y Filtro por Lote */}
+      <BatchSelectModal
+        isOpen={showBatchSelectModal}
+        onClose={() => setShowBatchSelectModal(false)}
+        onProceedToInspector={() => setShowBulkEditModal(true)}
+      />
+
+      {/* 12. Modal de Edición en Lote (Móvil y Acceso Rápido) */}
+      <BulkEditModal
+        isOpen={showBulkEditModal}
+        onClose={() => setShowBulkEditModal(false)}
       />
     </div>
   );

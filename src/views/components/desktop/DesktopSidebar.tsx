@@ -41,6 +41,7 @@ import {
   Edit2,
   GitBranch
 } from 'lucide-react';
+import { BulkEditPanel } from '../electrical/BulkEditPanel';
 
 interface DesktopSidebarProps {
   relativeTurn: RelativeTurnType;
@@ -87,6 +88,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     project,
     activeAnchorVertexId,
     selectedEntity,
+    selectedEntities,
     addOpeningReferenced,
     addBranchWallFromOffset,
     updateWall,
@@ -1802,8 +1804,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             {/* ─── SUB-PESTAÑA 2: INSPECTOR DE ELEMENTO / CAÑERÍA Y RED ─── */}
             {electricalSubTab === 'network' && (
               <div className="space-y-3">
+                {/* 0. PANEL DE EDICIÓN EN LOTE (2 o más elementos seleccionados) */}
+                {selectedEntities.length > 1 && (
+                  <BulkEditPanel />
+                )}
+
                 {/* 1. INSPECTOR DE CAÑERÍA SELECCIONADA */}
-                {selectedConduit && (() => {
+                {selectedEntities.length <= 1 && selectedConduit && (() => {
                   const elFrom = project.electricalElements.find((e) => e.id === selectedConduit.fromElementId);
                   const elTo = project.electricalElements.find((e) => e.id === selectedConduit.toElementId);
                   const autoLengthM = elFrom && elTo ? calculateConduitRealLength({ fromElement: elFrom, toElement: elTo, levelsMap }) : 0;
@@ -2166,7 +2173,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 })()}
 
                 {/* 2. INSPECTOR DE BOCA ELÉCTRICA SELECCIONADA */}
-                {selectedElectricalElement && (
+                {selectedEntities.length <= 1 && selectedElectricalElement && (
                   <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-3.5 space-y-3 shadow-sm animate-in fade-in duration-150">
                     <div className="flex items-center justify-between border-b border-blue-200 pb-2">
                       <div className="flex items-center gap-2">
@@ -2439,7 +2446,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 )}
 
                 {/* Banner de ayuda si no hay nada seleccionado */}
-                {!selectedElectricalElement && !selectedConduit && (
+                {!selectedElectricalElement && !selectedConduit && selectedEntities.length <= 1 && (
                   <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center text-xs text-slate-500">
                     Tocá una boca o una cañería en el plano para editar sus características, o elegí un símbolo abajo para emplazar.
                   </div>
