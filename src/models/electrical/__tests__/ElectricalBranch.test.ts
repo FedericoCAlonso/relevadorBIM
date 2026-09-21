@@ -497,8 +497,9 @@ describe('Modelo de Ramas del Grafo Eléctrico (electricalBranch)', () => {
     expect(isTerminalReference(elements[0])).toBe(false);
   });
 
-  it('syncPassingCircuits debe sincronizar bidireccionalmente los circuitos que pasan entre cajas y canalizaciones', () => {
+  it('syncPassingCircuits debe actualizar passingCircuitIds en las cajas según las canalizaciones sin sobreescribir la configuración del conducto', () => {
     // Caja B1 (Circuito 1), conectada por Cañería 1 a Caja B2 (Circuito 2)
+    // La cañería transporta únicamente circ-1
     const elements: ElectricalElement[] = [
       { id: 'box-1', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 0, y: 0, heightZ: 2.6, circuitId: 'circ-1', passingCircuitIds: [] },
       { id: 'box-2', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 3, y: 0, heightZ: 2.6, circuitId: 'circ-2', passingCircuitIds: [] }
@@ -526,15 +527,76 @@ describe('Modelo de Ramas del Grafo Eléctrico (electricalBranch)', () => {
     const syncedBox2 = synced.updatedElements.find((e) => e.id === 'box-2')!;
     const syncedCond = synced.updatedConduits.find((c) => c.id === 'cond-1-2')!;
 
-    // La canalización debe transportar circ-1 y circ-2
-    expect(syncedCond.circuitIds).toContain('circ-1');
-    expect(syncedCond.circuitIds).toContain('circ-2');
+    // La canalización preserva su configuración explícita definida por el usuario
+    expect(syncedCond.circuitIds).toEqual(['circ-1']);
 
     // Box 2 (su circuito propio es circ-2) debe tener circ-1 como circuito en tránsito
     expect(syncedBox2.passingCircuitIds).toContain('circ-1');
     expect(syncedBox2.passingCircuitIds).not.toContain('circ-2');
 
     // Box 1 (su circuito propio es circ-1) no debe tener circ-1 como passing
-    expect(syncedBox1.passingCircuitIds).not.toContain('circ-1');
+    expect(syncedBox1.passingCircuitIds).toEqual([]);
+  });
+
+  it('cuando una canalización transporta múltiples circuitos, las cajas identifican solo los circuitos ajenos como tránsito', () => {
+    const elements: ElectricalElement[] = [
+      { id: 'box-1', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 0, y: 0, heightZ: 2.6, circuitId: 'circ-1', passingCircuitIds: [] },
+      { id: 'box-2', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 3, y: 0, heightZ: 2.6, circuitId: 'circ-2', passingCircuitIds: [] }
+    ];
+
+    const conduits: Conduit[] = [
+      {
+        id: 'cond-multi',
+        fromElementId: 'box-1',
+        toElementId: 'box-2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 22,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'circ-1',
+        circuitIds: ['circ-1', 'circ-2'],
+        conductors: []
+      }
+    ];
+
+    const synced = syncPassingCircuits({ elements, conduits });
+
+    const syncedBox1 = synced.updatedElements.find((e) => e.id === 'box-1')!;
+    const syncedBox2 = synced.updatedElements.find((e) => e.id === 'box-2')!;
+
+    // Box 1 tiene circ-2 como passing (no circ-1)
+    expect(syncedBox1.passingCircuitIds).toEqual(['circ-2']);
+    // Box 2 tiene circ-1 como passing (no circ-2)
+    expect(syncedBox2.passingCircuitIds).toEqual(['circ-1']);
+  });
+
+  it('al deseleccionar circuitos de una canalización, se limpian los circuitos en tránsito de las cajas', () => {
+    const elements: ElectricalElement[] = [
+      { id: 'box-1', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 0, y: 0, heightZ: 2.6, circuitId: 'circ-1', passingCircuitIds: [] },
+      { id: 'box-2', symbolId: 'sym-planta-boca-techo', levelId: 'l1', spaceId: 's1', placement: 'ceiling', x: 3, y: 0, heightZ: 2.6, circuitId: 'circ-2', passingCircuitIds: ['circ-1'] }
+    ];
+
+    // Se deseleccionó circ-1 del conducto (circuitIds vacío)
+    const conduits: Conduit[] = [
+      {
+        id: 'cond-empty',
+        fromElementId: 'box-1',
+        toElementId: 'box-2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: null,
+        circuitIds: [],
+        conductors: []
+      }
+    ];
+
+    const synced = syncPassingCircuits({ elements, conduits });
+
+    const syncedBox2 = synced.updatedElements.find((e) => e.id === 'box-2')!;
+    expect(syncedBox2.passingCircuitIds).toEqual([]);
   });
 });

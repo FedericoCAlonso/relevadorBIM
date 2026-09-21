@@ -999,12 +999,26 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   addConduit: (conduit) =>
     set((state) => {
       let candidate = conduit;
-      if (!candidate.conductors || candidate.conductors.length === 0) {
-        const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
-        const panelsMap = new Map(state.project.panels.map((p) => [p.id, p]));
-        const fromEl = elementsMap.get(candidate.fromElementId) || panelsMap.get(candidate.fromElementId);
-        const toEl = elementsMap.get(candidate.toElementId) || panelsMap.get(candidate.toElementId);
+      const elementsMap = new Map(state.project.electricalElements.map((e) => [e.id, e]));
+      const panelsMap = new Map(state.project.panels.map((p) => [p.id, p]));
+      const fromEl = elementsMap.get(candidate.fromElementId) || panelsMap.get(candidate.fromElementId);
+      const toEl = elementsMap.get(candidate.toElementId) || panelsMap.get(candidate.toElementId);
 
+      if (!candidate.circuitId && candidate.circuitIds === undefined) {
+        const inheritedId =
+          (fromEl && 'circuitId' in fromEl && fromEl.circuitId) ||
+          (toEl && 'circuitId' in toEl && toEl.circuitId) ||
+          undefined;
+        if (inheritedId) {
+          candidate = {
+            ...candidate,
+            circuitId: inheritedId,
+            circuitIds: [inheritedId]
+          };
+        }
+      }
+
+      if (!candidate.conductors || candidate.conductors.length === 0) {
         const derived = deriveConduitConductors({
           conduit: candidate,
           circuits: state.project.circuits,

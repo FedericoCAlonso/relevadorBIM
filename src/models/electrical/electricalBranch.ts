@@ -507,13 +507,11 @@ export function applyBranchUpdates(params: {
  * Obtiene todos los circuitos que viajan por una canalización dada (multi-circuito y conductores).
  */
 export function getConduitCarriedCircuits(conduit: Conduit): string[] {
+  if (conduit.circuitIds !== undefined) {
+    return conduit.circuitIds.filter(Boolean);
+  }
   const ids = new Set<string>();
   if (conduit.circuitId) ids.add(conduit.circuitId);
-  if (conduit.circuitIds) {
-    for (const id of conduit.circuitIds) {
-      if (id) ids.add(id);
-    }
-  }
   for (const cond of conduit.conductors) {
     if (cond.circuitId) ids.add(cond.circuitId);
   }
@@ -522,8 +520,8 @@ export function getConduitCarriedCircuits(conduit: Conduit): string[] {
 
 /**
  * Sincroniza los circuitos en tránsito entre las cajas/bocas y las canalizaciones conectadas.
- * Garantiza coherencia bidireccional: las cajas saben qué circuitos las atraviesan (passingCircuitIds)
- * y las canalizaciones registran todos los circuitos que transportan.
+ * Garantiza que las cajas conozcan qué circuitos las atraviesan (passingCircuitIds) sin alterar
+ * arbitrariamente la configuración física de circuitos definida en las canalizaciones.
  */
 export function syncPassingCircuits(params: {
   elements: readonly ElectricalElement[];
@@ -560,23 +558,10 @@ export function syncPassingCircuits(params: {
       carried.forEach((id) => allTouchingCircuits.add(id));
     }
 
-    // Circuitos en tránsito: aquellos que tocan la caja pero no alimentan su consumo terminal
-    const expectedPassing = Array.from(allTouchingCircuits).filter((id) => id !== el.circuitId);
-    const combinedPassing = new Set([...(el.passingCircuitIds || []), ...expectedPassing]);
-    const finalPassing = Array.from(combinedPassing).filter((id) => id !== el.circuitId);
-
+    // Circuitos en tránsito: aquellos que tocan la caja a través de las canalizaciones conectadas
+    // pero no alimentan su consumo terminal propio
+    const finalPassing = Array.from(allTouchingCircuits).filter((id) => id !== el.circuitId);
     el.passingCircuitIds = finalPassing;
-
-    // Propagar circuitos hacia las canalizaciones conectadas
-    for (const c of connectedConduits) {
-      const conduitEntry = conduitsMap.get(c.id);
-      if (conduitEntry) {
-        const carried = new Set(getConduitCarriedCircuits(conduitEntry));
-        finalPassing.forEach((id) => carried.add(id));
-        if (el.circuitId) carried.add(el.circuitId);
-        conduitEntry.circuitIds = Array.from(carried);
-      }
-    }
   }
 
   return {

@@ -88,6 +88,10 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
 
   const autoLengthM = conduitBreakdown ? conduitBreakdown.totalLengthM : 2.5;
   const effectiveLengthM = conduit.manualLengthM || autoLengthM;
+  const conduitCircuitIds =
+    conduit.circuitIds !== undefined
+      ? conduit.circuitIds
+      : (conduit.circuitId ? [conduit.circuitId] : []);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-in fade-in duration-150">
@@ -340,11 +344,28 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
               </div>
               <select
                 value={conduit.circuitId || ''}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const newCircId = e.target.value ? e.target.value : null;
+                  let newCircuitIds: string[];
+                  if (!newCircId) {
+                    newCircuitIds = conduit.circuitId
+                      ? conduitCircuitIds.filter((id) => id !== conduit.circuitId)
+                      : conduitCircuitIds;
+                  } else {
+                    if (!conduitCircuitIds.includes(newCircId)) {
+                      newCircuitIds = conduit.circuitId
+                        ? conduitCircuitIds.map((id) => (id === conduit.circuitId ? newCircId : id))
+                        : [...conduitCircuitIds, newCircId];
+                      if (!newCircuitIds.includes(newCircId)) newCircuitIds.push(newCircId);
+                    } else {
+                      newCircuitIds = conduitCircuitIds;
+                    }
+                  }
                   setConduitProperties(conduit.id, {
-                    circuitId: e.target.value ? e.target.value : null
-                  })
-                }
+                    circuitId: newCircId,
+                    circuitIds: newCircuitIds
+                  });
+                }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
               >
                 <option value="">(Sin circuito asignado)</option>
@@ -543,12 +564,12 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                   Circuitos en este Conducto:
                 </span>
                 <span className="text-[10px] text-slate-500">
-                  {(conduit.circuitIds?.length || (conduit.circuitId ? 1 : 0))} seleccionado(s)
+                  {conduitCircuitIds.length} seleccionado(s)
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {circuits.map((c) => {
-                  const isAssigned = (conduit.circuitIds || (conduit.circuitId ? [conduit.circuitId] : [])).includes(c.id);
+                  const isAssigned = conduitCircuitIds.includes(c.id);
                   return (
                     <button
                       key={c.id}

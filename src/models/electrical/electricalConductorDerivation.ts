@@ -90,22 +90,27 @@ export function deriveConduitConductors(params: DeriveConduitConductorsParams): 
 
   // Determinar los IDs de circuitos asociados al tramo
   const assignedCircuitIds = new Set<string>();
-  if (conduit.circuitIds && conduit.circuitIds.length > 0) {
+  if (conduit.circuitIds !== undefined) {
     for (const cid of conduit.circuitIds) {
       if (cid) assignedCircuitIds.add(cid);
     }
-  }
-  if (conduit.circuitId) {
+  } else if (conduit.circuitId) {
     assignedCircuitIds.add(conduit.circuitId);
   }
 
-  // Si el tramo no tiene circuito asignado directamente, intentar heredarlo de las bocas
-  if (assignedCircuitIds.size === 0) {
+  // Si el tramo no tiene configuración explícita (circuitIds es undefined y no hay circuitId),
+  // intentar heredarlo de las bocas conectadas
+  if (conduit.circuitIds === undefined && !conduit.circuitId) {
     if (fromElement && 'circuitId' in fromElement && fromElement.circuitId) {
       assignedCircuitIds.add(fromElement.circuitId);
     } else if (toElement && 'circuitId' in toElement && toElement.circuitId) {
       assignedCircuitIds.add(toElement.circuitId);
     }
+  }
+
+  // Si el tramo no tiene ningún circuito asignado (o el usuario deseleccionó todos los circuitos):
+  if (assignedCircuitIds.size === 0) {
+    return appendExtraConductors([], conduit, extraConductors);
   }
 
   const circuitIdList = Array.from(assignedCircuitIds);

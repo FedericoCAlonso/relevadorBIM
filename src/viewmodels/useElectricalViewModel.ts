@@ -682,7 +682,10 @@ export function useElectricalViewModel() {
       const conduit = project.conduits.find((c) => c.id === conduitId);
       if (!conduit) return;
 
-      const current = conduit.circuitIds || (conduit.circuitId ? [conduit.circuitId] : []);
+      const current =
+        conduit.circuitIds !== undefined
+          ? conduit.circuitIds
+          : (conduit.circuitId ? [conduit.circuitId] : []);
       const updated = current.includes(circuitId)
         ? current.filter((id) => id !== circuitId)
         : [...current, circuitId];

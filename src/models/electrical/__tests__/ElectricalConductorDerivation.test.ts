@@ -501,5 +501,82 @@ describe('electricalConductorDerivation', () => {
       expect(result.filter((c) => c.role === 'pe')).toHaveLength(1);
       expect(result.some((c) => c.role === 'retorno' && c.reference === 'b')).toBe(true);
     });
+
+    it('cuando un conducto tiene circuitIds vacío ([]), no debe heredar de las bocas y retorna conductores vacíos', () => {
+      const box1: ElectricalElement = {
+        id: 'box-1',
+        symbolId: 'sym-planta-boca-techo',
+        placement: 'ceiling',
+        levelId: 'l1',
+        spaceId: 's1',
+        x: 0,
+        y: 0,
+        heightZ: 2.6,
+        circuitId: 'c1'
+      };
+      const box2: ElectricalElement = {
+        id: 'box-2',
+        symbolId: 'sym-planta-boca-techo',
+        placement: 'ceiling',
+        levelId: 'l1',
+        spaceId: 's1',
+        x: 3,
+        y: 0,
+        heightZ: 2.6,
+        circuitId: 'c1'
+      };
+
+      const conduit: Conduit = {
+        id: 'cond-deselected',
+        fromElementId: 'box-1',
+        toElementId: 'box-2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 19,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: null,
+        circuitIds: [], // Deseleccionado explícitamente
+        conductors: []
+      };
+
+      const result = deriveConduitConductors({
+        conduit,
+        circuits: sampleCircuits,
+        fromElement: box1,
+        toElement: box2
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('al alternar y deseleccionar un circuito de un caño multi-circuito, se recalculan exactamente los conductores restantes', () => {
+      const conduit: Conduit = {
+        id: 'cond-multi-to-single',
+        fromElementId: 'box-1',
+        toElementId: 'box-2',
+        fromLevelId: 'l1',
+        toLevelId: 'l1',
+        diameterMM: 22,
+        material: 'pvc_rigido_metrico',
+        isVerticalRiser: false,
+        circuitId: 'c1',
+        circuitIds: ['c1'], // Se deseleccionó C2
+        conductors: []
+      };
+
+      const result = deriveConduitConductors({
+        conduit,
+        circuits: sampleCircuits
+      });
+
+      // Solo debe tener C1: 2x1.5 (fase y neutro) + 1x1.5 PE (todos identificados con C1)
+      expect(result).toHaveLength(3);
+      expect(result.filter((c) => c.circuitId === 'c1')).toHaveLength(3);
+      expect(result.filter((c) => c.circuitId === 'c2')).toHaveLength(0);
+      const pe = result.find((c) => c.role === 'pe');
+      expect(pe?.sectionMM2).toBe(1.5);
+    });
   });
 });
+

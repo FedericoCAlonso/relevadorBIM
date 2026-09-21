@@ -2045,7 +2045,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </label>
                         <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
                           {project.circuits.map((c) => {
-                            const isIncluded = (selectedConduit.circuitIds || [selectedConduit.circuitId]).includes(c.id);
+                            const conduitCircuitIds =
+                              selectedConduit.circuitIds !== undefined
+                                ? selectedConduit.circuitIds
+                                : (selectedConduit.circuitId ? [selectedConduit.circuitId] : []);
+                            const isIncluded = conduitCircuitIds.includes(c.id);
                             return (
                               <label
                                 key={c.id}
@@ -2060,7 +2064,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                     type="checkbox"
                                     checked={isIncluded}
                                     onChange={(e) => {
-                                      const currentIds = selectedConduit.circuitIds || (selectedConduit.circuitId ? [selectedConduit.circuitId] : []);
+                                      const currentIds =
+                                        selectedConduit.circuitIds !== undefined
+                                          ? selectedConduit.circuitIds
+                                          : (selectedConduit.circuitId ? [selectedConduit.circuitId] : []);
                                       let newIds: string[];
                                       if (e.target.checked) {
                                         newIds = Array.from(new Set([...currentIds, c.id]));
