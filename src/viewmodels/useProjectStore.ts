@@ -19,6 +19,7 @@ import { getWallVector, getWallLength, getWallLeftNormal } from '../models/archi
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { Space } from '../models/architecture/Space';
 import { findEnclosedCycles } from '../models/architecture/Space';
+import { adjustOpeningOnWallResize } from '../models/architecture/WallSnapEngine';
 import type {
   ElectricalElement,
   Conduit,
@@ -117,6 +118,16 @@ interface ProjectStoreState {
 
   updateWall: (wallId: string, updates: Partial<Wall>) => void;
   updateWallLength: (wallId: string, newLengthM: number) => void;
+  updateVertexPosition: (vertexId: string, newPos: Vector2D) => void;
+  splitSharedVertexForWall: (wallId: string, vertexId: string) => string;
+  commitWallVertexDrag: (params: {
+    wallId: string;
+    draggedVertexId: string;
+    newPos: Vector2D;
+    mergeWithVertexId?: string;
+    draggedEnd: 'start' | 'end';
+    oldLength: number;
+  }) => void;
   rotateWall: (wallId: string, deltaAngleDeg: number) => void;
   invertWallDirection: (wallId: string) => void;
   deleteWall: (wallId: string) => void;
@@ -747,6 +758,145 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         meta: { ...project.meta, updatedAt: Date.now() }
       }
     });
+    get().autoDetectSpaces();
+  },
+
+  updateVertexPosition: (vertexId, newPos) => {
+    set((state) => ({
+      project: {
+        ...state.project,
+        vertices: state.project.vertices.map((v) =>
+          v.id === vertexId
+            ? { ...v, x: Number(newPos.x.toFixed(3)), y: Number(newPos.y.toFixed(3)) }
+            : v
+        ),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    }));
+  },
+
+  splitSharedVertexForWall: (wallId, vertexId) => {
+    const { project } = get();
+    const wall = project.walls.find((w) => w.id === wallId);
+    if (!wall) return vertexId;
+
+    const sharingWalls = project.walls.filter(
+      (w) => w.startVertexId === vertexId || w.endVertexId === vertexId
+    );
+
+    if (sharingWalls.length <= 1) return vertexId;
+
+    const oldVertex = project.vertices.find((v) => v.id === vertexId);
+    if (!oldVertex) return vertexId;
+
+    const newVertexId = `vert_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newVertex: WallVertex = {
+      id: newVertexId,
+      x: oldVertex.x,
+      y: oldVertex.y
+    };
+
+    const isStart = wall.startVertexId === vertexId;
+    const updatedWalls = project.walls.map((w) =>
+      w.id === wallId
+        ? {
+            ...w,
+            startVertexId: isStart ? newVertexId : w.startVertexId,
+            endVertexId: !isStart ? newVertexId : w.endVertexId
+          }
+        : w
+    );
+
+    set({
+      project: {
+        ...project,
+        vertices: [...project.vertices, newVertex],
+        walls: updatedWalls,
+        meta: { ...project.meta, updatedAt: Date.now() }
+      }
+    });
+
+    return newVertexId;
+  },
+
+  commitWallVertexDrag: ({
+    wallId,
+    draggedVertexId,
+    newPos,
+    mergeWithVertexId,
+    draggedEnd,
+    oldLength
+  }) => {
+    const { project } = get();
+    const wall = project.walls.find((w) => w.id === wallId);
+    if (!wall) return;
+
+    let updatedVertices = [...project.vertices];
+    let updatedWalls = [...project.walls];
+
+    if (mergeWithVertexId && mergeWithVertexId !== draggedVertexId) {
+      // 1. Fusión de vértices: actualizar referencias en el muro arrastrado
+      updatedWalls = updatedWalls.map((w) => {
+        if (w.id === wallId) {
+          return {
+            ...w,
+            startVertexId: draggedEnd === 'start' ? mergeWithVertexId : w.startVertexId,
+            endVertexId: draggedEnd === 'end' ? mergeWithVertexId : w.endVertexId
+          };
+        }
+        return w;
+      });
+
+      // Si el vértice arrastrado ya no lo usa ningún otro muro, removerlo
+      const isOldVertexUsed = updatedWalls.some(
+        (w) => w.startVertexId === draggedVertexId || w.endVertexId === draggedVertexId
+      );
+      if (!isOldVertexUsed) {
+        updatedVertices = updatedVertices.filter((v) => v.id !== draggedVertexId);
+      }
+    } else {
+      // 2. Sin fusión: fijar posición final del vértice
+      updatedVertices = updatedVertices.map((v) =>
+        v.id === draggedVertexId
+          ? { ...v, x: Number(newPos.x.toFixed(3)), y: Number(newPos.y.toFixed(3)) }
+          : v
+      );
+    }
+
+    // 3. Ajuste de aberturas preservando distancia fija
+    const verticesMap = new Map(updatedVertices.map((v) => [v.id, v]));
+    const updatedWall = updatedWalls.find((w) => w.id === wallId);
+    let newLength = oldLength;
+    if (updatedWall) {
+      const vStart = verticesMap.get(updatedWall.startVertexId);
+      const vEnd = verticesMap.get(updatedWall.endVertexId);
+      if (vStart && vEnd) {
+        newLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
+      }
+    }
+
+    const updatedOpenings = project.openings.map((op) => {
+      if (op.wallId !== wallId) return op;
+      const adjustedDistance = adjustOpeningOnWallResize({
+        opening: op,
+        draggedEnd,
+        oldLength,
+        newLength
+      });
+      return { ...op, distanceAlongWall: adjustedDistance };
+    });
+
+    set({
+      project: {
+        ...project,
+        vertices: updatedVertices,
+        walls: updatedWalls,
+        openings: updatedOpenings,
+        meta: { ...project.meta, updatedAt: Date.now() }
+      }
+    });
+
+    // 4. Recalcular ambientes inmediatamente
     get().autoDetectSpaces();
   },
 

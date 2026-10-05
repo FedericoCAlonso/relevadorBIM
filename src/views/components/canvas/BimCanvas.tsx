@@ -27,6 +27,7 @@ import {
 } from '../../../models/electrical/calculations';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
 import type { SpatialElectricalNode, ConduitWaypoint } from '../../../models/electrical/ElectricalModel';
+import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
 
 export type { WallPlacementSnap };
 
@@ -204,6 +205,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [pan, setPan] = useState({ x: 150, y: 150 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  // Hook de ViewModel para Arrastre Interactivo de Extremos de Muros (CAD Smart Grips)
+  const {
+    activeDrag,
+    activeSnapResult,
+    handleGripPointerDown,
+    handleGripPointerMove,
+    handleGripPointerUp
+  } = useWallGripDrag({
+    zoom,
+    panOffset: pan,
+    containerRef
+  });
 
   // Refs para control de arrastre y toques (evitar que un paneo dispare un click accidental)
   const mouseDragRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
@@ -970,7 +984,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               strokeWidth={isSelected ? 2 : 1}
             />
 
-            {/* 3. Indicador y Grips visuales de selección activa */}
+            {/* 3. Indicador y Grips interactivos de selección activa (CAD Smart Grips) */}
             {isSelected && (
               <>
                 <polygon
@@ -980,22 +994,111 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   strokeWidth={3}
                   strokeDasharray="6 3"
                 />
-                <circle
-                  cx={vStart.x * zoom}
-                  cy={vStart.y * zoom}
-                  r={6}
-                  fill="#2563eb"
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
-                <circle
-                  cx={vEnd.x * zoom}
-                  cy={vEnd.y * zoom}
-                  r={6}
-                  fill="#2563eb"
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
+                {/* Grip Extremo Inicio (vStart) */}
+                <g
+                  className={`${isArchitectureLocked ? 'cursor-not-allowed' : 'cursor-move'} group/grip-start`}
+                  onPointerDown={(e) => {
+                    if (isArchitectureLocked) return;
+                    isDraggingObjectRef.current = true;
+                    handleGripPointerDown(e, wall.id, 'start', vStart.id);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerMove(e);
+                  }}
+                  onPointerUp={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerUp(e);
+                    lastDragEndTimeRef.current = Date.now();
+                    isDraggingObjectRef.current = false;
+                  }}
+                  onPointerCancel={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerUp(e);
+                    lastDragEndTimeRef.current = Date.now();
+                    isDraggingObjectRef.current = false;
+                  }}
+                >
+                  {/* Hitbox táctil ergonómica invisible de 44x44px (r=22) */}
+                  <circle
+                    cx={vStart.x * zoom}
+                    cy={vStart.y * zoom}
+                    r={22}
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  {/* Halo visual exterior */}
+                  <circle
+                    cx={vStart.x * zoom}
+                    cy={vStart.y * zoom}
+                    r={9}
+                    fill="#ffffff"
+                    stroke={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'start' ? '#10b981' : '#2563eb'}
+                    strokeWidth={2.5}
+                    className="drop-shadow pointer-events-none group-hover/grip-start:scale-125 transition-transform"
+                  />
+                  {/* Núcleo central */}
+                  <circle
+                    cx={vStart.x * zoom}
+                    cy={vStart.y * zoom}
+                    r={4.5}
+                    fill={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'start' ? '#10b981' : '#2563eb'}
+                    className="pointer-events-none"
+                  />
+                </g>
+
+                {/* Grip Extremo Fin (vEnd) */}
+                <g
+                  className={`${isArchitectureLocked ? 'cursor-not-allowed' : 'cursor-move'} group/grip-end`}
+                  onPointerDown={(e) => {
+                    if (isArchitectureLocked) return;
+                    isDraggingObjectRef.current = true;
+                    handleGripPointerDown(e, wall.id, 'end', vEnd.id);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerMove(e);
+                  }}
+                  onPointerUp={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerUp(e);
+                    lastDragEndTimeRef.current = Date.now();
+                    isDraggingObjectRef.current = false;
+                  }}
+                  onPointerCancel={(e) => {
+                    if (isArchitectureLocked) return;
+                    handleGripPointerUp(e);
+                    lastDragEndTimeRef.current = Date.now();
+                    isDraggingObjectRef.current = false;
+                  }}
+                >
+                  {/* Hitbox táctil ergonómica invisible de 44x44px (r=22) */}
+                  <circle
+                    cx={vEnd.x * zoom}
+                    cy={vEnd.y * zoom}
+                    r={22}
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  {/* Halo visual exterior */}
+                  <circle
+                    cx={vEnd.x * zoom}
+                    cy={vEnd.y * zoom}
+                    r={9}
+                    fill="#ffffff"
+                    stroke={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'end' ? '#10b981' : '#2563eb'}
+                    strokeWidth={2.5}
+                    className="drop-shadow pointer-events-none group-hover/grip-end:scale-125 transition-transform"
+                  />
+                  {/* Núcleo central */}
+                  <circle
+                    cx={vEnd.x * zoom}
+                    cy={vEnd.y * zoom}
+                    r={4.5}
+                    fill={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'end' ? '#10b981' : '#2563eb'}
+                    className="pointer-events-none"
+                  />
+                </g>
               </>
             )}
 
@@ -1039,7 +1142,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     isAddingDimension,
     showDimensions,
     hoveredWallId,
-    onWallClick
+    onWallClick,
+    isArchitectureLocked,
+    activeDrag,
+    handleGripPointerDown,
+    handleGripPointerMove,
+    handleGripPointerUp
   ]);
 
   // 3. Aberturas con zona de clic amplia y gestión visual
@@ -2130,6 +2238,168 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     deleteDimensionLine
   ]);
 
+  // 3.1. Capa visual de guías inteligentes (Smart Guides), imantación y cotas dinámicas durante arrastre de muro
+  const renderedSmartGuides = useMemo(() => {
+    if (!activeDrag || !activeSnapResult) return null;
+
+    const fx = activeDrag.fixedVertexPos.x * zoom;
+    const fy = activeDrag.fixedVertexPos.y * zoom;
+    const spX = activeSnapResult.snappedPoint.x * zoom;
+    const spY = activeSnapResult.snappedPoint.y * zoom;
+    const mx = (fx + spX) / 2;
+    const my = (fy + spY) / 2;
+
+    const lenM =
+      activeSnapResult.lengthM ??
+      Math.hypot(
+        activeSnapResult.snappedPoint.x - activeDrag.fixedVertexPos.x,
+        activeSnapResult.snappedPoint.y - activeDrag.fixedVertexPos.y
+      );
+    const angleDeg = activeSnapResult.angleDeg;
+    const { targetType } = activeSnapResult;
+
+    const label =
+      angleDeg !== undefined
+        ? `L = ${lenM.toFixed(2)} m (${angleDeg.toFixed(0)}°)`
+        : `L = ${lenM.toFixed(2)} m`;
+
+    return (
+      <g className="cad-smart-guides-overlay" pointerEvents="none">
+        {/* 1. Rayo elástico directriz entre vértice fijo y punto de arrastre */}
+        <line
+          x1={fx}
+          y1={fy}
+          x2={spX}
+          y2={spY}
+          stroke="#38bdf8"
+          strokeWidth={1.5}
+          strokeDasharray="4 3"
+          strokeOpacity={0.8}
+        />
+
+        {/* 2. Líneas Guías Inteligentes (Smart Guides) */}
+        {activeSnapResult.guides.map((g, idx) => {
+          const x1 = g.from.x * zoom;
+          const y1 = g.from.y * zoom;
+          const x2 = g.to.x * zoom;
+          const y2 = g.to.y * zoom;
+          const strokeColor =
+            g.type === 'polar_ray' ? '#2563eb' : g.type === 'wall_axis' ? '#f59e0b' : '#06b6d4';
+
+          return (
+            <g key={`guide-${idx}`}>
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={strokeColor}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                strokeOpacity={0.85}
+              />
+              {g.label && (
+                <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2 - 8})`}>
+                  <rect
+                    x={-28}
+                    y={-9}
+                    width={56}
+                    height={16}
+                    rx={3}
+                    fill="#ffffff"
+                    fillOpacity={0.92}
+                    stroke={strokeColor}
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={0}
+                    y={3}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fontWeight="bold"
+                    fill={strokeColor}
+                    className="font-mono select-none"
+                  >
+                    {g.label}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
+
+        {/* 3. Indicador de Objetivo Imantado (Target Snap Point) */}
+        {targetType === 'vertex' && (
+          <g transform={`translate(${spX}, ${spY})`}>
+            <circle r={14} fill="rgba(16, 185, 129, 0.18)" stroke="#10b981" strokeWidth={1.5} strokeDasharray="3 2" />
+            <rect x={-7} y={-7} width={14} height={14} fill="#10b981" stroke="#ffffff" strokeWidth={2} rx={2} />
+            <g transform="translate(0, -18)">
+              <rect x={-45} y={-10} width={90} height={18} rx={4} fill="#065f46" fillOpacity={0.94} stroke="#10b981" strokeWidth={1} />
+              <text x={0} y={3} textAnchor="middle" fontSize={9.5} fontWeight="bold" fill="#ecfdf5" className="font-mono select-none">
+                Fusión de Esquina
+              </text>
+            </g>
+          </g>
+        )}
+
+        {targetType === 'wall_slide' && (
+          <g transform={`translate(${spX}, ${spY})`}>
+            <circle r={13} fill="rgba(245, 158, 11, 0.22)" stroke="#f59e0b" strokeWidth={2} />
+            <circle r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
+            <line x1={-8} y1={0} x2={8} y2={0} stroke="#f59e0b" strokeWidth={1.5} />
+            <line x1={0} y1={-8} x2={0} y2={8} stroke="#f59e0b" strokeWidth={1.5} />
+            <g transform="translate(0, -18)">
+              <rect x={-42} y={-10} width={84} height={18} rx={4} fill="#78350f" fillOpacity={0.94} stroke="#f59e0b" strokeWidth={1} />
+              <text x={0} y={3} textAnchor="middle" fontSize={9.5} fontWeight="bold" fill="#fef3c7" className="font-mono select-none">
+                Empalme en T
+              </text>
+            </g>
+          </g>
+        )}
+
+        {targetType === 'smart_guide' && (
+          <g transform={`translate(${spX}, ${spY})`}>
+            <polygon points="0,-8 8,0 0,8 -8,0" fill="#06b6d4" stroke="#ffffff" strokeWidth={1.5} />
+          </g>
+        )}
+
+        {targetType === 'polar_angle' && (
+          <g transform={`translate(${spX}, ${spY})`}>
+            <circle r={7} fill="none" stroke="#2563eb" strokeWidth={2} />
+            <circle r={2.5} fill="#2563eb" />
+          </g>
+        )}
+
+        {/* 4. Badge Flotante con Cota Dinámica y Ángulo */}
+        <g transform={`translate(${mx}, ${my - 16})`}>
+          <rect
+            x={-50}
+            y={-11}
+            width={100}
+            height={22}
+            rx={5}
+            fill="#0f172a"
+            fillOpacity={0.94}
+            stroke="#38bdf8"
+            strokeWidth={1.5}
+            className="shadow-md"
+          />
+          <text
+            x={0}
+            y={4}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight="bold"
+            fill="#f8fafc"
+            className="font-mono select-none"
+          >
+            {label}
+          </text>
+        </g>
+      </g>
+    );
+  }, [activeDrag, activeSnapResult, zoom]);
+
   return (
     <div
       ref={containerRef}
@@ -2143,6 +2413,18 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onPointerMove={(e) => {
+        if (activeDrag) {
+          handleGripPointerMove(e);
+        }
+      }}
+      onPointerUp={(e) => {
+        if (activeDrag) {
+          handleGripPointerUp(e);
+          lastDragEndTimeRef.current = Date.now();
+          isDraggingObjectRef.current = false;
+        }
+      }}
     >
       <svg className="w-full h-full" onClick={handleSvgClick} onDoubleClick={handleSvgDoubleClick}>
         <defs>
@@ -2183,6 +2465,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedElements}
           {renderedPanels}
           {renderedDimensions}
+          {renderedSmartGuides}
 
           {/* Símbolos detectados por autovalores sobre el mapa de bits */}
           {detectedPatternMatches && detectedPatternMatches.length > 0 && underlaySheet && (
