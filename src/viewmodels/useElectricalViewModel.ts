@@ -865,6 +865,8 @@ export function useElectricalViewModel() {
     conduitOccupancy,
     conduitAvailableSizes,
     circuits: project.circuits,
+    conduits: project.conduits,
+    elements: project.electricalElements,
     labelDisplayMode,
     setLabelDisplayMode,
     getFormattedElementLabel,

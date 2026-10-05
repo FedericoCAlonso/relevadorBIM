@@ -884,3 +884,38 @@ export function getConduitMaterialDisplayName(
   return material;
 }
 
+/**
+ * Genera la dotación reglamentaria de conductores para un tramo de remate/acometida,
+ * según sección (mm²) y configuración de fases (1 = monofásico 2x+PE, 3 = trifásico 3x+PE o 4x+PE).
+ */
+export function createConductorsForTerminal(
+  sectionMM2: number,
+  conductorsCount: number = 3
+): ConductorLine[] {
+  if (conductorsCount === 4) {
+    // Trifásico con neutro: R, S, T, N (o R, S, T + PE si sin neutro)
+    return [
+      { role: 'fase_r', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_r },
+      { role: 'fase_s', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_s },
+      { role: 'fase_t', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_t },
+      { role: 'pe', sectionMM2, color: AEA_CONDUCTOR_COLORS.pe }
+    ];
+  }
+  if (conductorsCount >= 5) {
+    // Trifásico completo: R, S, T, N, PE
+    return [
+      { role: 'fase_r', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_r },
+      { role: 'fase_s', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_s },
+      { role: 'fase_t', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase_t },
+      { role: 'neutro', sectionMM2, color: AEA_CONDUCTOR_COLORS.neutro },
+      { role: 'pe', sectionMM2, color: AEA_CONDUCTOR_COLORS.pe }
+    ];
+  }
+  // Monofásico estándar: Fase + Neutro + PE (3 conductores)
+  return [
+    { role: 'fase', sectionMM2, color: AEA_CONDUCTOR_COLORS.fase },
+    { role: 'neutro', sectionMM2, color: AEA_CONDUCTOR_COLORS.neutro },
+    { role: 'pe', sectionMM2, color: AEA_CONDUCTOR_COLORS.pe }
+  ];
+}
+

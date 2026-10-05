@@ -132,10 +132,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
       {/* ─── MODAL DE EDICIÓN COMPLETA DE MURO (MÓVIL) ─── */}
       {isEditingWallMobile && selectedWall && (() => {
         const wallLen = getWallLength(selectedWall, verticesMap);
-        const handleDeltaLen = (delta: number) => {
-          const next = Math.max(0.20, Number((wallLen + delta).toFixed(2)));
-          updateWallLength(selectedWall.id, next);
-        };
 
         return (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
@@ -157,41 +153,22 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
 
               {/* Longitud */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-slate-500">LONGITUD DEL MURO</label>
-                  <span className="font-mono text-xs font-bold text-blue-900">
-                    {wallLen.toFixed(2)} m
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">LONGITUD DEL MURO</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.20"
+                    value={Number(wallLen.toFixed(2))}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val && val > 0) updateWallLength(selectedWall.id, val);
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
+                    m
                   </span>
-                </div>
-                <div className="grid grid-cols-4 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleDeltaLen(-0.50)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
-                  >
-                    -50cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeltaLen(-0.10)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
-                  >
-                    -10cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeltaLen(0.10)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
-                  >
-                    +10cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeltaLen(0.50)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800"
-                  >
-                    +50cm
-                  </button>
                 </div>
               </div>
 

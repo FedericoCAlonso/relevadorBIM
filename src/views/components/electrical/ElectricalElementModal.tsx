@@ -7,7 +7,12 @@
  */
 
 import React from 'react';
-import type { ElectricalElement, ElementPlacement } from '../../../models/electrical/ElectricalModel';
+import type {
+  ElectricalElement,
+  ElementPlacement,
+  ConduitMaterial,
+  CableStandard
+} from '../../../models/electrical/ElectricalModel';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from './AeaSymbolIcon';
@@ -19,9 +24,13 @@ import {
   Plus,
   GitBranch,
   Zap,
-  Check
+  Check,
+  Ruler,
+  Layers,
+  Cable
 } from 'lucide-react';
 import { isTerminalReference } from '../../../models/electrical/electricalBranch';
+import { createConductorsForTerminal } from '../../../models/electrical/electricalStandards';
 
 interface ElectricalElementModalProps {
   element: ElectricalElement | null;
@@ -38,10 +47,12 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
     elementWall,
     circuits,
     panels,
+    conduits,
     catalogs,
     selectedBranch,
     updateSelectedBranch,
     setElementProperties,
+    setConduitProperties,
     invertElementWallSide,
     addElementAttribute,
     updateElementAttribute,
@@ -52,6 +63,88 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
   } = useElectricalViewModel();
 
   const [appliedBranchCircuit, setAppliedBranchCircuit] = React.useState(false);
+
+  const connectedConduit = React.useMemo(() => {
+    if (!element) return null;
+    return (
+      conduits?.find(
+        (c) => c.fromElementId === element.id || c.toElementId === element.id
+      ) || null
+    );
+  }, [conduits, element]);
+
+  const effectiveTotalLengthM =
+    element?.totalLengthM ?? connectedConduit?.manualLengthM ?? 10.0;
+  const effectiveDiameterMM =
+    element?.continuationConduitDiameterMM ||
+    connectedConduit?.diameterMM ||
+    19;
+  const effectiveMaterial =
+    element?.continuationConduitMaterial ||
+    connectedConduit?.material ||
+    'cano_rigido_pvc';
+  const effectiveCableStandard =
+    element?.continuationCableStandard ||
+    connectedConduit?.defaultCableStandard ||
+    'IRAM_NM_247_3';
+  const effectiveSectionMM2 =
+    element?.continuationCableSectionMM2 ||
+    connectedConduit?.conductors?.[0]?.sectionMM2 ||
+    2.5;
+  const effectiveConductorsCount =
+    element?.continuationConductorsCount ||
+    connectedConduit?.conductors?.length ||
+    3;
+
+  const handleUpdateTotalLength = (newLen: number | undefined) => {
+    if (!element) return;
+    setElementProperties(element.id, { totalLengthM: newLen });
+    if (connectedConduit) {
+      setConduitProperties(connectedConduit.id, { manualLengthM: newLen });
+    }
+  };
+
+  const handleUpdateConduitDiameter = (diam: number) => {
+    if (!element) return;
+    setElementProperties(element.id, { continuationConduitDiameterMM: diam });
+    if (connectedConduit) {
+      setConduitProperties(connectedConduit.id, { diameterMM: diam });
+    }
+  };
+
+  const handleUpdateConduitMaterial = (mat: ConduitMaterial) => {
+    if (!element) return;
+    setElementProperties(element.id, { continuationConduitMaterial: mat });
+    if (connectedConduit) {
+      setConduitProperties(connectedConduit.id, { material: mat });
+    }
+  };
+
+  const handleUpdateCableStandard = (std: CableStandard) => {
+    if (!element) return;
+    setElementProperties(element.id, { continuationCableStandard: std });
+    if (connectedConduit) {
+      setConduitProperties(connectedConduit.id, { defaultCableStandard: std });
+    }
+  };
+
+  const handleUpdateCableSection = (sec: number) => {
+    if (!element) return;
+    setElementProperties(element.id, { continuationCableSectionMM2: sec });
+    if (connectedConduit) {
+      const conductors = createConductorsForTerminal(sec, effectiveConductorsCount);
+      setConduitProperties(connectedConduit.id, { conductors });
+    }
+  };
+
+  const handleUpdateConductorsCount = (count: number) => {
+    if (!element) return;
+    setElementProperties(element.id, { continuationConductorsCount: count });
+    if (connectedConduit) {
+      const conductors = createConductorsForTerminal(effectiveSectionMM2, count);
+      setConduitProperties(connectedConduit.id, { conductors });
+    }
+  };
 
   if (!isOpen || !element) return null;
 
@@ -150,7 +243,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
 
           {isTerminalRef ? (
             <>
-              {/* Configuración de Etiqueta / Remate de Fin de Caño */}
+              {/* 1. Destino y Referencia Técnica */}
               <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2 text-sky-950 font-bold text-xs">
                   <ArrowRight size={16} className="text-sky-600" />
@@ -162,16 +255,26 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                   <input
                     type="text"
                     value={element.targetDescription || ''}
-                    onChange={(e) => setElementProperties(element.id, { targetDescription: e.target.value })}
+                    onChange={(e) => {
+                      setElementProperties(element.id, { targetDescription: e.target.value });
+                      if (connectedConduit) {
+                        setConduitProperties(connectedConduit.id, { targetDescription: e.target.value });
+                      }
+                    }}
                     placeholder="Ej: A Tablero General"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-sky-500 outline-none text-xs"
                   />
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {['A Tablero General', 'A Tablero Seccional', 'Pase a Planta Alta', 'Pase a Planta Baja', 'Subida a Azotea'].map((preset) => (
+                    {['A Tablero General', 'A Tablero Seccional', 'Pase a Planta Alta', 'Pase a Planta Baja', 'Subida a Azotea', 'Acometida de Red'].map((preset) => (
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setElementProperties(element.id, { targetDescription: preset })}
+                        onClick={() => {
+                          setElementProperties(element.id, { targetDescription: preset });
+                          if (connectedConduit) {
+                            setConduitProperties(connectedConduit.id, { targetDescription: preset });
+                          }
+                        }}
                         className={`px-2 py-0.5 rounded-lg border text-[10px] font-semibold transition-colors ${
                           element.targetDescription === preset
                             ? 'bg-sky-600 text-white border-sky-600'
@@ -202,45 +305,32 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Longitud Adicional / Montante:</label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        value={element.additionalLengthM ?? 0}
-                        onChange={(e) => setElementProperties(element.id, { additionalLengthM: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 outline-none text-xs"
-                      />
-                      <span className="font-mono text-slate-500 font-bold text-xs">m</span>
-                    </div>
+                    <label className="block font-bold text-slate-700 mb-1">Rótulo / Identificador:</label>
+                    <input
+                      type="text"
+                      value={element.label || ''}
+                      onChange={(e) => setElementProperties(element.id, { label: e.target.value })}
+                      placeholder="Ej: TERM-1"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-sky-500 outline-none text-xs"
+                    />
                   </div>
-                </div>
-              </div>
-
-              {/* Rótulo y Circuito que Transporta */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Rótulo / Identificador:</label>
-                  <input
-                    type="text"
-                    value={element.label || ''}
-                    onChange={(e) => setElementProperties(element.id, { label: e.target.value })}
-                    placeholder="Ej: TERM-1"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
-                  />
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Circuito que Transporta:</label>
                   <select
                     value={element.circuitId || ''}
-                    onChange={(e) =>
-                      setElementProperties(element.id, {
-                        circuitId: e.target.value ? e.target.value : null
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+                    onChange={(e) => {
+                      const nextCid = e.target.value ? e.target.value : null;
+                      setElementProperties(element.id, { circuitId: nextCid });
+                      if (connectedConduit) {
+                        setConduitProperties(connectedConduit.id, {
+                          circuitId: nextCid,
+                          circuitIds: nextCid ? [nextCid] : []
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-sky-500 outline-none text-xs"
                   >
                     <option value="">(Sin Circuito / No asignado)</option>
                     {circuits.map((c) => (
@@ -249,6 +339,190 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* 2. Cómputo Métrico de Tramo (Longitud Desacoplada del Dibujo CAD) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
+                  <Ruler size={16} className="text-blue-600" />
+                  <span>Longitud Física Total del Tramo (Desacoplada del Dibujo CAD)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Define la longitud real total del caño y cableado hacia este remate/pase. Mover la etiqueta en el lienzo CAD es puramente estético y no alterará este cómputo.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      value={effectiveTotalLengthM}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        handleUpdateTotalLength(isNaN(val) ? undefined : val);
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
+                      m
+                    </span>
+                  </div>
+                  {element.totalLengthM != null && (
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateTotalLength(undefined)}
+                      className="px-2.5 py-2 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl transition-colors"
+                      title="Volver a cálculo automático según trazado en plano"
+                    >
+                      Automático
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {[5, 10, 15, 20, 25, 30].map((lenPreset) => (
+                    <button
+                      key={lenPreset}
+                      type="button"
+                      onClick={() => handleUpdateTotalLength(lenPreset)}
+                      className={`px-2.5 py-1 rounded-xl border text-xs font-mono font-bold transition-colors ${
+                        effectiveTotalLengthM === lenPreset
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {lenPreset} m
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Canalización que Continúa (Conducto) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
+                  <Layers size={16} className="text-blue-600" />
+                  <span>Canalización que Continúa (Conducto)</span>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] font-bold text-slate-600">DIÁMETRO EXTERIOR (CANALIZACIÓN)</label>
+                    <span className="font-mono text-xs font-bold text-blue-900">
+                      Ø {effectiveDiameterMM} mm
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                    {catalogs.diameters.map((d) => (
+                      <button
+                        key={d.mm}
+                        type="button"
+                        onClick={() => handleUpdateConduitDiameter(d.mm)}
+                        className={`px-2 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all text-center ${
+                          effectiveDiameterMM === d.mm
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50'
+                        }`}
+                      >
+                        {d.mm}mm ({d.inches})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Material de la Canalización:</label>
+                  <select
+                    value={effectiveMaterial}
+                    onChange={(e) => handleUpdateConduitMaterial(e.target.value as ConduitMaterial)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                  >
+                    {catalogs.materials.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 4. Conductores que Continúan (Cables) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
+                  <Cable size={16} className="text-blue-600" />
+                  <span>Conductores que Continúan (Cables)</span>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Norma / Tipo de Conductor:</label>
+                  <select
+                    value={effectiveCableStandard}
+                    onChange={(e) => handleUpdateCableStandard(e.target.value as CableStandard)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                  >
+                    {catalogs.cableStandards.map((std) => (
+                      <option key={std.id} value={std.id}>
+                        {std.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Configuración / Fases:</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    {[
+                      { count: 3, label: 'Monofásico (2x + PE)', sub: '3 conductores' },
+                      { count: 4, label: 'Trifásico (3x + PE)', sub: '4 conductores' },
+                      { count: 5, label: 'Trifásico c/N (3x + N + PE)', sub: '5 conductores' }
+                    ].map((cfg) => (
+                      <button
+                        key={cfg.count}
+                        type="button"
+                        onClick={() => handleUpdateConductorsCount(cfg.count)}
+                        className={`p-2 rounded-xl border text-left transition-all ${
+                          effectiveConductorsCount === cfg.count
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50'
+                        }`}
+                      >
+                        <div className="font-bold text-xs leading-tight">{cfg.label}</div>
+                        <div
+                          className={`text-[10px] mt-0.5 ${
+                            effectiveConductorsCount === cfg.count ? 'text-blue-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {cfg.sub}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] font-bold text-slate-600">SECCIÓN NOMINAL (CONDUCTORES)</label>
+                    <span className="font-mono text-xs font-bold text-blue-900">
+                      {effectiveSectionMM2} mm²
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => handleUpdateCableSection(sec)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all ${
+                          effectiveSectionMM2 === sec
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50'
+                        }`}
+                      >
+                        {sec} mm²
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </>

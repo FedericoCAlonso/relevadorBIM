@@ -447,6 +447,7 @@ export function useSurveyViewModel() {
       const seqDiam = seqStore.sequenceConduitDiameterMM || DEFAULT_CONDUIT_DIAMETER_MM;
       const seqMat = seqStore.sequenceConduitMaterial || DEFAULT_CONDUIT_MATERIAL;
 
+      const defaultTotalLengthM = 10.0;
       const terminalId = `el-term-${Date.now()}`;
       const terminalElement: ElectricalElement = {
         id: terminalId,
@@ -460,7 +461,13 @@ export function useSurveyViewModel() {
         isTerminalReference: true,
         targetDescription: targetDescription || 'A Tablero General',
         targetPanelId: circ?.panelId || project.panels[0]?.id || null,
-        circuitId: inheritedCircuitId
+        circuitId: inheritedCircuitId,
+        totalLengthM: defaultTotalLengthM,
+        continuationConduitDiameterMM: seqDiam,
+        continuationConduitMaterial: seqMat,
+        continuationCableStandard: 'IRAM_NM_247_3',
+        continuationCableSectionMM2: wireSec,
+        continuationConductorsCount: 3
       };
 
       addElectricalElement(terminalElement);
@@ -477,10 +484,12 @@ export function useSurveyViewModel() {
         diameterMM: seqDiam,
         material: seqMat,
         isVerticalRiser: false,
+        manualLengthM: defaultTotalLengthM,
         routingMode: seqMode,
         routingPlane: seqPlane,
         waypoints: seqMode !== 'schematic_arc' && pendingConduitWaypoints.length > 0 ? [...pendingConduitWaypoints] : undefined,
         targetDescription: targetDescription || 'A Tablero General',
+        defaultCableStandard: 'IRAM_NM_247_3',
         conductors: [
           { role: 'fase', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.fase },
           { role: 'neutro', sectionMM2: wireSec, color: AEA_CONDUCTOR_COLORS.neutro },

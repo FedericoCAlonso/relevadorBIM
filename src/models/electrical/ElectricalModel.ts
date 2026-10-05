@@ -65,6 +65,12 @@ export interface ElectricalElement extends SpatialElectricalNode {
   targetDescription?: string; // Destino de la referencia (ej: "A Tablero General en SS", "Continúa en Plano IE-02")
   targetPanelId?: string | null; // ID del tablero destino si aplica
   additionalLengthM?: number; // Metros adicionales de conducto/montante fuera de plano
+  totalLengthM?: number; // Longitud total real estimada de este tramo (desacoplada de la posición 2D dibujada)
+  continuationConduitDiameterMM?: number; // Diámetro de la canalización que continúa
+  continuationConduitMaterial?: ConduitMaterial; // Material de la canalización que continúa
+  continuationCableStandard?: CableStandard; // Norma/tipo de cable que continúa
+  continuationCableSectionMM2?: number; // Sección de los conductores que continúan (mm²)
+  continuationConductorsCount?: number; // Cantidad de conductores que continúan (ej: 3 para 2x+T, 4 para 3x+T)
   earthMeasurement?: {
     ohms: number;
     method: 'caida_tension' | 'dos_puntas';

@@ -180,7 +180,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     showDimensions,
     toggleDimensions,
     deleteDimensionLine,
-    labelDisplayMode
+    labelDisplayMode,
+    updateElectricalElement
   } = useProjectStore();
 
   const selectedEntityMap = useMemo(() => {
@@ -263,6 +264,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     startY: number;
     origWpX: number;
     origWpY: number;
+    moved: boolean;
+  } | null>(null);
+  const activeTerminalDragRef = useRef<{
+    elementId: string;
+    startX: number;
+    startY: number;
+    origElX: number;
+    origElY: number;
     moved: boolean;
   } | null>(null);
   const isDraggingObjectRef = useRef<boolean>(false);
@@ -553,6 +562,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (activeTerminalDragRef.current) {
+      if (activeTerminalDragRef.current.moved) {
+        lastDragEndTimeRef.current = Date.now();
+      }
+      activeTerminalDragRef.current = null;
+      isDraggingObjectRef.current = false;
+    }
+
     if (mouseDragRef.current?.moved) {
       lastDragEndTimeRef.current = Date.now();
     }
@@ -758,6 +775,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const handleTouchEnd = () => {
     if (activeWaypointDragRef.current) {
       activeWaypointDragRef.current = null;
+    }
+    if (activeTerminalDragRef.current) {
+      if (activeTerminalDragRef.current.moved) {
+        lastDragEndTimeRef.current = Date.now();
+      }
+      activeTerminalDragRef.current = null;
     }
     isDraggingObjectRef.current = false;
 
@@ -1746,10 +1769,77 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           mode: labelDisplayMode
         });
 
+        const isTerminalRef = Boolean(element.isTerminalReference || element.symbolId === 'sym-terminal-referencia');
+
         return (
           <g
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
+            style={{ touchAction: isTerminalRef ? 'none' : undefined }}
+            onPointerDown={(e) => {
+              if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
+              if (e.button !== 0 && e.pointerType === 'mouse') return;
+              e.stopPropagation();
+              if (isTerminalRef) {
+                isDraggingObjectRef.current = true;
+                try {
+                  (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                } catch {
+                  // Fallback
+                }
+                activeTerminalDragRef.current = {
+                  elementId: element.id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origElX: element.x,
+                  origElY: element.y,
+                  moved: false
+                };
+              }
+            }}
+            onPointerMove={(e) => {
+              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+                e.stopPropagation();
+                const drag = activeTerminalDragRef.current;
+                const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+                if (dist > 3) drag.moved = true;
+                const dxWorld = (e.clientX - drag.startX) / zoom;
+                const dyWorld = (e.clientY - drag.startY) / zoom;
+                const candX = Number((drag.origElX + dxWorld).toFixed(3));
+                const candY = Number((drag.origElY + dyWorld).toFixed(3));
+                updateElectricalElement(element.id, {
+                  x: candX,
+                  y: candY
+                });
+              }
+            }}
+            onPointerUp={(e) => {
+              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+                e.stopPropagation();
+                try {
+                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
+                const drag = activeTerminalDragRef.current;
+                if (drag.moved) {
+                  lastDragEndTimeRef.current = Date.now();
+                }
+                activeTerminalDragRef.current = null;
+                isDraggingObjectRef.current = false;
+              }
+            }}
+            onPointerCancel={(e) => {
+              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+                try {
+                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
+                activeTerminalDragRef.current = null;
+                isDraggingObjectRef.current = false;
+              }
+            }}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
@@ -1771,7 +1861,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
-            className="cursor-pointer"
+            className={isTerminalRef ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
           >
 
             {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
@@ -1830,7 +1920,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             />
 
             {/* Ficha técnica flotante para etiquetas / remates de caño */}
-            {(element.isTerminalReference || element.symbolId === 'sym-terminal-referencia') && (() => {
+            {isTerminalRef && (() => {
               const connectedConduit = project.conduits.find(
                 (c) => c.fromElementId === element.id || c.toElementId === element.id
               );
@@ -1848,23 +1938,37 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   })
                 : 0;
               const totalLen =
-                (connectedConduit?.manualLengthM || autoLen) +
-                (connectedConduit?.additionalLengthM || element.additionalLengthM || 0);
-              const diam = connectedConduit?.diameterMM || 19;
-              const conductorsCount = connectedConduit?.conductors?.length || 0;
-              const condDesc =
-                conductorsCount > 0
-                  ? `${conductorsCount}x${connectedConduit?.conductors[0]?.sectionMM2 || 2.5}mm²`
-                  : '';
+                element.totalLengthM ??
+                connectedConduit?.manualLengthM ??
+                (autoLen + (connectedConduit?.additionalLengthM || element.additionalLengthM || 0));
+              const isFixedLength = element.totalLengthM != null || connectedConduit?.manualLengthM != null;
+              const diam =
+                element.continuationConduitDiameterMM ||
+                connectedConduit?.diameterMM ||
+                19;
+              const conductorsCount =
+                element.continuationConductorsCount ||
+                connectedConduit?.conductors?.length ||
+                3;
+              const section =
+                element.continuationCableSectionMM2 ||
+                connectedConduit?.conductors?.[0]?.sectionMM2 ||
+                2.5;
+              const condDesc = `${conductorsCount}x${section}mm²`;
               const targetText =
                 element.targetDescription ||
                 connectedConduit?.targetDescription ||
                 'A Tablero';
 
-              const boxWidth = Math.max(120, targetText.length * 6.5 + 24);
+              const boxWidth = Math.max(130, targetText.length * 6.5 + 28);
 
               return (
-                <g transform="translate(14, -14)" pointerEvents="none" className="select-none font-sans">
+                <g
+                  transform="translate(14, -14)"
+                  pointerEvents="all"
+                  className="select-none font-sans cursor-grab active:cursor-grabbing"
+                >
+                  <title>Arrastrar para mover referencia técnica. Doble clic para editar.</title>
                   <rect
                     x="0"
                     y="-9"
@@ -1880,7 +1984,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                     ➔ {targetText}
                   </text>
                   <text x="6" y="15" fill="#94a3b8" fontSize="8" fontFamily="monospace">
-                    Ø{diam}mm · L={totalLen.toFixed(1)}m {condDesc ? `· ${condDesc}` : ''}
+                    Ø{diam}mm · L={totalLen.toFixed(1)}m{isFixedLength ? ' [Fijo]' : ''} · {condDesc}
                   </text>
                 </g>
               );
@@ -1939,7 +2043,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     isAddingDimension,
     pendingConduitStartId,
     onElectricalElementClick,
-    onElectricalElementDoubleClick
+    onElectricalElementDoubleClick,
+    updateElectricalElement,
+    isSamplingPattern
   ]);
 
   // 7b. Tableros Eléctricos Autónomos (Distribuidores de Circuitos)

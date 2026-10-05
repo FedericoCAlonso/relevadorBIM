@@ -673,39 +673,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   </button>
                 </div>
 
-                {/* 1. Longitud / Largo del Muro con Steppers */}
+                {/* 1. Longitud / Largo del Muro */}
                 {(() => {
                   const wallLen = getWallLength(selectedWall, verticesMap);
-                  const handleDeltaLen = (delta: number) => {
-                    const next = Math.max(0.20, Number((wallLen + delta).toFixed(2)));
-                    updateWallLength(selectedWall.id, next);
-                  };
 
                   return (
                     <div>
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between mb-1.5">
                         <label className="text-[10px] font-bold text-slate-600">LONGITUD DEL MURO</label>
-                        <span className="font-mono text-xs font-bold text-blue-900">
-                          {wallLen.toFixed(2)} m
-                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDeltaLen(-0.50)}
-                          className="px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-[10px] font-mono font-bold text-slate-700"
-                          title="-50cm"
-                        >
-                          -50c
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeltaLen(-0.10)}
-                          className="px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-[10px] font-mono font-bold text-slate-700"
-                          title="-10cm"
-                        >
-                          -10c
-                        </button>
+                      <div className="relative">
                         <input
                           type="number"
                           step="0.05"
@@ -715,24 +692,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                             const val = parseFloat(e.target.value);
                             if (val && val > 0) updateWallLength(selectedWall.id, val);
                           }}
-                          className="flex-1 px-1.5 py-1 bg-white border border-slate-300 rounded-lg font-mono font-bold text-xs text-center text-slate-900"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none pr-8"
                         />
-                        <button
-                          type="button"
-                          onClick={() => handleDeltaLen(0.10)}
-                          className="px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-[10px] font-mono font-bold text-slate-700"
-                          title="+10cm"
-                        >
-                          +10c
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeltaLen(0.50)}
-                          className="px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-[10px] font-mono font-bold text-slate-700"
-                          title="+50cm"
-                        >
-                          +50c
-                        </button>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
+                          m
+                        </span>
                       </div>
                     </div>
                   );
