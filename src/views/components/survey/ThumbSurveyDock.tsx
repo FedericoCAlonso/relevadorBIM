@@ -16,7 +16,7 @@ import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { OpeningSwing } from '../../../models/architecture/Opening';
 import type { ConduitRoutingMode, ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
 import { getWallLength } from '../../../models/architecture/Wall';
-import { calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
+import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
 import {
@@ -130,6 +130,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     updateConduit,
     deleteConduit
   } = useProjectStore();
+
+  const { conduitOccupancy } = useElectricalViewModel();
 
   const [dockMode, setDockMode] = useState<'survey' | 'electrical'>('survey');
   const [activeCategory, setActiveCategory] = useState<string>('iluminacion');
@@ -734,10 +736,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
         {/* ── Inspector de Cañería ── */}
         {selectedConduit && (() => {
-          const occupancy = calculateConduitOccupancyFactor({
-            conduitDiameterMM: selectedConduit.diameterMM,
-            conductors: selectedConduit.conductors
-          });
+          const occupancy = conduitOccupancy;
 
           return (
             <>
@@ -846,7 +845,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
 
                 {/* Ocupación Técnica Informativa (Sin semáforos punitivos) */}
                 <span className="px-2 py-1 rounded-xl text-[11px] font-mono font-bold whitespace-nowrap border shrink-0 bg-slate-100 text-slate-700 border-slate-300">
-                  Ocup: {occupancy.occupancyPercent}%
+                  Ocup: {occupancy?.occupancyPercent ?? 0}%
                 </span>
 
                 <button

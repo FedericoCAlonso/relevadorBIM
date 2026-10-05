@@ -319,15 +319,11 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
               Vía Física de Tendido de los Conductos:
             </label>
             <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { id: 'ceiling_slab', label: '☁ Losa Techo' },
-                { id: 'floor_slab', label: '👣 Contrapiso' },
-                { id: 'wall', label: '🧱 En Pared' }
-              ].map((pl) => (
+              {catalogs.routingPlanes.map((pl) => (
                 <button
                   key={pl.id}
                   type="button"
-                  onClick={() => setRoutingPlane(pl.id as ConduitRoutingPlane)}
+                  onClick={() => setRoutingPlane(pl.id)}
                   className={`p-2 rounded-xl text-xs font-bold border text-center transition-all ${
                     routingPlane === pl.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
@@ -346,17 +342,13 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
               Estado de Relevamiento de la Rama:
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'existente', label: 'Existente', bg: 'bg-emerald-600 text-white', inactive: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-                { id: 'proyectado', label: 'Proyectado', bg: 'bg-blue-600 text-white', inactive: 'bg-blue-50 text-blue-800 border-blue-200' },
-                { id: 'a_reemplazar', label: 'A Reemplazar', bg: 'bg-amber-600 text-white', inactive: 'bg-amber-50 text-amber-800 border-amber-200' }
-              ].map((st) => {
+              {catalogs.installationStates.map((st) => {
                 const isActive = status === st.id;
                 return (
                   <button
                     key={st.id}
                     type="button"
-                    onClick={() => setStatus(st.id as any)}
+                    onClick={() => setStatus(st.id)}
                     className={`py-2 px-2 rounded-xl text-xs font-bold border text-center transition-all ${
                       isActive ? `${st.bg} shadow-sm border-transparent` : `${st.inactive} hover:opacity-80`
                     }`}

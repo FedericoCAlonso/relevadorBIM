@@ -67,7 +67,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
       value: mm,
       label: `Ø${mm} mm`,
       standardSize: `Ø${mm} mm`,
-      usefulAreaMM2: Number((Math.PI * Math.pow((mm * 0.85) / 2, 2)).toFixed(1))
+      usefulAreaMM2: catalogs.calculateUsefulArea(mm)
     }));
     const newId = `custom-cond-${Date.now()}`;
     addConduitType({

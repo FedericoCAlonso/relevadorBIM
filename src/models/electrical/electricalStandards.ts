@@ -18,7 +18,10 @@ import type {
   BoxCategory,
   BoxMaterialBase,
   ProjectMaterialCatalog,
-  PhaseConductorColor
+  PhaseConductorColor,
+  CircuitType,
+  PanelType,
+  ConduitRoutingPlane
 } from './ElectricalModel';
 
 export type {
@@ -59,6 +62,211 @@ export const BOX_MATERIALS_CATALOG: readonly BoxMaterialOption[] = [
 ];
 
 export const DEFAULT_CABLE_SECTIONS: readonly number[] = [1.0, 1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0, 35.0, 50.0];
+
+/**
+ * Calcula el área útil interna aproximada de un caño circular en mm²
+ * asumiendo un diámetro interno útil de ~85% del diámetro nominal exterior.
+ */
+export function calculateConduitUsefulArea(diameterMM: number): number {
+  return Number((Math.PI * Math.pow((diameterMM * 0.85) / 2, 2)).toFixed(1));
+}
+
+/** Tamaños métricos estándar para nuevos tipos de caños personalizados */
+export const STANDARD_CUSTOM_CONDUIT_SIZES: readonly ConduitSizeOption[] = [
+  { value: 16, label: '16 mm (5/8")', standardSize: '16', usefulAreaMM2: 132.7 },
+  { value: 19, label: '19 mm (3/4")', standardSize: '19', usefulAreaMM2: 213.8 },
+  { value: 22, label: '22 mm (7/8")', standardSize: '22', usefulAreaMM2: 298.6 },
+  { value: 25, label: '25 mm (1")', standardSize: '25', usefulAreaMM2: 394.1 },
+  { value: 32, label: '32 mm (1 1/4")', standardSize: '32', usefulAreaMM2: 642.4 }
+];
+
+export type InstallationState = 'existente' | 'proyectado' | 'a_reemplazar';
+
+export interface InstallationStateOption {
+  readonly id: InstallationState;
+  readonly label: string;
+  readonly color: string;
+  readonly bg: string;
+  readonly inactive: string;
+}
+
+export const INSTALLATION_STATE_OPTIONS: readonly InstallationStateOption[] = [
+  {
+    id: 'existente',
+    label: 'Existente',
+    color: 'bg-emerald-600',
+    bg: 'bg-emerald-600 text-white',
+    inactive: 'bg-emerald-50 text-emerald-800 border-emerald-200'
+  },
+  {
+    id: 'proyectado',
+    label: 'Proyectado',
+    color: 'bg-blue-600',
+    bg: 'bg-blue-600 text-white',
+    inactive: 'bg-blue-50 text-blue-800 border-blue-200'
+  },
+  {
+    id: 'a_reemplazar',
+    label: 'A Reemplazar',
+    color: 'bg-amber-600',
+    bg: 'bg-amber-600 text-white',
+    inactive: 'bg-amber-50 text-amber-800 border-amber-200'
+  }
+];
+
+export interface ConduitRoutingPlaneOption {
+  readonly id: ConduitRoutingPlane;
+  readonly label: string;
+}
+
+export const CONDUIT_ROUTING_PLANE_OPTIONS: readonly ConduitRoutingPlaneOption[] = [
+  { id: 'ceiling_slab', label: '☁ Losa Techo' },
+  { id: 'floor_slab', label: '👣 Contrapiso' },
+  { id: 'wall', label: '🧱 En Pared' }
+];
+
+export interface CircuitPreset {
+  readonly type: CircuitType;
+  readonly label: string;
+  readonly defaultName: string;
+  readonly wireMM2: number;
+  readonly breakerA: number;
+  readonly color: string;
+  readonly desc: string;
+}
+
+export const CIRCUIT_PRESETS: readonly CircuitPreset[] = [
+  {
+    type: 'IUG',
+    label: 'IUG',
+    defaultName: 'Iluminación Uso General',
+    wireMM2: 1.5,
+    breakerA: 10,
+    color: '#2563eb',
+    desc: 'Iluminación fija (máx 15 bocas)'
+  },
+  {
+    type: 'TUG',
+    label: 'TUG',
+    defaultName: 'Tomas Uso General',
+    wireMM2: 2.5,
+    breakerA: 16,
+    color: '#ea580c',
+    desc: 'Tomacorrientes estándar 10A (máx 15 bocas)'
+  },
+  {
+    type: 'TUE',
+    label: 'TUE',
+    defaultName: 'Tomas Especiales',
+    wireMM2: 2.5,
+    breakerA: 20,
+    color: '#16a34a',
+    desc: 'Tomacorrientes 20A / Intemperie'
+  },
+  {
+    type: 'ACU',
+    label: 'ACU',
+    defaultName: 'Climatización / Aire',
+    wireMM2: 4.0,
+    breakerA: 20,
+    color: '#0891b2',
+    desc: 'Alimentación individual aire acondicionado'
+  },
+  {
+    type: 'FM',
+    label: 'FM',
+    defaultName: 'Fuerza Motriz / Bombas',
+    wireMM2: 4.0,
+    breakerA: 25,
+    color: '#8b5cf6',
+    desc: 'Bombas elevadoras, portones y motores'
+  },
+  {
+    type: 'LP',
+    label: 'LP',
+    defaultName: 'Línea Principal (Alimentador)',
+    wireMM2: 6.0,
+    breakerA: 32,
+    color: '#b91c1c',
+    desc: 'Alimentación troncal de tablero'
+  },
+  {
+    type: 'LS',
+    label: 'LS',
+    defaultName: 'Línea Seccional (Subtablero)',
+    wireMM2: 4.0,
+    breakerA: 25,
+    color: '#c2410c',
+    desc: 'Alimentación seccional entre tableros'
+  },
+  {
+    type: 'OTRO',
+    label: 'OTRO',
+    defaultName: 'Circuito Especial',
+    wireMM2: 2.5,
+    breakerA: 16,
+    color: '#475569',
+    desc: 'Circuito de uso específico'
+  }
+];
+
+export interface PanelPreset {
+  readonly label: string;
+  readonly name: string;
+  readonly type: PanelType;
+  readonly isThreePhase: boolean;
+  readonly breakerA: number;
+  readonly diffA: number;
+  readonly desc: string;
+}
+
+export const PANEL_PRESETS: readonly PanelPreset[] = [
+  {
+    label: 'TP Mono 32A',
+    name: 'Tablero Principal (TP)',
+    type: 'principal',
+    isThreePhase: false,
+    breakerA: 32,
+    diffA: 40,
+    desc: 'Tablero principal cabecera monofásico 220V'
+  },
+  {
+    label: 'TP Trifásico 40A',
+    name: 'Tablero Principal (TP)',
+    type: 'principal',
+    isThreePhase: true,
+    breakerA: 40,
+    diffA: 40,
+    desc: 'Tablero principal cabecera trifásico 380V'
+  },
+  {
+    label: 'TS Seccional 25A',
+    name: 'Tablero Seccional (TS)',
+    type: 'seccional',
+    isThreePhase: false,
+    breakerA: 25,
+    diffA: 25,
+    desc: 'Subtablero seccional interior'
+  },
+  {
+    label: 'TS Planta Alta',
+    name: 'Tablero Seccional Planta Alta (TS-PA)',
+    type: 'seccional',
+    isThreePhase: false,
+    breakerA: 25,
+    diffA: 25,
+    desc: 'Subtablero seccional para nivel superior'
+  },
+  {
+    label: 'T-FM Bombas',
+    name: 'Tablero Fuerza Motriz (T-FM)',
+    type: 'auxiliar',
+    isThreePhase: true,
+    breakerA: 25,
+    diffA: 40,
+    desc: 'Tablero de bombas y motores trifásicos'
+  }
+];
 
 /** Paleta Normalizada de Colores Técnicos para Circuitos en Plano CAD */
 export const CIRCUIT_COLOR_PALETTE = [

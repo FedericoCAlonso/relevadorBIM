@@ -16,7 +16,7 @@ import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../..
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
 import { CircuitColorPicker } from '../electrical/CircuitColorPicker';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
-import { calculateConduitRealLength, calculateConduitOccupancyFactor } from '../../../models/electrical/calculations';
+import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import type { CircuitType, ConduitMaterial, ConductorRole } from '../../../models/electrical/ElectricalModel';
 import { countPanelBocas } from '../../../models/electrical/electricalBranch';
 import {
@@ -115,6 +115,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     deletePanel
   } = useProjectStore();
 
+  const {
+    conduitBreakdown,
+    conduitOccupancy,
+    conduitFromElement,
+    conduitToElement,
+    catalogs
+  } = useElectricalViewModel();
+
   const [activeTab, setActiveTab] = useState<'survey' | 'spaces' | 'electrical'>('survey');
   const [activeCategory, setActiveCategory] = useState<string>('iluminacion');
 
@@ -156,7 +164,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
   const wallsMap = new Map(project.walls.map((w) => [w.id, w]));
-  const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
 
   const selectedWall = selectedEntity?.type === 'wall' ? project.walls.find((w) => w.id === selectedEntity.id) : null;
   const selectedOpening =
@@ -1811,14 +1818,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
                 {/* 1. INSPECTOR DE CAÑERÍA SELECCIONADA */}
                 {selectedEntities.length <= 1 && selectedConduit && (() => {
-                  const elFrom = project.electricalElements.find((e) => e.id === selectedConduit.fromElementId);
-                  const elTo = project.electricalElements.find((e) => e.id === selectedConduit.toElementId);
-                  const autoLengthM = elFrom && elTo ? calculateConduitRealLength({ fromElement: elFrom, toElement: elTo, levelsMap }) : 0;
+                  const elFrom = conduitFromElement;
+                  const elTo = conduitToElement;
+                  const fromLabel = elFrom ? ('label' in elFrom ? elFrom.label : 'name' in elFrom ? elFrom.name : 'Boca 1') : 'Boca 1';
+                  const toLabel = elTo ? ('label' in elTo ? elTo.label : 'name' in elTo ? elTo.name : 'Boca 2') : 'Boca 2';
+                  const autoLengthM = conduitBreakdown?.totalLengthM ?? 0;
                   const effectiveLengthM = selectedConduit.manualLengthM || autoLengthM;
-                  const occupancy = calculateConduitOccupancyFactor({
-                    conduitDiameterMM: selectedConduit.diameterMM,
-                    conductors: selectedConduit.conductors
-                  });
+                  const occupancy = conduitOccupancy;
 
                   return (
                     <div className="bg-amber-50/90 border-2 border-amber-400 rounded-2xl p-3.5 space-y-3 shadow-sm animate-in fade-in duration-150">
@@ -1829,7 +1835,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           </div>
                           <div>
                             <span className="font-bold text-amber-950 block text-xs">
-                              Cañería: {elFrom?.label || 'Boca 1'} ➔ {elTo?.label || 'Boca 2'}
+                              Cañería: {fromLabel} ➔ {toLabel}
                             </span>
                             <span className="text-[10px] font-mono text-amber-800">
                               Largo: {effectiveLengthM.toFixed(2)} m {selectedConduit.manualLengthM ? '(Manual)' : '(3D)'}
@@ -2021,22 +2027,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       )}
 
                       {/* Factor de Ocupación */}
-                      <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-700">
-                            Ocupación de canalización:
-                          </span>
-                          <span className="font-mono font-bold text-slate-700">
-                            {occupancy.occupancyPercent}% (Capacidad máx: 35.0%)
-                          </span>
+                      {occupancy && (
+                        <div className="p-2.5 bg-white border border-amber-200 rounded-xl space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-700">
+                              Ocupación de canalización:
+                            </span>
+                            <span className="font-mono font-bold text-slate-700">
+                              {occupancy.occupancyPercent}% (Capacidad máx: 35.0%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                            <div
+                              className="h-full bg-blue-500 transition-all duration-300"
+                              style={{ width: `${Math.min(100, (occupancy.occupancyPercent / 35) * 100)}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
-                          <div
-                            className="h-full bg-blue-500 transition-all duration-300"
-                            style={{ width: `${Math.min(100, (occupancy.occupancyPercent / 35) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
+                      )}
 
                       {/* Asignación de Circuitos que pasan por este tramo */}
                       <div>
@@ -2425,13 +2433,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     <div className="pt-2 border-t border-blue-200/80">
                       <label className="text-[10px] font-bold text-blue-900 block mb-1">ESTADO DE RELEVAMIENTO (TRAZA)</label>
                       <div className="grid grid-cols-3 gap-1">
-                        {(
-                          [
-                            { id: 'proyectado', label: 'Proyectado', color: 'bg-blue-600' },
-                            { id: 'existente', label: 'Existente', color: 'bg-emerald-600' },
-                            { id: 'a_reemplazar', label: 'A Reemplazar', color: 'bg-amber-600' }
-                          ] as const
-                        ).map((st) => (
+                        {catalogs.installationStates.map((st) => (
                           <button
                             key={st.id}
                             type="button"

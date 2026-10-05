@@ -18,7 +18,12 @@ import {
   getSizesForConduitType,
   getDefaultSizeForConduitType,
   BOX_CATEGORIES_CATALOG,
-  BOX_MATERIALS_CATALOG
+  BOX_MATERIALS_CATALOG,
+  calculateConduitUsefulArea,
+  CIRCUIT_PRESETS,
+  PANEL_PRESETS,
+  INSTALLATION_STATE_OPTIONS,
+  STANDARD_CUSTOM_CONDUIT_SIZES
 } from '../electricalStandards';
 import {
   getConduitLengthBreakdown,
@@ -192,5 +197,34 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
     expect(montante?.label).toContain('Montante');
     expect(montante?.categoria).toBe('cajas_pase');
     expect(montante?.uso).toBe('planta');
+  });
+
+  it('debe calcular correctamente el área útil aproximada de un caño según su diámetro', () => {
+    // Para caño de 19 mm: r = (19 * 0.85) / 2 = 8.075 mm, Area = pi * r^2 ~ 204.8 mm²
+    const area19 = calculateConduitUsefulArea(19);
+    expect(area19).toBeCloseTo(204.8, 1);
+
+    const area25 = calculateConduitUsefulArea(25);
+    expect(area25).toBeCloseTo(354.7, 1);
+  });
+
+  it('debe proveer catálogos normalizados de presets de circuitos y tableros', () => {
+    expect(CIRCUIT_PRESETS.length).toBeGreaterThanOrEqual(8);
+    const iug = CIRCUIT_PRESETS.find((c) => c.type === 'IUG');
+    expect(iug).toBeDefined();
+    expect(iug?.wireMM2).toBe(1.5);
+    expect(iug?.breakerA).toBe(10);
+
+    const tug = CIRCUIT_PRESETS.find((c) => c.type === 'TUG');
+    expect(tug).toBeDefined();
+    expect(tug?.wireMM2).toBe(2.5);
+    expect(tug?.breakerA).toBe(16);
+
+    expect(PANEL_PRESETS.length).toBeGreaterThanOrEqual(5);
+    expect(PANEL_PRESETS.some((p) => p.type === 'principal')).toBe(true);
+    expect(PANEL_PRESETS.some((p) => p.type === 'seccional')).toBe(true);
+
+    expect(INSTALLATION_STATE_OPTIONS.length).toBe(3);
+    expect(STANDARD_CUSTOM_CONDUIT_SIZES.length).toBe(5);
   });
 });

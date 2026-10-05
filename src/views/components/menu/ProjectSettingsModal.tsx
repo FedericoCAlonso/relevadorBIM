@@ -12,6 +12,7 @@ import {
   BOX_CATEGORIES_CATALOG,
   BOX_MATERIALS_CATALOG,
   DEFAULT_CABLE_SECTIONS,
+  STANDARD_CUSTOM_CONDUIT_SIZES,
   createDefaultMaterialCatalog
 } from '../../../models/electrical/electricalStandards';
 import type {
@@ -72,13 +73,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
       name: newConduitName.trim(),
       description: newConduitDesc.trim() || undefined,
       defaultSizeMM: newConduitSize,
-      availableSizes: [
-        { value: 16, label: '16 mm (5/8")', standardSize: '16', usefulAreaMM2: 132.7 },
-        { value: 19, label: '19 mm (3/4")', standardSize: '19', usefulAreaMM2: 213.8 },
-        { value: 22, label: '22 mm (7/8")', standardSize: '22', usefulAreaMM2: 298.6 },
-        { value: 25, label: '25 mm (1")', standardSize: '25', usefulAreaMM2: 394.1 },
-        { value: 32, label: '32 mm (1 1/4")', standardSize: '32', usefulAreaMM2: 642.4 }
-      ],
+      availableSizes: [...STANDARD_CUSTOM_CONDUIT_SIZES],
       isCustom: true
     });
     setNewConduitName('');

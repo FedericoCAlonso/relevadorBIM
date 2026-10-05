@@ -9,27 +9,17 @@
 
 import React from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
+import {
+  ROOM_NAME_SUGGESTIONS,
+  STANDARD_CEILING_HEIGHT_PRESETS,
+  calculateSpaceMetrics
+} from '../../../models/architecture/Space';
 import { X, Building2, Check, ArrowUpToLine } from 'lucide-react';
 
 interface SpaceEditModalProps {
   spaceId: string | null;
   onClose: () => void;
 }
-
-const ROOM_SUGGESTIONS = [
-  'Living Comedor',
-  'Cocina',
-  'Dormitorio 1',
-  'Dormitorio 2',
-  'Baño',
-  'Lavadero',
-  'Pasillo',
-  'Balcón',
-  'Quincho'
-];
-
-const HEIGHT_PRESETS = [2.40, 2.60, 2.70, 2.80, 3.00];
 
 export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose }) => {
   const { project, updateSpace } = useProjectStore();
@@ -40,9 +30,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
   if (!space) return null;
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
-  const poly = resolveSpacePolygon(space, verticesMap);
-  const area = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
-  const volume = area * space.ceilingHeight;
+  const { areaM2: area, volumeM3: volume } = calculateSpaceMetrics(space, verticesMap);
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-in fade-in duration-200">
@@ -99,7 +87,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
 
           {/* Pastillas de sugerencia rápida */}
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {ROOM_SUGGESTIONS.map((sug) => (
+            {ROOM_NAME_SUGGESTIONS.map((sug) => (
               <button
                 key={sug}
                 type="button"
@@ -139,7 +127,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
 
           {/* Pastillas de alturas predefinidas */}
           <div className="flex gap-1.5 justify-end">
-            {HEIGHT_PRESETS.map((hp) => (
+            {STANDARD_CEILING_HEIGHT_PRESETS.map((hp) => (
               <button
                 key={hp}
                 type="button"

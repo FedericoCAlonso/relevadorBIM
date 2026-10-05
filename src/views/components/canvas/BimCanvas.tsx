@@ -1269,6 +1269,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     return map;
   }, [project.electricalElements, project.panels]);
 
+  const levelsMap = useMemo(() => {
+    return new Map(project.levels.map((l) => [l.id, l]));
+  }, [project.levels]);
+
   const renderedConduits = useMemo(() => {
     return project.conduits.map((conduit) => {
       const elFrom = elementsMap.get(conduit.fromElementId);
@@ -1728,7 +1732,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   : connectedConduit.fromElementId
                 : null;
               const otherEl = otherId ? elementsMap.get(otherId) : null;
-              const levelsMap = new Map(project.levels.map((l) => [l.id, l]));
               const autoLen = otherEl
                 ? calculateConduitRealLength({
                     fromElement: element,
@@ -1816,9 +1819,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     project.electricalElements,
     project.circuits,
     project.panels,
-    project.levels,
     project.conduits,
     elementsMap,
+    levelsMap,
     labelDisplayMode,
     project.activeLevelId,
     zoom,

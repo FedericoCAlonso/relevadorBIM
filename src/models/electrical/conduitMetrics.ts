@@ -11,7 +11,9 @@ import type {
   ConduitWaypoint
 } from './ElectricalModel';
 import type { Level } from '../architecture/Level';
-import { AEA_CALCULATION_CONSTANTS } from './electricalStandards';
+import { AEA_CALCULATION_CONSTANTS, calculateConduitUsefulArea } from './electricalStandards';
+
+export { calculateConduitUsefulArea };
 
 export interface ConduitLengthBreakdown {
   dx: number;

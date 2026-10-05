@@ -17,7 +17,9 @@ import { CircuitColorPicker } from './CircuitColorPicker';
 import {
   CIRCUIT_COLOR_PALETTE,
   AEA_CALCULATION_CONSTANTS,
-  PHASE_CONDUCTOR_COLORS
+  PHASE_CONDUCTOR_COLORS,
+  CIRCUIT_PRESETS,
+  PANEL_PRESETS
 } from '../../../models/electrical/electricalStandards';
 import {
   Layers,
@@ -35,145 +37,6 @@ interface CircuitsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const CIRCUIT_PRESETS: Array<{
-  type: CircuitType;
-  label: string;
-  defaultName: string;
-  wireMM2: number;
-  breakerA: number;
-  color: string;
-  desc: string;
-}> = [
-  {
-    type: 'IUG',
-    label: 'IUG',
-    defaultName: 'Iluminación Uso General',
-    wireMM2: 1.5,
-    breakerA: 10,
-    color: '#2563eb',
-    desc: 'Iluminación fija (máx 15 bocas)'
-  },
-  {
-    type: 'TUG',
-    label: 'TUG',
-    defaultName: 'Tomas Uso General',
-    wireMM2: 2.5,
-    breakerA: 16,
-    color: '#ea580c',
-    desc: 'Tomacorrientes estándar 10A (máx 15 bocas)'
-  },
-  {
-    type: 'TUE',
-    label: 'TUE',
-    defaultName: 'Tomas Especiales',
-    wireMM2: 2.5,
-    breakerA: 20,
-    color: '#16a34a',
-    desc: 'Tomacorrientes 20A / Intemperie'
-  },
-  {
-    type: 'ACU',
-    label: 'ACU',
-    defaultName: 'Climatización / Aire',
-    wireMM2: 4.0,
-    breakerA: 20,
-    color: '#0891b2',
-    desc: 'Alimentación individual aire acondicionado'
-  },
-  {
-    type: 'FM',
-    label: 'FM',
-    defaultName: 'Fuerza Motriz / Bombas',
-    wireMM2: 4.0,
-    breakerA: 25,
-    color: '#8b5cf6',
-    desc: 'Bombas elevadoras, portones y motores'
-  },
-  {
-    type: 'LP',
-    label: 'LP',
-    defaultName: 'Línea Principal (Alimentador)',
-    wireMM2: 6.0,
-    breakerA: 32,
-    color: '#b91c1c',
-    desc: 'Alimentación troncal de tablero'
-  },
-  {
-    type: 'LS',
-    label: 'LS',
-    defaultName: 'Línea Seccional (Subtablero)',
-    wireMM2: 4.0,
-    breakerA: 25,
-    color: '#c2410c',
-    desc: 'Alimentación seccional entre tableros'
-  },
-  {
-    type: 'OTRO',
-    label: 'OTRO',
-    defaultName: 'Circuito Especial',
-    wireMM2: 2.5,
-    breakerA: 16,
-    color: '#475569',
-    desc: 'Circuito de uso específico'
-  }
-];
-
-const PANEL_PRESETS: Array<{
-  label: string;
-  name: string;
-  type: 'principal' | 'seccional' | 'auxiliar';
-  isThreePhase: boolean;
-  breakerA: number;
-  diffA: number;
-  desc: string;
-}> = [
-  {
-    label: 'TP Mono 32A',
-    name: 'Tablero Principal (TP)',
-    type: 'principal',
-    isThreePhase: false,
-    breakerA: 32,
-    diffA: 40,
-    desc: 'Tablero principal cabecera monofásico 220V'
-  },
-  {
-    label: 'TP Trifásico 40A',
-    name: 'Tablero Principal (TP)',
-    type: 'principal',
-    isThreePhase: true,
-    breakerA: 40,
-    diffA: 40,
-    desc: 'Tablero principal cabecera trifásico 380V'
-  },
-  {
-    label: 'TS Seccional 25A',
-    name: 'Tablero Seccional (TS)',
-    type: 'seccional',
-    isThreePhase: false,
-    breakerA: 25,
-    diffA: 25,
-    desc: 'Subtablero seccional interior'
-  },
-  {
-    label: 'TS Planta Alta',
-    name: 'Tablero Seccional Planta Alta (TS-PA)',
-    type: 'seccional',
-    isThreePhase: false,
-    breakerA: 25,
-    diffA: 25,
-    desc: 'Subtablero seccional para nivel superior'
-  },
-  {
-    label: 'T-FM Bombas',
-    name: 'Tablero Fuerza Motriz (T-FM)',
-    type: 'auxiliar',
-    isThreePhase: true,
-    breakerA: 25,
-    diffA: 40,
-    desc: 'Tablero de bombas y motores trifásicos'
-  }
-];
 
 export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose }) => {
   const {

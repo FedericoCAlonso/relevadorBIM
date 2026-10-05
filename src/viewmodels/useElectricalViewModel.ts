@@ -36,7 +36,13 @@ import {
   DEFAULT_BOX_TYPES,
   getSizesForConduitType,
   getDefaultSizeForConduitType,
-  type ConduitSizeOption
+  type ConduitSizeOption,
+  CIRCUIT_PRESETS,
+  PANEL_PRESETS,
+  INSTALLATION_STATE_OPTIONS,
+  CONDUIT_ROUTING_PLANE_OPTIONS,
+  STANDARD_CUSTOM_CONDUIT_SIZES,
+  calculateConduitUsefulArea
 } from '../models/electrical/electricalStandards';
 import {
   generateNextUniqueLabelInCircuit,
@@ -915,7 +921,13 @@ export function useElectricalViewModel() {
       })),
       heightPresets: AEA_HEIGHT_PRESETS,
       conductorPresets: AEA_CONDUCTOR_PRESETS,
-      suggestedMetadataKeys: SUGGESTED_ELEMENT_METADATA_KEYS
+      suggestedMetadataKeys: SUGGESTED_ELEMENT_METADATA_KEYS,
+      circuitPresets: CIRCUIT_PRESETS,
+      panelPresets: PANEL_PRESETS,
+      installationStates: INSTALLATION_STATE_OPTIONS,
+      routingPlanes: CONDUIT_ROUTING_PLANE_OPTIONS,
+      standardCustomConduitSizes: STANDARD_CUSTOM_CONDUIT_SIZES,
+      calculateUsefulArea: calculateConduitUsefulArea
     },
 
     // Gestión del Catálogo de Materiales

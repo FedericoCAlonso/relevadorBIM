@@ -552,17 +552,13 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
           <div>
             <label className="block font-bold text-slate-700 mb-1">Estado de Relevamiento:</label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'existente', label: 'Existente', bg: 'bg-emerald-600 text-white', inactive: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-                { id: 'proyectado', label: 'Proyectado', bg: 'bg-blue-600 text-white', inactive: 'bg-blue-50 text-blue-800 border-blue-200' },
-                { id: 'a_reemplazar', label: 'A Reemplazar', bg: 'bg-amber-600 text-white', inactive: 'bg-amber-50 text-amber-800 border-amber-200' }
-              ].map((st) => {
+              {catalogs.installationStates.map((st) => {
                 const isActive = (element.status || 'proyectado') === st.id;
                 return (
                   <button
                     key={st.id}
                     type="button"
-                    onClick={() => setElementProperties(element.id, { status: st.id as any })}
+                    onClick={() => setElementProperties(element.id, { status: st.id })}
                     className={`py-2 px-2 rounded-xl text-xs font-bold border text-center transition-all ${
                       isActive ? `${st.bg} shadow-sm border-transparent` : `${st.inactive} hover:opacity-80`
                     }`}

@@ -33,6 +33,26 @@ export interface Space {
   color?: string;              // Color tenue de relleno para identificación
 }
 
+export const ROOM_NAME_SUGGESTIONS: readonly string[] = [
+  'Living Comedor',
+  'Cocina',
+  'Dormitorio 1',
+  'Dormitorio 2',
+  'Baño',
+  'Lavadero',
+  'Pasillo',
+  'Balcón',
+  'Quincho'
+];
+
+export const STANDARD_CEILING_HEIGHT_PRESETS: readonly number[] = [2.40, 2.60, 2.70, 2.80, 3.00];
+
+export interface SpaceMetrics {
+  areaM2: number;
+  perimeterM: number;
+  volumeM3: number;
+}
+
 // ─── CÁLCULOS GEOMÉTRICOS DE SUPERFICIES Y CENTROIDES ───────────────────────
 
 /**
@@ -140,6 +160,21 @@ export function resolveSpacePolygon(
   }
   return points;
 }
+
+/**
+ * Calcula las métricas BIM del ambiente (superficie útil, perímetro y volumen interior).
+ */
+export function calculateSpaceMetrics(
+  space: Space,
+  verticesMap: Map<string, WallVertex>
+): SpaceMetrics {
+  const poly = resolveSpacePolygon(space, verticesMap);
+  const areaM2 = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
+  const perimeterM = poly.length >= 2 ? calculatePolygonPerimeter(poly) : 0;
+  const volumeM3 = Number((areaM2 * (space.ceilingHeight || 2.70)).toFixed(2));
+  return { areaM2, perimeterM, volumeM3 };
+}
+
 
 /**
  * Detecta las caras interiores de un grafo plano de muros (Planar Straight-Line Graph)
