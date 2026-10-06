@@ -37,7 +37,8 @@ import {
   Cable,
   ArrowLeftRight,
   ArrowUpDown,
-  Layers
+  Layers,
+  Building2
 } from 'lucide-react';
 
 interface ThumbSurveyDockProps {
@@ -891,8 +892,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               dockMode === 'survey' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Ruler size={13} />
-            <span>Muros</span>
+            <Building2 size={13} />
+            <span>Arquitectura</span>
           </button>
           <button
             type="button"
@@ -902,7 +903,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             }`}
           >
             <Zap size={13} />
-            <span>Eléctrico</span>
+            <span>Instalaciones</span>
           </button>
         </div>
 
