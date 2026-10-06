@@ -11,7 +11,8 @@ El objetivo de esta etapa es transformar el subsistema de muros y geometría en 
 1. Resuelva con precisión milimétrica las mediciones tomadas en obra (paramentos interiores y exteriores en lugar de ejes teóricos ciegos).
 2. Genere encuentros limpios de esquinas en inglete (*Miter Joins*), eliminando las muescas y solapamientos actuales.
 3. Reorganice los paneles de edición bajo una taxonomía limpia ("Arquitectura", "Instalaciones", "Ambientes"), eliminando rótulos técnicos obsoletos como "Muros & vano".
-4. Siente las bases topológicas para la futura fase de **ruteo ortogonal automatizado de conductos (A\*)** considerando interferencias estructurales y constructivas.
+4. Integre la **vista de alzado / elevación de caras de muro** para inspección y replanteo vertical de cajas, cañerías y aberturas.
+5. Siente las bases topológicas para la fase de **ruteo ortogonal automatizado de conductos (A\*)** considerando interferencias estructurales y constructivas.
 
 ---
 
@@ -93,41 +94,62 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
 
 ## 4. Plan de Ejecución por Fases
 
-### Fase 1: Geometría Crítica de Muros y Justificación de Paramentos (Prioridad Inmediata)
-> [!IMPORTANT]
-> Esta fase resuelve el problema de fondo del dibujo de muros antes de avanzar con nuevas entidades.
-
+### Fase 1: Geometría Crítica de Muros y Justificación de Paramentos (Completada)
 1. **Línea de Justificación de Muro (`WallJustification`):**
-   - Incorporar al modelo `Wall` la opción de referencia: `interior_face` (por defecto en relevamiento interno), `exterior_face` y `centerline`.
-   - Ajustar el ingreso de medidas métricas para que $L$ corresponda a la cara seleccionada.
+   - Incorporación al modelo `Wall` de las opciones de referencia: `interior_face` (por defecto en relevamiento interno), `exterior_face` y `centerline`.
+   - Ingreso de medidas métricas donde $L$ corresponde a la cara física seleccionada.
 2. **Motor de Encuentros en Esquina (*Corner Miter Engine*):**
-   - Calcular analíticamente la intersección de rectas de caras exteriores ($P_{\text{ext}} = L_{1,\text{ext}} \cap L_{2,\text{ext}}$) e interiores ($P_{\text{int}} = L_{1,\text{int}} \cap L_{2,\text{int}}$).
-   - Alargar automáticamente la cara exterior con el inglete correspondiente a la bisectriz de la esquina.
-   - Eliminar muescas vacías y solapamientos en el renderizado SVG.
-3. **Reorganización de UI:** Renombrar y estructurar la pestaña `Arquitectura` en el inspector.
+   - Intersección analítica de rectas de paramentos exteriores e interiores.
+   - Prolongación geométrica con inglete en la bisectriz de esquina.
+   - Eliminación de muescas vacías y solapamientos en SVG.
+3. **Reorganización de UI:** Reestructuración de la pestaña `Arquitectura` en el inspector lateral y dock móvil.
 
-### Fase 2: Elementos Constructivos y Restricciones Físicas de Montaje
+### Fase 2: Elementos Constructivos y Restricciones Físicas de Montaje (Completada)
 1. **Tipologías Constructivas de Muros:**
    - Variantes `low_wall` (muro bajo/antepecho $1.00\text{ m}$) y `railing` (baranda/reja) con grafismo diferenciado.
-   - Restricción de montaje eléctrico: forzar montaje exterior en rejas y limitar cota $Z$ en muros bajos.
-2. **Columnas de Hormigón Armado (`StructuralColumn`):**
-   - Herramienta de inserción por estampado (*stamp tool*) con snap a vértices.
-   - Representación gráfica maciza/rayada y sustracción del área útil del ambiente.
+   - Restricción física de montaje: forzar montaje exterior en rejas y limitar cota $Z$ en muros bajos.
+2. **Columnas de Hormigón Armado y Acero (`StructuralColumn`):**
+   - Inserción con snap a vértices, secciones rectangulares y cilíndricas ($\varnothing$).
+   - Representación maciza/rayada y delimitación de **zonas de exclusión de canaleteado** (prohibición de ranurado).
 3. **Proyecciones de Cielorraso y Vigas (`Beam` / `CeilingProjection`):**
-   - Trazo de eje a eje con línea discontinua (`- - - -`).
-   - Caracterización de vacíos (cruz en aspa para patios de aire y luz en `Space`).
+   - Vigas descolgadas bajo losa con trazo discontinuo (`- - - -`).
+   - Caracterización reglamentaria de vacíos (aspa en cruz "X" en patios de aire y luz) y tramado en plenos técnicos.
 
-### Fase 3: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D)
-*(Etapa planificada a futuro pero preparada a nivel topológico desde las Fases 1 y 2)*
-1. Construcción del grafo ortogonal de navegación constructiva (Planos de Losa, Piso y Paredes verticales).
-2. Asignación de costos de fricción y penalizaciones según la tecnología de canalización (embutido vs a la vista vs bandeja).
-3. Detección automática de cajas de paso intermedias por regla AEA (máximo 3 curvas de 90° o 12-15 metros).
-4. Sugerencia interactiva de ruta óptima con control elástico de *waypoints* para el usuario.
+### Fase 3: Vista de Alzado / Elevación de Caras de Muro (Wall Elevation View) (En curso / Próxima prioridad)
+*(Inspección vertical, replanteo 2D a escala real y edición interactiva de paramentos)*
+1. **Apertura de la Vista y Contexto Operativo:**
+   - Disparador ergonómico al seleccionar un muro en planta: botón interactivo `[ ⊞ Ver Alzado ]` en inspector/sheet y atajo por doble clic/toque en lienzo.
+   - Selector de visualización de paramento: **Cara Interior** (predeterminada de ambiente) vs **Cara Exterior**.
+2. **Representación Física Real a Escala Constructiva (SVG 2D Desplegado):**
+   - Desarrollo longitudinal de $0$ a $L$ en abscisa ($X$) y de $0.00\text{ m}$ (NPT) a $H$ (altura libre a losa/cielorraso) en ordenada ($Y$).
+   - **Aberturas en Alzado:** Posicionamiento exacto de puertas, ventanas y vanos con su dintel, luz libre y antepecho (`sillHeight`).
+   - **Cajas y Gabinetes Eléctricos:** Renderizado visual a escala 1:1 de cajas rectangulares ($5 \times 10\text{ cm}$ con troqueles), cuadradas de derivación ($10 \times 10\text{ cm}$), octogonales de apliques de pared y gabinetes de tablero secundario.
+   - **Canalizaciones y Bajadas:** Trazado de cañerías en pared a escala métrica según diámetro comercial ($\varnothing 19$, $\varnothing 22$, $\varnothing 25\text{ mm}$), bajadas directas desde losa y recorridos ortogonales.
+3. **Edición Bidireccional e Imantación Reglamentaria:**
+   - Arrastre interactivo de cajas sobre el paramento:
+     - Movimiento horizontal: actualiza la distancia a la esquina de referencia ($U$).
+     - Movimiento vertical: actualiza la cota $Z$ con snap magnético a alturas estándar AEA ($0.30\text{ m}$ tomas, $1.10\text{ m}$ llaves/pulsadores, $2.00\text{ m}$ tomas altos, $2.20\text{ m}$ apliques).
+   - Sincronización reactiva inmediata: los cambios efectuados en el alzado impactan en la planta CAD y en el cómputo métrico sin recargar la escena.
+4. **Acotación Automática Integrada:**
+   - Cotas lineales acumuladas desde la esquina de referencia a bordes de aberturas y ejes de cajas.
+   - Cotas de nivel altimétricas reglamentarias respecto al piso terminado ($+0.00$, $+0.30$, $+1.10$, $+2.00$, $+H$).
+
+### Fase 4: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D) (Planificada)
+*(Generación asistida y optimizada de recorridos según restricciones de tecnología y normativa)*
+1. **Grafo Ortogonal 2.5D:** Construcción de nodos de navegación tridimensional conectando planos de losa, contrapiso y paramentos verticales de muros.
+2. **Matriz de Fricción y Costos:** Penalizaciones topológicas según tecnología de canalización (embutido en ladrillo vs a la vista vs bandeja perforada).
+3. **Restricciones AEA Automatizadas:**
+   - Inserción automática de cajas de paso intermedias al superar 3 curvas de 90° o tramos mayores a 12–15 metros.
+   - Prohibición de cruces diagonales y zonas de exclusión por cañerías de agua o gas.
+4. **Sugerencia Interactiva y Waypoints:** Previsualización de ruta óptima con anclajes elásticos para que el proyectista ajuste la trayectoria a criterio.
 
 ---
 
 ## 5. Criterios de Aceptación y Control de Calidad
-- [ ] Las esquinas de muros a 90° y ángulos oblicuos cierran de forma continua sin huecos en la cara exterior.
-- [ ] La medida ingresada en modo paramento interior refleja exactamente la luz libre del ambiente.
+- [x] Las esquinas de muros a 90° y ángulos oblicuos cierran de forma continua sin huecos en la cara exterior (Fase 1).
+- [x] La medida ingresada en modo paramento interior refleja exactamente la luz libre del ambiente (Fase 1).
+- [x] Las columnas, vigas, muros bajos, barandas y vacíos se modelan y renderizan en planta respetando convenciones gráficas (Fase 2).
+- [ ] La vista de alzado de muro proyecta fielmente aberturas, cajas y cañerías con sus cotas $Z$ métricas reales (Fase 3).
+- [ ] La manipulación de cajas en la vista de alzado actualiza bidireccionalmente la planta CAD y el estado centralizado del proyecto (Fase 3).
 - [ ] Ningún cálculo de vectores ni opciones hardcodeadas residen en componentes `.tsx` de la vista.
 - [ ] El suite completo de pruebas unitarias (`npm test`) y la compilación (`npm run build`) pasan al 100% sin advertencias.
