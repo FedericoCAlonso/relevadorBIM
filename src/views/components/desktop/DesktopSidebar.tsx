@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
+import type { WallJustification } from '../../../models/architecture/Wall';
 import { getWallLength } from '../../../models/architecture/Wall';
 import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -62,6 +63,8 @@ interface DesktopSidebarProps {
   onFinishEditingConduitRoute?: () => void;
   onStartRedesigningConduitRoute?: (conduitId: string) => void;
   onUndoEditingConduitWaypoint?: () => void;
+  wallJustification?: WallJustification;
+  onChangeJustification?: (j: WallJustification) => void;
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
@@ -82,7 +85,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onStartEditingConduitRoute,
   onFinishEditingConduitRoute,
   onStartRedesigningConduitRoute,
-  onUndoEditingConduitWaypoint
+  onUndoEditingConduitWaypoint,
+  wallJustification = 'interior',
+  onChangeJustification
 }) => {
   const {
     project,
@@ -207,9 +212,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
             activeTab === 'survey' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
           }`}
+          title="Trazado de muros, aberturas y elementos arquitectónicos"
         >
-          <Compass size={15} />
-          <span>Muros & Vano</span>
+          <Building2 size={15} />
+          <span>Arquitectura</span>
         </button>
 
         <button
@@ -217,8 +223,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
             activeTab === 'spaces' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
           }`}
+          title="Gestión de ambientes, recintos y superficies"
         >
-          <Building2 size={15} />
+          <Compass size={15} />
           <span>Ambientes ({project.spaces.filter((s) => s.levelId === project.activeLevelId).length})</span>
         </button>
 
@@ -227,9 +234,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
             activeTab === 'electrical' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-100'
           }`}
+          title="Bocas, cañerías, circuitos y tableros eléctricos"
         >
           <Zap size={15} />
-          <span>Eléctrico</span>
+          <span>Instalaciones</span>
         </button>
       </div>
 
@@ -265,6 +273,49 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     placeholder="3.50"
                   />
                   <span className="font-mono text-xs text-slate-400">m</span>
+                </div>
+              </div>
+
+              {/* Referencia de Medida (Justificación de Muro) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">REFERENCIA DE MEDIDA</label>
+                <div className="grid grid-cols-3 gap-1 bg-white border border-slate-200 p-1 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => onChangeJustification?.('interior')}
+                    className={`py-1 rounded-lg transition-all text-center ${
+                      wallJustification === 'interior'
+                        ? 'bg-blue-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title="Medida tomada sobre la cara interior (luz libre de habitación)"
+                  >
+                    Cara Int.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeJustification?.('center')}
+                    className={`py-1 rounded-lg transition-all text-center ${
+                      wallJustification === 'center'
+                        ? 'bg-blue-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title="Medida entre ejes medios de muro"
+                  >
+                    Eje Medio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeJustification?.('exterior')}
+                    className={`py-1 rounded-lg transition-all text-center ${
+                      wallJustification === 'exterior'
+                        ? 'bg-blue-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title="Medida tomada sobre la cara exterior (fachada o medianera)"
+                  >
+                    Cara Ext.
+                  </button>
                 </div>
               </div>
 
@@ -718,6 +769,31 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         }`}
                       >
                         {Math.round(th * 100)} cm
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Justificación de Cara del Muro */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">REFERENCIA / JUSTIFICACIÓN</label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { id: 'interior', label: 'Cara Int.' },
+                      { id: 'center', label: 'Eje Medio' },
+                      { id: 'exterior', label: 'Cara Ext.' }
+                    ].map((j) => (
+                      <button
+                        key={j.id}
+                        type="button"
+                        onClick={() => updateWall(selectedWall.id, { justification: j.id as any })}
+                        className={`py-1 rounded-lg text-xs font-semibold border transition-all ${
+                          (selectedWall.justification || 'center') === j.id
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {j.label}
                       </button>
                     ))}
                   </div>

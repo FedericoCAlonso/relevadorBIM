@@ -27,6 +27,8 @@ export interface WallPlacementSnap {
   side: 'left' | 'right';
 }
 
+export type WallJustification = 'interior' | 'center' | 'exterior';
+
 export interface Wall {
   id: string;
   levelId: string;           // ID del nivel/planta al que pertenece
@@ -34,6 +36,7 @@ export interface Wall {
   endVertexId: string;       // ID del vértice final
   thickness: number;         // Espesor del muro en metros (ej: 0.10, 0.15, 0.20, 0.30)
   height: number;            // Altura libre en metros (default: 2.80)
+  justification?: WallJustification; // Alineación/justificación: 'interior' (cara luz libre), 'center' (eje medio), 'exterior' (filo exterior)
   leftSpaceId?: string | null;  // ID del ambiente que da a la cara izquierda
   rightSpaceId?: string | null; // ID del ambiente que da a la cara derecha
   isBearing?: boolean;       // ¿Es muro portante / medianera?
@@ -101,7 +104,7 @@ export function getWallLeftNormal(wall: Wall, vertices: Map<string, WallVertex>)
 }
 
 /**
- * Obtiene las dos caras físicas interiores/exteriores del muro offseteadas por la mitad del espesor.
+ * Obtiene las dos caras físicas interiores/exteriores del muro offseteadas según su espesor y justificación.
  */
 export function getWallFaces(
   wall: Wall,
@@ -112,19 +115,28 @@ export function getWallFaces(
   if (!vStart || !vEnd) return null;
 
   const normal = getWallLeftNormal(wall, vertices);
-  const halfT = wall.thickness / 2;
+  const T = wall.thickness;
+  const just = wall.justification ?? 'center';
 
-  const offsetX = normal.x * halfT;
-  const offsetY = normal.y * halfT;
+  let leftOffset = T / 2;
+  let rightOffset = -T / 2;
+
+  if (just === 'interior') {
+    leftOffset = 0;
+    rightOffset = -T;
+  } else if (just === 'exterior') {
+    leftOffset = T;
+    rightOffset = 0;
+  }
 
   return {
     leftFace: {
-      start: { x: vStart.x + offsetX, y: vStart.y + offsetY },
-      end: { x: vEnd.x + offsetX, y: vEnd.y + offsetY }
+      start: { x: vStart.x + normal.x * leftOffset, y: vStart.y + normal.y * leftOffset },
+      end: { x: vEnd.x + normal.x * leftOffset, y: vEnd.y + normal.y * leftOffset }
     },
     rightFace: {
-      start: { x: vStart.x - offsetX, y: vStart.y - offsetY },
-      end: { x: vEnd.x - offsetX, y: vEnd.y - offsetY }
+      start: { x: vStart.x + normal.x * rightOffset, y: vStart.y + normal.y * rightOffset },
+      end: { x: vEnd.x + normal.x * rightOffset, y: vEnd.y + normal.y * rightOffset }
     }
   };
 }

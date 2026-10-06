@@ -11,6 +11,7 @@ import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
+import { computeResolvedWallPolygons } from '../../../models/architecture/WallCornerEngine';
 import { getOpeningJambs } from '../../../models/architecture/Opening';
 import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
@@ -954,15 +955,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     onSpaceClick
   ]);
 
-  // 2. Muros físicos con espesor
+  // 2. Muros físicos con espesor y esquinas resueltas en inglete (CAD Miter Joins)
   const renderedWalls = useMemo(() => {
-    return project.walls
-      .filter((w) => w.levelId === project.activeLevelId)
-      .map((wall) => {
-        const poly = getWallPolygon(wall, verticesMap);
-        const vStart = verticesMap.get(wall.startVertexId);
-        const vEnd = verticesMap.get(wall.endVertexId);
-        if (!poly || !vStart || !vEnd) return null;
+    const levelWalls = project.walls.filter((w) => w.levelId === project.activeLevelId);
+    const resolvedPolys = computeResolvedWallPolygons(levelWalls, verticesMap);
+
+    return levelWalls.map((wall) => {
+      const poly = resolvedPolys.get(wall.id) || getWallPolygon(wall, verticesMap);
+      const vStart = verticesMap.get(wall.startVertexId);
+      const vEnd = verticesMap.get(wall.endVertexId);
+      if (!poly || !vStart || !vEnd) return null;
 
         const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
         const lenM = getWallLength(wall, verticesMap);

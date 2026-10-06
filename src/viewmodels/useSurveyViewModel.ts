@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from './useProjectStore';
-import { getWallAngleDeg } from '../models/architecture/Wall';
+import { getWallAngleDeg, type WallJustification } from '../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import {
   DEFAULT_CONDUIT_MATERIAL,
@@ -26,6 +26,7 @@ export function useSurveyViewModel() {
   const [relativeTurn, setRelativeTurn] = useState<RelativeTurnType>('right'); // Por defecto derecha (horario)
   const [customAngleDeg, setCustomAngleDeg] = useState<number>(45);
   const [currentDistanceInput, setCurrentDistanceInput] = useState<string>('3.50');
+  const [wallJustification, setWallJustification] = useState<WallJustification>('interior'); // Por defecto cara interior (luz libre)
 
   // Herramientas adicionales
   const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
@@ -204,13 +205,14 @@ export function useSurveyViewModel() {
         startCoord,
         lengthM: dist,
         angleDeg: effectiveAngleDeg,
-        thickness: 0.15
+        thickness: 0.15,
+        justification: wallJustification
       });
 
       // El store ya coloca automáticamente el extremo final como activeAnchorVertexId
       return result;
     },
-    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor]
+    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor, wallJustification]
   );
 
   /**
@@ -224,9 +226,12 @@ export function useSurveyViewModel() {
       branchLengthM: number;
       side: 'left' | 'right';
     }) => {
-      return addBranchWallFromOffset(params);
+      return addBranchWallFromOffset({
+        ...params,
+        justification: wallJustification
+      });
     },
-    [addBranchWallFromOffset]
+    [addBranchWallFromOffset, wallJustification]
   );
 
   /**
@@ -525,6 +530,8 @@ export function useSurveyViewModel() {
     effectiveAngleDeg,
     currentDistanceInput,
     setCurrentDistanceInput,
+    wallJustification,
+    setWallJustification,
     selectedSymbolId,
     setSelectedSymbolId,
     isConnectingConduit,

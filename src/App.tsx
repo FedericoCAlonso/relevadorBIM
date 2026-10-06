@@ -93,7 +93,9 @@ export function App() {
     startAddingDimension,
     cancelAddingDimension,
     handleDimensionCanvasClick,
-    commitConduitWithTerminalReference
+    commitConduitWithTerminalReference,
+    wallJustification,
+    setWallJustification
   } = useSurveyViewModel();
 
   const {
@@ -404,6 +406,8 @@ export function App() {
             onFinishEditingConduitRoute={finishEditingConduitRoute}
             onStartRedesigningConduitRoute={startRedesigningConduitRoute}
             onUndoEditingConduitWaypoint={undoEditingConduitWaypoint}
+            wallJustification={wallJustification}
+            onChangeJustification={setWallJustification}
           />
         )}
 

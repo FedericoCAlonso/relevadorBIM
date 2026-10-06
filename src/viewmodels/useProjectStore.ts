@@ -14,7 +14,7 @@ import type {
   CircuitCalculationOverride
 } from '../models/architecture/BuildingProject';
 import { createEmptyProject } from '../models/architecture/BuildingProject';
-import type { Wall, WallVertex, Vector2D } from '../models/architecture/Wall';
+import type { Wall, WallVertex, Vector2D, WallJustification } from '../models/architecture/Wall';
 import { getWallVector, getWallLength, getWallLeftNormal } from '../models/architecture/Wall';
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { Space } from '../models/architecture/Space';
@@ -87,6 +87,7 @@ interface ProjectStoreState {
     lengthM: number;
     angleDeg: number;       // 0 = Este, 90 = Norte, 180 = Oeste, 270 = Sur (o libre)
     thickness?: number;     // default 0.15m
+    justification?: WallJustification;
   }) => { wall: Wall; endVertexId: string } | null;
 
   /**
@@ -100,6 +101,7 @@ interface ProjectStoreState {
     branchLengthM: number;     // Largo de la nueva pared
     side: 'left' | 'right';    // Lado hacia donde nace la T
     thickness?: number;
+    justification?: WallJustification;
   }) => Wall | null;
 
   /**
@@ -530,7 +532,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     startCoord,
     lengthM,
     angleDeg,
-    thickness = 0.15
+    thickness = 0.15,
+    justification = 'interior'
   }) => {
     const { project } = get();
     if (lengthM <= 0) return null;
@@ -579,7 +582,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       startVertexId: vStart.id,
       endVertexId: vEnd.id,
       thickness,
-      height: 2.80
+      height: 2.80,
+      justification
     };
 
     const updatedVertices = [...project.vertices];
@@ -609,7 +613,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     offsetM,
     branchLengthM,
     side,
-    thickness = 0.15
+    thickness = 0.15,
+    justification = 'interior'
   }) => {
     const { project } = get();
     const hostWall = project.walls.find((w) => w.id === hostWallId);
@@ -658,7 +663,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       startVertexId: branchRootVertex.id,
       endVertexId: branchEndVertex.id,
       thickness,
-      height: hostWall.height
+      height: hostWall.height,
+      justification
     };
 
     set({
