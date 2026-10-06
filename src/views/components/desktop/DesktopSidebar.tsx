@@ -184,6 +184,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [openingOffset, setOpeningOffset] = useState('0.60');
   const [openingWidth, setOpeningWidth] = useState('0.80');
   const [openingType, setOpeningType] = useState<'door' | 'window' | 'passage'>('door');
+  const [openingRefSide, setOpeningRefSide] = useState<'start' | 'end'>('start');
+  const [openingSwing, setOpeningSwing] = useState<OpeningSwing>('left_in');
 
   const handleSelectOpeningType = (type: 'door' | 'window' | 'passage') => {
     setOpeningType(type);
@@ -876,6 +878,35 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     </button>
                   </div>
 
+                  {/* Selector de esquina de referencia */}
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">Referencia a esquina:</label>
+                    <div className="grid grid-cols-2 gap-1 text-[10px] font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setOpeningRefSide('start')}
+                        className={`py-1 rounded-md border transition-all ${
+                          openingRefSide === 'start'
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        Inicio (Start)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOpeningRefSide('end')}
+                        className={`py-1 rounded-md border transition-all ${
+                          openingRefSide === 'end'
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        Fin (End)
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-slate-500">Dist. a esquina</label>
@@ -899,14 +930,43 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     </div>
                   </div>
 
+                  {openingType === 'door' && (
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">Sentido de batiente:</label>
+                      <div className="grid grid-cols-2 gap-1 text-[10px]">
+                        {[
+                          { id: 'left_in', label: '↶ Izq. Int.' },
+                          { id: 'right_in', label: '↷ Der. Int.' },
+                          { id: 'left_out', label: '↶ Izq. Ext.' },
+                          { id: 'right_out', label: '↷ Der. Ext.' }
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setOpeningSwing(s.id as OpeningSwing)}
+                            className={`py-1 rounded-md border font-semibold transition-all ${
+                              openingSwing === s.id
+                                ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={() => {
+                      const refVId = openingRefSide === 'start' ? selectedWall.startVertexId : selectedWall.endVertexId;
                       addOpeningReferenced({
                         hostWallId: selectedWall.id,
-                        referenceVertexId: selectedWall.startVertexId,
+                        referenceVertexId: refVId,
                         offsetToJambM: parseFloat(openingOffset) || 0,
                         widthM: parseFloat(openingWidth) || 0,
-                        type: openingType
+                        type: openingType,
+                        swing: openingSwing
                       });
                     }}
                     className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm"

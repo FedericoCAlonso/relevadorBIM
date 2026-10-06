@@ -81,14 +81,24 @@ export function getOpeningPhysicalJambs(
   if (!jambs) return null;
 
   const normal = getWallLeftNormal(wall, vertices);
-  const halfT = wall.thickness / 2;
-  const offX = normal.x * halfT;
-  const offY = normal.y * halfT;
+  const T = wall.thickness;
+  const just = wall.justification ?? 'center';
+
+  let leftOffset = T / 2;
+  let rightOffset = -T / 2;
+
+  if (just === 'interior') {
+    leftOffset = 0;
+    rightOffset = -T;
+  } else if (just === 'exterior') {
+    leftOffset = T;
+    rightOffset = 0;
+  }
 
   return {
-    leftJamb1: { x: jambs.jamb1.x + offX, y: jambs.jamb1.y + offY },
-    leftJamb2: { x: jambs.jamb2.x + offX, y: jambs.jamb2.y + offY },
-    rightJamb1: { x: jambs.jamb1.x - offX, y: jambs.jamb1.y - offY },
-    rightJamb2: { x: jambs.jamb2.x - offX, y: jambs.jamb2.y - offY }
+    leftJamb1: { x: jambs.jamb1.x + normal.x * leftOffset, y: jambs.jamb1.y + normal.y * leftOffset },
+    leftJamb2: { x: jambs.jamb2.x + normal.x * leftOffset, y: jambs.jamb2.y + normal.y * leftOffset },
+    rightJamb1: { x: jambs.jamb1.x + normal.x * rightOffset, y: jambs.jamb1.y + normal.y * rightOffset },
+    rightJamb2: { x: jambs.jamb2.x + normal.x * rightOffset, y: jambs.jamb2.y + normal.y * rightOffset }
   };
 }

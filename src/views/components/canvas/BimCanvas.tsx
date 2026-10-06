@@ -1193,6 +1193,26 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       const wPx = Math.hypot(dx, dy);
       const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
 
+      const T = wall.thickness;
+      const just = wall.justification ?? 'center';
+
+      let leftOffset = T / 2;
+      let rightOffset = -T / 2;
+
+      if (just === 'interior') {
+        leftOffset = 0;
+        rightOffset = -T;
+      } else if (just === 'exterior') {
+        leftOffset = T;
+        rightOffset = 0;
+      }
+
+      const yLeftPx = leftOffset * zoom;
+      const yRightPx = rightOffset * zoom;
+      const yMinPx = Math.min(yLeftPx, yRightPx);
+      const yMaxPx = Math.max(yLeftPx, yRightPx);
+      const wallThickPx = Math.abs(yMaxPx - yMinPx);
+
       return (
         <g
           key={opening.id}
@@ -1211,31 +1231,49 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {/* Zona táctil y de clic amplia para fácil selección en pantalla */}
           <rect
             x={0}
-            y={(-wall.thickness * zoom) / 2 - 14}
+            y={yMinPx - 14}
             width={wPx}
-            height={wall.thickness * zoom + 28}
+            height={wallThickPx + 28}
             fill="transparent"
             pointerEvents="all"
           />
 
-          {/* Calado del muro */}
+          {/* Calado del muro de cara a cara física */}
           <rect
             x={0}
-            y={(-wall.thickness * zoom) / 2}
+            y={yMinPx}
             width={wPx}
-            height={wall.thickness * zoom}
+            height={wallThickPx}
             fill="#ffffff"
             stroke={isSelected ? '#2563eb' : '#94a3b8'}
             strokeWidth={isSelected ? 2.5 : 1.5}
+          />
+
+          {/* Jambas físicas que cortan el muro a los lados */}
+          <line
+            x1={0}
+            y1={yMinPx}
+            x2={0}
+            y2={yMaxPx}
+            stroke={isSelected ? '#2563eb' : '#334155'}
+            strokeWidth={1.5}
+          />
+          <line
+            x1={wPx}
+            y1={yMinPx}
+            x2={wPx}
+            y2={yMaxPx}
+            stroke={isSelected ? '#2563eb' : '#334155'}
+            strokeWidth={1.5}
           />
 
           {/* Halo de selección activa */}
           {isSelected && (
             <rect
               x={-2}
-              y={(-wall.thickness * zoom) / 2 - 4}
+              y={yMinPx - 4}
               width={wPx + 4}
-              height={wall.thickness * zoom + 8}
+              height={wallThickPx + 8}
               fill="none"
               stroke="#2563eb"
               strokeWidth={2}
@@ -1248,15 +1286,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             const swing = opening.swing || 'left_in';
             const hingeX = swing.startsWith('left') ? 0 : wPx;
             const targetX = swing.startsWith('left') ? wPx : 0;
-            const leafY = swing.endsWith('in') ? -wPx : wPx;
+            // La bisagra apoya sobre la cara hacia donde abre la puerta
+            const hingeY = swing.endsWith('in') ? yLeftPx : yRightPx;
+            const leafY = swing.endsWith('in') ? hingeY - wPx : hingeY + wPx;
             const sweep = swing === 'left_in' || swing === 'right_out' ? 1 : 0;
-            const arcPath = `M ${hingeX} ${leafY} A ${wPx} ${wPx} 0 0 ${sweep} ${targetX} 0`;
+            const arcPath = `M ${hingeX} ${leafY} A ${wPx} ${wPx} 0 0 ${sweep} ${targetX} ${hingeY}`;
 
             return (
               <>
                 <line
                   x1={hingeX}
-                  y1={0}
+                  y1={hingeY}
                   x2={hingeX}
                   y2={leafY}
                   stroke={isSelected ? '#2563eb' : '#475569'}
@@ -1275,14 +1315,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
           {opening.type === 'window' && (
             <>
-              <line x1={0} y1={-2} x2={wPx} y2={-2} stroke={isSelected ? '#2563eb' : '#3b82f6'} strokeWidth={2} />
-              <line x1={0} y1={2} x2={wPx} y2={2} stroke={isSelected ? '#2563eb' : '#3b82f6'} strokeWidth={2} />
+              {/* Antepecho exterior e interior de cara a cara */}
+              <line x1={0} y1={yMinPx} x2={wPx} y2={yMinPx} stroke={isSelected ? '#2563eb' : '#475569'} strokeWidth={1.5} />
+              <line x1={0} y1={yMaxPx} x2={wPx} y2={yMaxPx} stroke={isSelected ? '#2563eb' : '#475569'} strokeWidth={1.5} />
+              {/* Vidrio central */}
+              <line x1={0} y1={(yMinPx + yMaxPx) / 2} x2={wPx} y2={(yMinPx + yMaxPx) / 2} stroke={isSelected ? '#2563eb' : '#0284c7'} strokeWidth={2} />
             </>
           )}
 
           {/* Cota / Identificador flotante al estar seleccionada */}
           {isSelected && (
-            <g transform={`translate(${wPx / 2}, ${(-wall.thickness * zoom) / 2 - 16})`}>
+            <g transform={`translate(${wPx / 2}, ${yMinPx - 16})`}>
               <rect
                 x={-28}
                 y={-10}
