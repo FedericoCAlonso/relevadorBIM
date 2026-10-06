@@ -412,13 +412,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               const hostWallLength = hostWall ? getWallLength(hostWall, verticesMap) : 10;
               const maxDist = Math.max(0, hostWallLength - selectedOpening.width);
 
-              const handleAdjustDist = (delta: number) => {
-                const newDist = Math.max(
-                  0,
-                  Math.min(maxDist, Number((selectedOpening.distanceAlongWall + delta).toFixed(2)))
-                );
-                updateOpening(selectedOpening.id, { distanceAlongWall: newDist });
-              };
 
               const handleAdjustWidth = (newW: number) => {
                 const clampedW = Math.max(
@@ -550,29 +543,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
                   {/* 3. Posición a lo largo del Muro */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[10px] font-bold text-amber-900">DISTANCIA A ESQUINA</label>
-                      <span className="font-mono text-xs font-bold text-amber-950">
-                        {selectedOpening.distanceAlongWall.toFixed(2)} m
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustDist(-0.10)}
-                        className="px-1.5 py-1 bg-white border border-amber-300 rounded text-[10px] font-mono hover:bg-amber-100"
-                        title="Mover -10cm"
-                      >
-                        -10c
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustDist(-0.05)}
-                        className="px-1.5 py-1 bg-white border border-amber-300 rounded text-[10px] font-mono hover:bg-amber-100"
-                        title="Mover -5cm"
-                      >
-                        -5c
-                      </button>
+                    <label className="text-[10px] font-bold text-amber-900 block mb-1">DISTANCIA A ESQUINA</label>
+                    <div className="relative">
                       <input
                         type="number"
                         step="0.05"
@@ -580,29 +552,18 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         max={maxDist}
                         value={selectedOpening.distanceAlongWall}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          updateOpening(selectedOpening.id, {
-                            distanceAlongWall: Math.max(0, Math.min(maxDist, val))
-                          });
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            updateOpening(selectedOpening.id, {
+                              distanceAlongWall: Math.max(0, Math.min(maxDist, val))
+                            });
+                          }
                         }}
-                        className="flex-1 px-1 py-1 bg-white border border-amber-300 rounded-lg font-mono font-bold text-xs text-center"
+                        className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-xl font-mono font-bold text-xs text-amber-950 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none pr-8"
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustDist(0.05)}
-                        className="px-1.5 py-1 bg-white border border-amber-300 rounded text-[10px] font-mono hover:bg-amber-100"
-                        title="Mover +5cm"
-                      >
-                        +5c
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustDist(0.10)}
-                        className="px-1.5 py-1 bg-white border border-amber-300 rounded text-[10px] font-mono hover:bg-amber-100"
-                        title="Mover +10cm"
-                      >
-                        +10c
-                      </button>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-amber-700/60 pointer-events-none">
+                        m
+                      </span>
                     </div>
                   </div>
 

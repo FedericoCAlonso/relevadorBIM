@@ -269,13 +269,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
         const hostWallLength = hostWall ? getWallLength(hostWall, verticesMap) : 10;
         const maxDist = Math.max(0, hostWallLength - selectedOpening.width);
 
-        const handleAdjustDist = (delta: number) => {
-          const newDist = Math.max(
-            0,
-            Math.min(maxDist, Number((selectedOpening.distanceAlongWall + delta).toFixed(2)))
-          );
-          updateOpening(selectedOpening.id, { distanceAlongWall: newDist });
-        };
 
         const handleAdjustWidth = (newW: number) => {
           const clampedW = Math.max(
@@ -334,27 +327,29 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
 
               {/* Ancho */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-slate-500">ANCHO DEL VANO</label>
-                  <span className="font-mono text-xs font-bold text-slate-800">
-                    {selectedOpening.width.toFixed(2)} m
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustWidth(selectedOpening.width - 0.05)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-mono font-bold text-sm"
-                  >
-                    -
-                  </button>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ANCHO DEL VANO</label>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative w-24">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.40"
+                      max={hostWallLength}
+                      value={selectedOpening.width}
+                      onChange={(e) => handleAdjustWidth(parseFloat(e.target.value) || 0.80)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
+                      m
+                    </span>
+                  </div>
                   <div className="flex-1 grid grid-cols-4 gap-1">
                     {[0.70, 0.80, 0.90, 1.20].map((w) => (
                       <button
                         key={w}
                         type="button"
                         onClick={() => handleAdjustWidth(w)}
-                        className={`py-1 rounded text-xs font-mono border ${
+                        className={`py-1.5 rounded-lg text-xs font-mono border transition-all ${
                           Math.abs(selectedOpening.width - w) < 0.01
                             ? 'bg-amber-600 text-white border-amber-600 font-bold'
                             : 'bg-white border-slate-200 text-slate-700'
@@ -364,53 +359,32 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                       </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustWidth(selectedOpening.width + 0.05)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-mono font-bold text-sm"
-                  >
-                    +
-                  </button>
                 </div>
               </div>
 
               {/* Distancia a esquina */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-slate-500">DISTANCIA A ESQUINA</label>
-                  <span className="font-mono text-xs font-bold text-slate-800">
-                    {selectedOpening.distanceAlongWall.toFixed(2)} m
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">DISTANCIA A ESQUINA</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max={maxDist}
+                    value={selectedOpening.distanceAlongWall}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        updateOpening(selectedOpening.id, {
+                          distanceAlongWall: Math.max(0, Math.min(maxDist, val))
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
+                    m
                   </span>
-                </div>
-                <div className="grid grid-cols-4 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustDist(-0.10)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
-                  >
-                    -10cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustDist(-0.05)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
-                  >
-                    -5cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustDist(0.05)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
-                  >
-                    +5cm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAdjustDist(0.10)}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono font-semibold"
-                  >
-                    +10cm
-                  </button>
                 </div>
               </div>
 
@@ -641,20 +615,6 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     onChange={(e) => setOpeningOffset(e.target.value)}
                     className="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold"
                   />
-                  <div className="flex gap-1 mt-1">
-                    {['0.10', '0.20', '0.50', '1.00'].map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setOpeningOffset(d)}
-                        className={`flex-1 py-0.5 rounded text-[10px] font-mono border ${
-                          openingOffset === d ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-50'
-                        }`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
