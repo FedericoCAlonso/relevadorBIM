@@ -129,7 +129,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     updateElectricalElement,
     deleteElectricalElement,
     updateConduit,
-    deleteConduit
+    deleteConduit,
+    deleteColumn,
+    deleteBeam,
+    updateColumn
   } = useProjectStore();
 
   const { conduitOccupancy } = useElectricalViewModel();
@@ -155,6 +158,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
       : null;
   const selectedConduit =
     selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
+  const selectedColumn =
+    selectedEntity?.type === 'column' ? (project.columns || []).find((c) => c.id === selectedEntity.id) : null;
+  const selectedBeam =
+    selectedEntity?.type === 'beam' ? (project.beams || []).find((b) => b.id === selectedEntity.id) : null;
 
   const anchorVertex = activeAnchorVertexId ? verticesMap.get(activeAnchorVertexId) : null;
   const anchorLabel = anchorVertex
@@ -415,7 +422,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   // ═════════════════════════════════════════════════════════════════════════
   // CASO 1: INSPECTOR CONTEXTUAL (Elemento Seleccionado en el Plano)
   // ═════════════════════════════════════════════════════════════════════════
-  if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit) {
+  if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit || selectedColumn || selectedBeam) {
     return (
       <footer
         className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
@@ -864,6 +871,118 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             </>
           );
         })()}
+
+        {/* ── Inspector de Columna Estructural (Móvil) ── */}
+        {selectedColumn && (
+          <>
+            <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+              <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                <Building2 size={14} className="text-slate-600 shrink-0" />
+                <span className="font-bold shrink-0">
+                  Columna {selectedColumn.shape === 'circular' ? 'Ø' : ''}:
+                </span>
+                <span className="font-mono font-bold text-slate-900 shrink-0">
+                  {selectedColumn.shape === 'circular'
+                    ? `${(selectedColumn.width * 100).toFixed(0)}cm`
+                    : `${(selectedColumn.width * 100).toFixed(0)}x${(selectedColumn.depth * 100).toFixed(0)}cm`}
+                </span>
+                <span className="text-slate-400 text-[11px] truncate">(H°A° - Sin corte)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedEntity(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
+                title="Cerrar selección"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
+              {/* Girar 90° si es rectangular */}
+              {selectedColumn.shape !== 'circular' && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateColumn(selectedColumn.id, {
+                      rotationDeg: ((selectedColumn.rotationDeg || 0) + 90) % 360
+                    })
+                  }
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-300"
+                >
+                  <RotateCw size={13} />
+                  <span>Girar 90°</span>
+                </button>
+              )}
+
+              {/* Conmutar forma */}
+              <button
+                type="button"
+                onClick={() =>
+                  updateColumn(selectedColumn.id, {
+                    shape: selectedColumn.shape === 'circular' ? 'rectangular' : 'circular'
+                  })
+                }
+                className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-300"
+              >
+                <span>{selectedColumn.shape === 'circular' ? 'Hacer Rectangular' : 'Hacer Circular'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  deleteColumn(selectedColumn.id);
+                  setSelectedEntity(null);
+                }}
+                className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto flex-shrink-0"
+                title="Eliminar columna"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Inspector de Viga Saliente (Móvil) ── */}
+        {selectedBeam && (
+          <>
+            <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+              <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                <Layers size={14} className="text-indigo-600 shrink-0" />
+                <span className="font-bold shrink-0">Viga Bajo Losa:</span>
+                <span className="font-mono font-bold text-indigo-950 shrink-0">
+                  {(selectedBeam.width * 100).toFixed(0)}x{(selectedBeam.dropHeightM * 100).toFixed(0)}cm
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedEntity(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
+                title="Cerrar selección"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
+              <span className="text-[11px] text-slate-500 font-mono px-2 py-1 bg-slate-100 rounded-lg">
+                Cuelgue {(selectedBeam.dropHeightM * 100).toFixed(0)}cm
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  deleteBeam(selectedBeam.id);
+                  setSelectedEntity(null);
+                }}
+                className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto flex-shrink-0"
+                title="Eliminar viga"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </>
+        )}
       </footer>
     );
   }

@@ -18,18 +18,24 @@ export type SpaceCategory =
   | 'lavadero'
   | 'cochera'
   | 'escalera'
+  | 'balcon'
+  | 'aire_luz'
+  | 'pleno'
   | 'exterior'
   | 'otro';
 
+export type SpaceCoverType = 'cubierto' | 'semicubierto' | 'descubierto' | 'vacio';
+
 export interface Space {
   id: string;
-  name: string;                // Ej: "Living Comedor", "Dormitorio 1"
+  name: string;                // Ej: "Living Comedor", "Patio de Aire y Luz", "Pleno Técnico"
   category: SpaceCategory;
   levelId: string;             // Nivel/planta al que pertenece
   ceilingHeight: number;       // Altura libre piso-cielorraso en metros (default: 2.70)
   floorElevation: number;      // Desnivel del piso respecto al nivel de planta (default: 0.00)
   boundaryVertexIds: string[]; // Vértices ordenados que forman el perímetro interior
   wallIds: string[];           // IDs de los muros que lo rodean
+  coverType?: SpaceCoverType;  // Tipo de cubierta: cubierto, semicubierto (balcón), descubierto o vacío
   color?: string;              // Color tenue de relleno para identificación
 }
 
@@ -42,10 +48,26 @@ export const ROOM_NAME_SUGGESTIONS: readonly string[] = [
   'Lavadero',
   'Pasillo',
   'Balcón',
-  'Quincho'
+  'Quincho',
+  'Patio Aire y Luz',
+  'Pleno Técnico'
 ];
 
 export const STANDARD_CEILING_HEIGHT_PRESETS: readonly number[] = [2.40, 2.60, 2.70, 2.80, 3.00];
+
+/**
+ * Retorna true si el espacio representa un vacío arquitectónico (patio de aire y luz o hueco de losa).
+ */
+export function isSpaceVoid(space: Space): boolean {
+  return space.category === 'aire_luz' || space.coverType === 'vacio';
+}
+
+/**
+ * Retorna true si el espacio es un pleno técnico o ducto de montantes verticales.
+ */
+export function isSpaceShaft(space: Space): boolean {
+  return space.category === 'pleno';
+}
 
 export interface SpaceMetrics {
   areaM2: number;

@@ -29,6 +29,8 @@ export interface WallPlacementSnap {
 
 export type WallJustification = 'interior' | 'center' | 'exterior';
 
+export type WallType = 'standard' | 'low_wall' | 'railing';
+
 export interface Wall {
   id: string;
   levelId: string;           // ID del nivel/planta al que pertenece
@@ -36,6 +38,7 @@ export interface Wall {
   endVertexId: string;       // ID del vértice final
   thickness: number;         // Espesor del muro en metros (ej: 0.10, 0.15, 0.20, 0.30)
   height: number;            // Altura libre en metros (default: 2.80)
+  wallType?: WallType;       // Tipología física: 'standard' (hasta losa), 'low_wall' (antepecho/bajo), 'railing' (baranda/reja)
   justification?: WallJustification; // Alineación/justificación: 'interior' (cara luz libre), 'center' (eje medio), 'exterior' (filo exterior)
   leftSpaceId?: string | null;  // ID del ambiente que da a la cara izquierda
   rightSpaceId?: string | null; // ID del ambiente que da a la cara derecha

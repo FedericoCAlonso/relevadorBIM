@@ -34,6 +34,7 @@ import type {
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 import type { DimensionLine } from '../models/architecture/DimensionLine';
+import type { StructuralColumn, StructuralBeam } from '../models/architecture/StructuralElement';
 import type { ElectricalBranch, BranchUpdatePayload } from '../models/electrical/electricalBranch';
 import { applyBranchUpdates, syncPassingCircuits } from '../models/electrical/electricalBranch';
 import { deriveConduitConductors } from '../models/electrical/electricalConductorDerivation';
@@ -45,7 +46,7 @@ export function generateUniqueId(prefix = 'id'): string {
 }
 
 export interface SelectedEntity {
-  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit' | 'dimension' | 'panel';
+  type: 'vertex' | 'wall' | 'opening' | 'space' | 'electrical_element' | 'conduit' | 'dimension' | 'panel' | 'column' | 'beam';
   id: string;
 }
 
@@ -136,6 +137,14 @@ interface ProjectStoreState {
   undoLastWall: () => void;
   updateOpening: (openingId: string, updates: Partial<Opening>) => void;
   deleteOpening: (openingId: string) => void;
+
+  // Acciones Estructurales (Columnas y Vigas)
+  addColumn: (column: Omit<StructuralColumn, 'id'>) => string;
+  updateColumn: (columnId: string, updates: Partial<StructuralColumn>) => void;
+  deleteColumn: (columnId: string) => void;
+  addBeam: (beam: Omit<StructuralBeam, 'id'>) => string;
+  updateBeam: (beamId: string, updates: Partial<StructuralBeam>) => void;
+  deleteBeam: (beamId: string) => void;
 
   // Acciones de Ambientes / Espacios
   updateSpace: (spaceId: string, updates: Partial<Space>) => void;
@@ -1046,6 +1055,72 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         meta: { ...state.project.meta, updatedAt: Date.now() }
       },
       selectedEntity: state.selectedEntity?.id === openingId ? null : state.selectedEntity
+    })),
+
+  addColumn: (col) => {
+    const id = generateUniqueId('col');
+    const newCol: StructuralColumn = { ...col, id };
+    set((state) => ({
+      project: {
+        ...state.project,
+        columns: [...(state.project.columns || []), newCol],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: { type: 'column', id }
+    }));
+    return id;
+  },
+
+  updateColumn: (columnId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        columns: (state.project.columns || []).map((c) => (c.id === columnId ? { ...c, ...updates } : c)),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  deleteColumn: (columnId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        columns: (state.project.columns || []).filter((c) => c.id !== columnId),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: state.selectedEntity?.id === columnId ? null : state.selectedEntity
+    })),
+
+  addBeam: (beam) => {
+    const id = generateUniqueId('beam');
+    const newBeam: StructuralBeam = { ...beam, id };
+    set((state) => ({
+      project: {
+        ...state.project,
+        beams: [...(state.project.beams || []), newBeam],
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: { type: 'beam', id }
+    }));
+    return id;
+  },
+
+  updateBeam: (beamId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        beams: (state.project.beams || []).map((b) => (b.id === beamId ? { ...b, ...updates } : b)),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      }
+    })),
+
+  deleteBeam: (beamId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        beams: (state.project.beams || []).filter((b) => b.id !== beamId),
+        meta: { ...state.project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: state.selectedEntity?.id === beamId ? null : state.selectedEntity
     })),
 
   updateSpace: (spaceId, updates) =>

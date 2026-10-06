@@ -28,6 +28,7 @@ import type {
 } from '../electrical/cableManufacturerCatalog';
 import { type UnderlaySheet } from '../underlay/UnderlaySheet';
 import { type DimensionLine } from './DimensionLine';
+import { type StructuralColumn, type StructuralBeam } from './StructuralElement';
 
 export interface CircuitCalculationOverride {
   installationMethod?: InstallationMethodCode;
@@ -68,6 +69,8 @@ export interface BuildingProject {
   walls: Wall[];
   openings: Opening[];
   spaces: Space[];
+  columns?: StructuralColumn[]; // Columnas estructurales (hormigón o acero)
+  beams?: StructuralBeam[];     // Vigas salientes (cuelgues de viga)
   verticalPortals: VerticalPortal[];
   electricalElements: ElectricalElement[];
   conduits: Conduit[];
@@ -170,6 +173,8 @@ export function createEmptyProject(name = 'Nuevo Relevamiento'): BuildingProject
     walls: [],
     openings: [],
     spaces: [],
+    columns: [],
+    beams: [],
     verticalPortals: [],
     electricalElements: [],
     conduits: [],

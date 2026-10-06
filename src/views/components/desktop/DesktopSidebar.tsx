@@ -10,8 +10,13 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
-import type { WallJustification } from '../../../models/architecture/Wall';
+import type { WallJustification, WallType } from '../../../models/architecture/Wall';
 import { getWallLength } from '../../../models/architecture/Wall';
+import type { ColumnShape } from '../../../models/architecture/StructuralElement';
+import {
+  COLUMN_DIMENSION_PRESETS,
+  BEAM_DIMENSION_PRESETS
+} from '../../../models/architecture/StructuralElement';
 import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
@@ -117,7 +122,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     ensureDefaultCircuits,
     addPanel,
     updatePanel,
-    deletePanel
+    deletePanel,
+    addColumn,
+    updateColumn,
+    deleteColumn,
+    addBeam,
+    updateBeam,
+    deleteBeam,
+    setSelectedEntity
   } = useProjectStore();
 
   const {
@@ -159,7 +171,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     setPrevSelectedEntityKey(currentSelectedEntityKey);
     if (selectedEntity?.type === 'space') {
       setActiveTab('spaces');
-    } else if (selectedEntity?.type === 'wall' || selectedEntity?.type === 'opening') {
+    } else if (
+      selectedEntity?.type === 'wall' ||
+      selectedEntity?.type === 'opening' ||
+      selectedEntity?.type === 'column' ||
+      selectedEntity?.type === 'beam'
+    ) {
       setActiveTab('survey');
     } else if (selectedEntity?.type === 'electrical_element' || selectedEntity?.type === 'conduit') {
       setActiveTab('electrical');
@@ -179,6 +196,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       : null;
   const selectedConduit =
     selectedEntity?.type === 'conduit' ? project.conduits.find((c) => c.id === selectedEntity.id) : null;
+  const selectedColumn =
+    selectedEntity?.type === 'column' ? (project.columns || []).find((c) => c.id === selectedEntity.id) : null;
+  const selectedBeam =
+    selectedEntity?.type === 'beam' ? (project.beams || []).find((b) => b.id === selectedEntity.id) : null;
 
   // Estado rápido para inserción de abertura en escritorio
   const [openingOffset, setOpeningOffset] = useState('0.60');
@@ -404,7 +425,410 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 <Undo2 size={14} />
                 <span>Deshacer Última Pared</span>
               </button>
+
+              {/* ─── ESTRUCTURA & INTERFERENCIAS (BIM) ─── */}
+              <div className="pt-2 border-t border-slate-200">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1.5 uppercase tracking-wider">
+                  + Estructura & Interferencias
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const anchor = anchorVertex || { x: 0, y: 0 };
+                      const id = addColumn({
+                        levelId: project.activeLevelId,
+                        x: anchor.x,
+                        y: anchor.y,
+                        width: 0.20,
+                        depth: 0.20,
+                        rotationDeg: 0,
+                        shape: 'rectangular',
+                        material: 'concrete'
+                      });
+                      setSelectedEntity({ type: 'column', id });
+                    }}
+                    className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl font-bold text-slate-700 flex items-center justify-center gap-1 transition-colors text-[11px]"
+                    title="Insertar columna de hormigón armado (zona de exclusión de canaleteado)"
+                  >
+                    <Building2 size={13} className="text-slate-600" />
+                    <span>+ Columna H°A°</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const anchor = anchorVertex || { x: 0, y: 0 };
+                      const id = addBeam({
+                        levelId: project.activeLevelId,
+                        startX: anchor.x,
+                        startY: anchor.y,
+                        endX: anchor.x + 2.0,
+                        endY: anchor.y,
+                        width: 0.20,
+                        dropHeightM: 0.40
+                      });
+                      setSelectedEntity({ type: 'beam', id });
+                    }}
+                    className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl font-bold text-slate-700 flex items-center justify-center gap-1 transition-colors text-[11px]"
+                    title="Insertar viga saliente bajo losa (interferencia de tendido)"
+                  >
+                    <Layers size={13} className="text-slate-600" />
+                    <span>+ Viga Saliente</span>
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Inspector de Columna Estructural Seleccionada */}
+            {selectedColumn && (
+              <div className="bg-slate-50 border-2 border-slate-500 rounded-2xl p-3.5 space-y-3 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-slate-200 text-slate-800 rounded-lg">
+                      <Building2 size={16} />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">
+                        Columna {selectedColumn.shape === 'circular' ? 'Circular' : 'Rectangular'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">ID: {selectedColumn.id.slice(-6)}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteColumn(selectedColumn.id);
+                      setSelectedEntity(null);
+                    }}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Eliminar columna"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                {/* Forma: Rectangular vs Circular */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">FORMA GEOMÉTRICA</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(['rectangular', 'circular'] as ColumnShape[]).map((shape) => (
+                      <button
+                        key={shape}
+                        type="button"
+                        onClick={() => updateColumn(selectedColumn.id, { shape })}
+                        className={`py-1 rounded-lg text-xs font-semibold border transition-all ${
+                          (selectedColumn.shape || 'rectangular') === shape
+                            ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {shape === 'rectangular' ? 'Rectangular' : 'Circular (Ø)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Presets de Medidas */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">PRESETS DE SECCIÓN</label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {COLUMN_DIMENSION_PRESETS.map((preset) => {
+                      const isSelected =
+                        Math.abs(selectedColumn.width - preset.width) < 0.01 &&
+                        Math.abs(selectedColumn.depth - preset.depth) < 0.01;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            updateColumn(selectedColumn.id, {
+                              width: preset.width,
+                              depth: preset.depth,
+                              shape: preset.label.startsWith('Ø') ? 'circular' : selectedColumn.shape || 'rectangular'
+                            })
+                          }
+                          className={`py-1 px-1 rounded-lg text-[10px] font-mono font-semibold border transition-all text-center ${
+                            isSelected
+                              ? 'bg-slate-800 text-white border-slate-900 shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Dimensiones personalizadas */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                      {selectedColumn.shape === 'circular' ? 'DIÁMETRO (m)' : 'ANCHO X (m)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.10"
+                      value={selectedColumn.width}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) {
+                          updateColumn(selectedColumn.id, {
+                            width: val,
+                            depth: selectedColumn.shape === 'circular' ? val : selectedColumn.depth
+                          });
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900"
+                    />
+                  </div>
+                  {selectedColumn.shape !== 'circular' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-1">PROFUNDIDAD Y (m)</label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.10"
+                        value={selectedColumn.depth}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (val > 0) updateColumn(selectedColumn.id, { depth: val });
+                        }}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Posición (X, Y) */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">POSICIÓN CENTRO (X, Y)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center bg-white border border-slate-300 rounded-xl px-2 py-1">
+                      <span className="text-[10px] font-mono text-slate-400 mr-1">X:</span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={Number(selectedColumn.x.toFixed(2))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) updateColumn(selectedColumn.id, { x: val });
+                        }}
+                        className="w-full font-mono font-bold text-xs outline-none"
+                      />
+                      <span className="text-[10px] text-slate-400 font-mono">m</span>
+                    </div>
+                    <div className="flex items-center bg-white border border-slate-300 rounded-xl px-2 py-1">
+                      <span className="text-[10px] font-mono text-slate-400 mr-1">Y:</span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={Number(selectedColumn.y.toFixed(2))}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) updateColumn(selectedColumn.id, { y: val });
+                        }}
+                        className="w-full font-mono font-bold text-xs outline-none"
+                      />
+                      <span className="text-[10px] text-slate-400 font-mono">m</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rotación */}
+                {selectedColumn.shape !== 'circular' && (
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">ROTACIÓN</label>
+                    <div className="grid grid-cols-3 gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateColumn(selectedColumn.id, {
+                            rotationDeg: (((selectedColumn.rotationDeg || 0) - 90) % 360 + 360) % 360
+                          })
+                        }
+                        className="py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1"
+                      >
+                        <RotateCcw size={12} />
+                        <span>-90°</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateColumn(selectedColumn.id, {
+                            rotationDeg: ((selectedColumn.rotationDeg || 0) + 90) % 360
+                          })
+                        }
+                        className="py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1"
+                      >
+                        <RotateCw size={12} />
+                        <span>+90°</span>
+                      </button>
+                      <div className="flex items-center bg-white border border-slate-300 rounded-lg px-1.5 py-1 text-center">
+                        <input
+                          type="number"
+                          value={selectedColumn.rotationDeg || 0}
+                          onChange={(e) =>
+                            updateColumn(selectedColumn.id, { rotationDeg: parseFloat(e.target.value) || 0 })
+                          }
+                          className="w-full text-center font-mono font-bold text-xs outline-none"
+                        />
+                        <span className="text-[10px] text-slate-400">°</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Nota técnica informativa neutral */}
+                <div className="p-2 bg-slate-100 rounded-xl text-[10px] text-slate-600 border border-slate-200">
+                  <span className="font-bold text-slate-700 block mb-0.5">Elemento Estructural H°A°:</span>
+                  Zona no canaleteable en hormigón armado. Los trazados deben esquivar esta sección o pasar en superficie/cielorraso.
+                </div>
+              </div>
+            )}
+
+            {/* Inspector de Viga Saliente Seleccionada */}
+            {selectedBeam && (
+              <div className="bg-slate-50 border-2 border-indigo-400 rounded-2xl p-3.5 space-y-3 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                      <Layers size={16} />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">Viga Saliente Bajo Losa</span>
+                      <span className="text-[10px] text-slate-500 font-mono">ID: {selectedBeam.id.slice(-6)}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteBeam(selectedBeam.id);
+                      setSelectedEntity(null);
+                    }}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Eliminar viga"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                {/* Presets de Vigas */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">PRESETS DE SECCIÓN (Ancho x Cuelgue)</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {BEAM_DIMENSION_PRESETS.map((preset) => {
+                      const isSelected =
+                        Math.abs(selectedBeam.width - preset.width) < 0.01 &&
+                        Math.abs(selectedBeam.dropHeightM - preset.dropHeightM) < 0.01;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            updateBeam(selectedBeam.id, {
+                              width: preset.width,
+                              dropHeightM: preset.dropHeightM
+                            })
+                          }
+                          className={`py-1 px-1 rounded-lg text-[10px] font-mono font-semibold border transition-all text-center ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Ancho y Cuelgue */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">ANCHO VIGA (m)</label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.10"
+                      value={selectedBeam.width}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) updateBeam(selectedBeam.id, { width: val });
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">CUELGUE / ALTURA (m)</label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.15"
+                      value={selectedBeam.dropHeightM}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) updateBeam(selectedBeam.id, { dropHeightM: val });
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Coordenadas de Extremos */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-600 block">EXTREMOS (X, Y)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white border border-slate-200 rounded-xl p-1.5">
+                      <span className="text-[9px] font-bold text-slate-400 block mb-1">Inicio:</span>
+                      <div className="flex gap-1 text-[11px] font-mono">
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={Number(selectedBeam.startX.toFixed(2))}
+                          onChange={(e) => updateBeam(selectedBeam.id, { startX: parseFloat(e.target.value) || 0 })}
+                          className="w-full border border-slate-200 rounded px-1"
+                        />
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={Number(selectedBeam.startY.toFixed(2))}
+                          onChange={(e) => updateBeam(selectedBeam.id, { startY: parseFloat(e.target.value) || 0 })}
+                          className="w-full border border-slate-200 rounded px-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-xl p-1.5">
+                      <span className="text-[9px] font-bold text-slate-400 block mb-1">Fin:</span>
+                      <div className="flex gap-1 text-[11px] font-mono">
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={Number(selectedBeam.endX.toFixed(2))}
+                          onChange={(e) => updateBeam(selectedBeam.id, { endX: parseFloat(e.target.value) || 0 })}
+                          className="w-full border border-slate-200 rounded px-1"
+                        />
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={Number(selectedBeam.endY.toFixed(2))}
+                          onChange={(e) => updateBeam(selectedBeam.id, { endY: parseFloat(e.target.value) || 0 })}
+                          className="w-full border border-slate-200 rounded px-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nota técnica informativa neutral */}
+                <div className="p-2 bg-indigo-50/70 rounded-xl text-[10px] text-indigo-900 border border-indigo-100">
+                  <span className="font-bold block mb-0.5">Cuelgue bajo losa:</span>
+                  Proyección en planta con líneas de trazos. Señala discontinuidad de losa para ruteo de cañerías.
+                </div>
+              </div>
+            )}
 
             {/* Inspector de Abertura Seleccionada (Gestión total: Tipo, Ancho, Posición, Sentido de Apertura) */}
             {selectedOpening && (() => {
@@ -735,6 +1159,56 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Tipo de Cerramiento Arquitectónico */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 block mb-1">TIPO DE CERRAMIENTO</label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { id: 'standard' as WallType, label: 'Estándar' },
+                      { id: 'low_wall' as WallType, label: 'Muro Bajo' },
+                      { id: 'railing' as WallType, label: 'Baranda' }
+                    ].map((wt) => (
+                      <button
+                        key={wt.id}
+                        type="button"
+                        onClick={() =>
+                          updateWall(selectedWall.id, {
+                            wallType: wt.id,
+                            height: wt.id === 'low_wall' ? (selectedWall.height < 2.0 ? selectedWall.height : 1.00) : (wt.id === 'railing' ? (selectedWall.height < 2.0 ? selectedWall.height : 0.90) : 2.80)
+                          })
+                        }
+                        className={`py-1 rounded-lg text-xs font-semibold border transition-all ${
+                          (selectedWall.wallType || 'standard') === wt.id
+                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {wt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedWall.wallType === 'low_wall' && (
+                    <div className="mt-1.5 flex items-center justify-between bg-white border border-slate-300 rounded-xl px-2.5 py-1">
+                      <span className="text-[10px] font-bold text-slate-600">Altura de Muro:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0.20"
+                          max="2.50"
+                          value={selectedWall.height ?? 1.00}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (val > 0) updateWall(selectedWall.id, { height: val });
+                          }}
+                          className="w-16 font-mono font-bold text-xs text-right outline-none"
+                        />
+                        <span className="text-xs font-mono font-bold text-slate-400">m</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Justificación de Cara del Muro */}

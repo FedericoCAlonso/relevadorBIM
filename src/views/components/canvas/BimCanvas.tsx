@@ -13,7 +13,14 @@ import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/archit
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
 import { computeResolvedWallPolygons } from '../../../models/architecture/WallCornerEngine';
 import { getOpeningJambs } from '../../../models/architecture/Opening';
-import { resolveSpacePolygon, calculatePolygonArea, calculatePolygonCentroid } from '../../../models/architecture/Space';
+import {
+  resolveSpacePolygon,
+  calculatePolygonArea,
+  calculatePolygonCentroid,
+  isSpaceVoid,
+  isSpaceShaft
+} from '../../../models/architecture/Space';
+import { getColumnPolygon, getBeamPolygon } from '../../../models/architecture/StructuralElement';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
@@ -84,6 +91,8 @@ interface BimCanvasProps {
   onWallClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
+  onColumnClick?: (columnId: string) => void;
+  onBeamClick?: (beamId: string) => void;
   onElectricalElementClick?: (elementId: string, isMultiSelect?: boolean) => void;
   onElectricalElementDoubleClick?: (elementId: string) => void;
   onPanelClick?: (panelId: string, isMultiSelect?: boolean) => void;
@@ -156,6 +165,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onWallClick,
   onOpeningClick,
   onSpaceClick,
+  onColumnClick,
+  onBeamClick,
   onElectricalElementClick,
   onElectricalElementDoubleClick,
   onPanelClick,
@@ -907,6 +918,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         const area = calculatePolygonArea(poly);
         const centroid = calculatePolygonCentroid(poly);
 
+        const isVoid = isSpaceVoid(space);
+        const isShaft = isSpaceShaft(space);
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        if (isVoid) {
+          for (const p of poly) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+          }
+        }
+
         return (
           <g
             key={space.id}
@@ -921,7 +945,42 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
-            <polygon points={pointsStr} fill="rgba(241, 245, 249, 0.75)" stroke="none" />
+            <polygon
+              points={pointsStr}
+              fill={
+                isVoid
+                  ? 'rgba(255, 255, 255, 0.4)'
+                  : isShaft
+                  ? 'rgba(203, 213, 225, 0.45)'
+                  : space.color || 'rgba(241, 245, 249, 0.75)'
+              }
+              stroke={isVoid ? '#94a3b8' : isShaft ? '#64748b' : 'none'}
+              strokeWidth={isVoid || isShaft ? 1 : 0}
+              strokeDasharray={isVoid ? '4 3' : undefined}
+            />
+
+            {/* Cruz diagonal reglamentaria para vacíos de losa / patio de aire y luz */}
+            {isVoid && (
+              <g className="pointer-events-none select-none opacity-40">
+                <line
+                  x1={minX * zoom}
+                  y1={minY * zoom}
+                  x2={maxX * zoom}
+                  y2={maxY * zoom}
+                  stroke="#64748b"
+                  strokeWidth={1}
+                />
+                <line
+                  x1={minX * zoom}
+                  y1={maxY * zoom}
+                  x2={maxX * zoom}
+                  y2={minY * zoom}
+                  stroke="#64748b"
+                  strokeWidth={1}
+                />
+              </g>
+            )}
+
             <text
               x={centroid.x * zoom}
               y={centroid.y * zoom - 6}
@@ -938,7 +997,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               className="text-[10px] font-mono fill-slate-500 pointer-events-none select-none"
               fontSize={10}
             >
-              {area.toFixed(2)} m² · h: {space.ceilingHeight.toFixed(2)}m
+              {isVoid
+                ? `${area.toFixed(2)} m² · VACÍO / AIRE Y LUZ`
+                : isShaft
+                ? `${area.toFixed(2)} m² · PLENO TÉCNICO`
+                : `${area.toFixed(2)} m² · h: ${space.ceilingHeight.toFixed(2)}m${
+                    space.coverType === 'semicubierto' ? ' (Semicub.)' : ''
+                  }`}
             </text>
           </g>
         );
@@ -1002,12 +1067,53 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             />
 
             {/* 2. Cuerpo físico del muro */}
-            <polygon
-              points={pointsStr}
-              fill={isSelected ? '#2563eb' : hoveredWallId === wall.id ? '#475569' : '#334155'}
-              stroke={isSelected ? '#1d4ed8' : '#1e293b'}
-              strokeWidth={isSelected ? 2 : 1}
-            />
+            {(() => {
+              const isLowWall = wall.wallType === 'low_wall';
+              const isRailing = wall.wallType === 'railing';
+
+              const fill = isSelected
+                ? '#2563eb'
+                : isRailing
+                ? 'rgba(148, 163, 184, 0.15)'
+                : isLowWall
+                ? hoveredWallId === wall.id ? '#64748b' : '#94a3b8'
+                : hoveredWallId === wall.id ? '#475569' : '#334155';
+
+              const stroke = isSelected
+                ? '#1d4ed8'
+                : isRailing
+                ? '#475569'
+                : isLowWall
+                ? '#475569'
+                : '#1e293b';
+
+              const strokeWidth = isSelected ? 2 : isRailing ? 1.5 : 1;
+              const strokeDasharray = isRailing ? '8 4' : undefined;
+
+              return (
+                <>
+                  <polygon
+                    points={pointsStr}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                  />
+                  {(isLowWall || isRailing) && (
+                    <text
+                      x={midX}
+                      y={midY}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={9}
+                      className="fill-white font-mono font-bold pointer-events-none select-none drop-shadow"
+                    >
+                      {isLowWall ? `h=${wall.height || 1.0}m` : 'Baranda'}
+                    </text>
+                  )}
+                </>
+              );
+            })()}
 
             {/* 3. Indicador y Grips interactivos de selección activa (CAD Smart Grips) */}
             {isSelected && (
@@ -1352,6 +1458,152 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       );
     });
   }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onOpeningClick]);
+
+  // 3b. Vigas Salientes (Cuelgues de Losa / Proyección Superior)
+  const renderedBeams = useMemo(() => {
+    const beams = project.beams || [];
+    return beams
+      .filter((b) => b.levelId === project.activeLevelId)
+      .map((beam) => {
+        const poly = getBeamPolygon(beam);
+        if (poly.length < 4) return null;
+        const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
+        const isSelected = selectedEntity?.type === 'beam' && selectedEntity.id === beam.id;
+        const midX = ((beam.startX + beam.endX) / 2) * zoom;
+        const midY = ((beam.startY + beam.endY) / 2) * zoom;
+
+        return (
+          <g
+            key={beam.id}
+            onClick={(e) => {
+              if (wasDraggingRecentlyRef.current()) return;
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) return;
+              e.stopPropagation();
+              onBeamClick?.(beam.id);
+            }}
+            className="cursor-pointer group"
+          >
+            <polygon
+              points={pointsStr}
+              fill={isSelected ? 'rgba(37, 99, 235, 0.15)' : 'rgba(148, 163, 184, 0.10)'}
+              stroke={isSelected ? '#2563eb' : '#64748b'}
+              strokeWidth={isSelected ? 2 : 1}
+              strokeDasharray="6 3"
+            />
+            <text
+              x={midX}
+              y={midY}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={9}
+              className="fill-slate-600 font-mono font-bold pointer-events-none select-none"
+            >
+              V {Math.round(beam.width * 100)}x{Math.round(beam.dropHeightM * 100)}
+            </text>
+          </g>
+        );
+      });
+  }, [project.beams, project.activeLevelId, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onBeamClick]);
+
+  // 3c. Columnas Estructurales (Hormigón Armado y Acero)
+  const renderedColumns = useMemo(() => {
+    const columns = project.columns || [];
+    return columns
+      .filter((c) => c.levelId === project.activeLevelId)
+      .map((col) => {
+        const isSelected = selectedEntity?.type === 'column' && selectedEntity.id === col.id;
+        const cx = col.x * zoom;
+        const cy = col.y * zoom;
+
+        return (
+          <g
+            key={col.id}
+            onClick={(e) => {
+              if (wasDraggingRecentlyRef.current()) return;
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) return;
+              e.stopPropagation();
+              onColumnClick?.(col.id);
+            }}
+            className="cursor-pointer group"
+          >
+            {col.shape === 'circular' ? (
+              <>
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={(col.width / 2) * zoom}
+                  fill={isSelected ? '#3b82f6' : '#cbd5e1'}
+                  stroke={isSelected ? '#1d4ed8' : '#334155'}
+                  strokeWidth={1.5}
+                />
+                <line
+                  x1={cx - 6}
+                  y1={cy}
+                  x2={cx + 6}
+                  y2={cy}
+                  stroke="#475569"
+                  strokeWidth={1}
+                  className="pointer-events-none select-none"
+                />
+                <line
+                  x1={cx}
+                  y1={cy - 6}
+                  x2={cx}
+                  y2={cy + 6}
+                  stroke="#475569"
+                  strokeWidth={1}
+                  className="pointer-events-none select-none"
+                />
+              </>
+            ) : (
+              (() => {
+                const poly = getColumnPolygon(col);
+                const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
+                return (
+                  <>
+                    <polygon
+                      points={pointsStr}
+                      fill={isSelected ? '#3b82f6' : '#cbd5e1'}
+                      stroke={isSelected ? '#1d4ed8' : '#334155'}
+                      strokeWidth={1.5}
+                    />
+                    <line
+                      x1={poly[0].x * zoom}
+                      y1={poly[0].y * zoom}
+                      x2={poly[2].x * zoom}
+                      y2={poly[2].y * zoom}
+                      stroke={isSelected ? '#1d4ed8' : '#64748b'}
+                      strokeWidth={1}
+                      className="pointer-events-none select-none opacity-60"
+                    />
+                    <line
+                      x1={poly[1].x * zoom}
+                      y1={poly[1].y * zoom}
+                      x2={poly[3].x * zoom}
+                      y2={poly[3].y * zoom}
+                      stroke={isSelected ? '#1d4ed8' : '#64748b'}
+                      strokeWidth={1}
+                      className="pointer-events-none select-none opacity-60"
+                    />
+                  </>
+                );
+              })()
+            )}
+            {isSelected && (
+              <text
+                x={cx}
+                y={cy - (col.depth / 2) * zoom - 8}
+                textAnchor="middle"
+                fontSize={9}
+                className="fill-blue-600 font-mono font-bold pointer-events-none select-none"
+              >
+                Col {Math.round(col.width * 100)}x{Math.round(col.depth * 100)}
+              </text>
+            )}
+          </g>
+        );
+      });
+  }, [project.columns, project.activeLevelId, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onColumnClick]);
 
   // 4. Vértices y Puntos de Anclaje (Snaps)
   const renderedVertices = useMemo(() => {
@@ -2608,8 +2860,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           )}
 
           {renderedSpaces}
+          {renderedBeams}
           {renderedWalls}
           {renderedOpenings}
+          {renderedColumns}
           {renderedPreviewRay}
           {renderedConduits}
           {renderedVertices}

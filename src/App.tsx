@@ -51,7 +51,9 @@ export function App() {
     deleteOpening,
     deleteElectricalElement,
     deleteConduit,
-    deleteDimensionLine
+    deleteDimensionLine,
+    deleteColumn,
+    deleteBeam
   } = useProjectStore();
 
   const {
@@ -271,6 +273,8 @@ export function App() {
             else if (entity.type === 'electrical_element') deleteElectricalElement(entity.id);
             else if (entity.type === 'conduit') deleteConduit(entity.id);
             else if (entity.type === 'dimension') deleteDimensionLine(entity.id);
+            else if (entity.type === 'column') deleteColumn(entity.id);
+            else if (entity.type === 'beam') deleteBeam(entity.id);
           });
           clearSelection();
           return;
@@ -282,6 +286,8 @@ export function App() {
           else if (selectedEntity.type === 'electrical_element') deleteElectricalElement(selectedEntity.id);
           else if (selectedEntity.type === 'conduit') deleteConduit(selectedEntity.id);
           else if (selectedEntity.type === 'dimension') deleteDimensionLine(selectedEntity.id);
+          else if (selectedEntity.type === 'column') deleteColumn(selectedEntity.id);
+          else if (selectedEntity.type === 'beam') deleteBeam(selectedEntity.id);
           setSelectedEntity(null);
         }
       }
@@ -586,6 +592,8 @@ export function App() {
                 setEditingSpaceId(spaceId);
               }
             }}
+            onColumnClick={(colId) => setSelectedEntity({ type: 'column', id: colId })}
+            onBeamClick={(beamId) => setSelectedEntity({ type: 'beam', id: beamId })}
             onElectricalElementClick={(elementId, isMultiSelect) => {
               if (isMultiSelect) {
                 toggleSelectEntity({ type: 'electrical_element', id: elementId }, true);

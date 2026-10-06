@@ -104,6 +104,45 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
           </div>
         </div>
 
+        {/* Tipo de Espacio y Cubierta */}
+        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          <label className="block text-xs font-bold text-slate-700">TIPO DE RECINTO Y CUBIERTA</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              { id: 'cubierto', label: 'Cubierto (Habitable)', cat: 'living' as const },
+              { id: 'semicubierto', label: 'Balcón / Semicubierto', cat: 'balcon' as const },
+              { id: 'vacio', label: 'Vacío / Aire y Luz', cat: 'aire_luz' as const },
+              { id: 'pleno', label: 'Pleno Técnico (Montante)', cat: 'pleno' as const }
+            ].map((opt) => {
+              const isSelected =
+                (opt.id === 'vacio' && (space.coverType === 'vacio' || space.category === 'aire_luz')) ||
+                (opt.id === 'pleno' && space.category === 'pleno') ||
+                (opt.id === 'semicubierto' && (space.coverType === 'semicubierto' || space.category === 'balcon')) ||
+                (opt.id === 'cubierto' && (!space.coverType || space.coverType === 'cubierto') && space.category !== 'aire_luz' && space.category !== 'pleno' && space.category !== 'balcon');
+
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    updateSpace(space.id, {
+                      coverType: opt.id as any,
+                      category: opt.cat
+                    });
+                  }}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all text-left ${
+                    isSelected
+                      ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Campo de Altura de Techo (h) */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between">

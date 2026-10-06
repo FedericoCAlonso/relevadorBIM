@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { getWallLength } from '../../../models/architecture/Wall';
+import { getWallLength, type WallType } from '../../../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
 import {
   X,
@@ -191,6 +191,65 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Tipo de Cerramiento */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE CERRAMIENTO</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { id: 'standard' as WallType, label: 'Estándar' },
+                    { id: 'low_wall' as WallType, label: 'Muro Bajo' },
+                    { id: 'railing' as WallType, label: 'Baranda' }
+                  ].map((wt) => (
+                    <button
+                      key={wt.id}
+                      type="button"
+                      onClick={() =>
+                        updateWall(selectedWall.id, {
+                          wallType: wt.id,
+                          height:
+                            wt.id === 'low_wall'
+                              ? selectedWall.height < 2.0
+                                ? selectedWall.height
+                                : 1.00
+                              : wt.id === 'railing'
+                              ? selectedWall.height < 2.0
+                                ? selectedWall.height
+                                : 0.90
+                              : 2.80
+                        })
+                      }
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        (selectedWall.wallType || 'standard') === wt.id
+                          ? 'bg-blue-600 text-white border-blue-700 font-bold'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {wt.label}
+                    </button>
+                  ))}
+                </div>
+                {selectedWall.wallType === 'low_wall' && (
+                  <div className="mt-1.5 flex items-center justify-between bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1">
+                    <span className="text-[10px] font-bold text-slate-600">Altura:</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.20"
+                        max="2.50"
+                        value={selectedWall.height ?? 1.00}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (val > 0) updateWall(selectedWall.id, { height: val });
+                        }}
+                        className="w-16 font-mono font-bold text-xs text-right bg-transparent outline-none"
+                      />
+                      <span className="text-xs font-mono font-bold text-slate-400">m</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Giro y Sentido */}
