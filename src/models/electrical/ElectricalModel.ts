@@ -149,6 +149,8 @@ export interface BoxTypeDefinition {
   materialBase?: BoxMaterialBase;
   description?: string;
   isCustom?: boolean;
+  widthMM?: number;         // Ancho físico de frente de la caja en mm (montaje en pared, vista de alzado)
+  heightMM?: number;        // Alto físico de frente de la caja en mm (montaje en pared, vista de alzado)
 }
 
 export interface ProjectMaterialCatalog {

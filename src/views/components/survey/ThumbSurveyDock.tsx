@@ -38,8 +38,10 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
   Layers,
-  Building2
+  Building2,
+  Eye
 } from 'lucide-react';
+import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 
 interface ThumbSurveyDockProps {
   relativeTurn: RelativeTurnType;
@@ -451,6 +453,16 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
+                <button
+                  type="button"
+                  onClick={() => useWallElevationStore.getState().openElevation(selectedWall.id)}
+                  className="flex items-center gap-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-semibold whitespace-nowrap"
+                  title="Ver alzado y elevación 2D del muro"
+                >
+                  <Eye size={13} />
+                  <span>Alzado</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('open-wall-edit-modal'))}

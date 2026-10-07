@@ -28,6 +28,8 @@ import { CircuitsModal } from './views/components/electrical/CircuitsModal';
 import { ElectricalReportModal } from './views/components/electrical/ElectricalReportModal';
 import { BatchSelectModal } from './views/components/electrical/BatchSelectModal';
 import { BulkEditModal } from './views/components/electrical/BulkEditModal';
+import { WallElevationModal } from './views/components/architecture/WallElevationModal';
+import { useWallElevationStore } from './viewmodels/useWallElevationViewModel';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
@@ -585,6 +587,7 @@ export function App() {
             detectedPatternMatches={detectedPatternMatches}
             onDismissPatternMatch={dismissPatternMatch}
             onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
+            onWallDoubleClick={(wallId) => useWallElevationStore.getState().openElevation(wallId)}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {
               setSelectedEntity({ type: 'space', id: spaceId });
@@ -1028,6 +1031,9 @@ export function App() {
         isOpen={showBulkEditModal}
         onClose={() => setShowBulkEditModal(false)}
       />
+
+      {/* 13. Modal / Visor de Alzado y Elevación de Muros 2D (Fase 3) */}
+      <WallElevationModal />
     </div>
   );
 }

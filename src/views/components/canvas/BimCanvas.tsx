@@ -89,6 +89,7 @@ interface BimCanvasProps {
   detectedPatternMatches?: DetectedPatternMatch[];
   onDismissPatternMatch?: (matchId: string) => void;
   onWallClick?: (wallId: string) => void;
+  onWallDoubleClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
   onColumnClick?: (columnId: string) => void;
@@ -163,6 +164,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   detectedPatternMatches = [],
   onDismissPatternMatch,
   onWallClick,
+  onWallDoubleClick,
   onOpeningClick,
   onSpaceClick,
   onColumnClick,
@@ -1053,6 +1055,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               e.stopPropagation();
               onWallClick?.(wall.id);
             }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onWallDoubleClick?.(wall.id);
+            }}
             className="cursor-pointer group"
           >
             {/* 1. Zona táctil y de clic amplia para selección inmediata del muro */}
@@ -1274,6 +1280,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     showDimensions,
     hoveredWallId,
     onWallClick,
+    onWallDoubleClick,
     isArchitectureLocked,
     activeDrag,
     handleGripPointerDown,

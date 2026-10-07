@@ -45,8 +45,10 @@ import {
   SlidersHorizontal,
   Server,
   Edit2,
-  GitBranch
+  GitBranch,
+  Eye
 } from 'lucide-react';
+import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 import { BulkEditPanel } from '../electrical/BulkEditPanel';
 
 interface DesktopSidebarProps {
@@ -1110,6 +1112,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     <Trash2 size={16} />
                   </button>
                 </div>
+
+                {/* Botón Acción Destacada: Ver Alzado / Elevación 2D */}
+                <button
+                  type="button"
+                  onClick={() => useWallElevationStore.getState().openElevation(selectedWall.id)}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all"
+                  title="Abrir vista interactiva de alzado 2D para ver cajas, cañerías, aberturas y alturas"
+                >
+                  <Eye size={15} />
+                  <span>Ver Alzado / Elevación 2D</span>
+                </button>
 
                 {/* 1. Longitud / Largo del Muro */}
                 {(() => {

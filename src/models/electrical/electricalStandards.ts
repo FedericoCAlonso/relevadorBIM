@@ -783,56 +783,72 @@ export const DEFAULT_BOX_TYPES: BoxTypeDefinition[] = [
     name: 'Caja Rectangular 5x10 (Chapa)',
     category: 'caja_rectangular',
     materialBase: 'chapa',
-    description: 'Chapa de acero estampada embutida'
+    description: 'Chapa de acero estampada embutida',
+    widthMM: 50,
+    heightMM: 100
   },
   {
     id: 'caja_rectangular_pvc',
     name: 'Caja Rectangular 5x10 (PVC)',
     category: 'caja_rectangular',
     materialBase: 'pvc',
-    description: 'Termoplástico ignífugo embutido'
+    description: 'Termoplástico ignífugo embutido',
+    widthMM: 50,
+    heightMM: 100
   },
   {
     id: 'caja_octogonal_chica',
     name: 'Caja Octogonal Chica 75mm',
     category: 'caja_octogonal',
     materialBase: 'chapa',
-    description: 'Para centros de iluminación y apliques'
+    description: 'Para centros de iluminación y apliques',
+    widthMM: 75,
+    heightMM: 75
   },
   {
     id: 'caja_octogonal_grande',
     name: 'Caja Octogonal Grande 90mm (Losa)',
     category: 'caja_octogonal',
     materialBase: 'chapa',
-    description: 'Para cruce de cañerías en losa'
+    description: 'Para cruce de cañerías en losa',
+    widthMM: 90,
+    heightMM: 90
   },
   {
     id: 'caja_cuadrada_10x10',
     name: 'Caja Cuadrada 10x10 (Paso / Derivación)',
     category: 'caja_cuadrada',
     materialBase: 'chapa',
-    description: 'Caja de paso para empalmes y tirada'
+    description: 'Caja de paso para empalmes y tirada',
+    widthMM: 100,
+    heightMM: 100
   },
   {
     id: 'caja_mignon',
     name: 'Caja Mignon (5x5)',
     category: 'caja_mignon',
     materialBase: 'chapa',
-    description: 'Para tomas pequeños o pulsadores'
+    description: 'Para tomas pequeños o pulsadores',
+    widthMM: 50,
+    heightMM: 50
   },
   {
     id: 'gabinete_tablero_embutir',
     name: 'Gabinete Tablero Embutir DIN',
     category: 'gabinete_tablero',
     materialBase: 'pvc',
-    description: 'Gabinete plástico o metálico para riel DIN'
+    description: 'Gabinete plástico o metálico para riel DIN',
+    widthMM: 300,
+    heightMM: 400
   },
   {
     id: 'gabinete_tablero_superficie',
     name: 'Gabinete Tablero Superficie DIN',
     category: 'gabinete_tablero',
     materialBase: 'chapa',
-    description: 'Gabinete exterior estanco o chapa'
+    description: 'Gabinete exterior estanco o chapa',
+    widthMM: 300,
+    heightMM: 400
   }
 ];
 

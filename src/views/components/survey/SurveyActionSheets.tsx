@@ -18,8 +18,10 @@ import {
   RotateCw,
   RotateCcw,
   Ruler,
-  MapPin
+  MapPin,
+  Eye
 } from 'lucide-react';
+import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 
 interface SurveyActionSheetsProps {
   showTeeModal: boolean;
@@ -282,6 +284,19 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Ver Alzado / Elevación 2D */}
+              <button
+                type="button"
+                onClick={() => {
+                  useWallElevationStore.getState().openElevation(selectedWall.id);
+                  setIsEditingWallMobile(false);
+                }}
+                className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Eye size={14} />
+                <span>Ver Alzado / Elevación 2D</span>
+              </button>
 
               {/* Anclaje */}
               <button
