@@ -32,6 +32,7 @@ import {
 import {
   ELEVATION_VIEWPORT_CONSTANTS,
   fitViewBox,
+  fitWallViewBox,
   panViewBox,
   viewBoxCenter,
   viewBoxToAttribute,
@@ -155,6 +156,10 @@ export function useWallElevationViewModel() {
   const zoomIn = useCallback(() => zoomAt(ELEVATION_VIEWPORT_CONSTANTS.ZOOM_STEP), [zoomAt]);
   const zoomOut = useCallback(() => zoomAt(1 / ELEVATION_VIEWPORT_CONSTANTS.ZOOM_STEP), [zoomAt]);
   const fit = useCallback(() => setViewport(null), []);
+  const fitWall = useCallback(() => {
+    if (!elevation) return;
+    applyViewBox(fitWallViewBox(elevation.lengthM, elevation.wallHeightM, elevation.drawingHeightM));
+  }, [elevation, applyViewBox]);
   const panBy = useCallback(
     (dx: number, dy: number) => {
       if (viewBox) applyViewBox(panViewBox(viewBox, dx, dy));
@@ -316,6 +321,43 @@ export function useWallElevationViewModel() {
     [elevation, selectedBox, computeMove, commitMove]
   );
 
+  const rotateSelectedBox = useCallback(() => {
+    if (!selectedBox) return;
+    const nextOrientation: 'vertical' | 'horizontal' =
+      selectedBox.orientation === 'horizontal' ? 'vertical' : 'horizontal';
+    const nextDeg = nextOrientation === 'horizontal' ? 90 : 0;
+    if (selectedBox.kind === 'panel') {
+      updatePanel(selectedBox.id, {
+        boxOrientation: nextOrientation,
+        boxRotationDeg: nextDeg
+      });
+    } else {
+      updateElectricalElement(selectedBox.id, {
+        boxOrientation: nextOrientation,
+        boxRotationDeg: nextDeg
+      });
+    }
+  }, [selectedBox, updatePanel, updateElectricalElement]);
+
+  const setBoxOrientation = useCallback(
+    (orientation: 'vertical' | 'horizontal') => {
+      if (!selectedBox) return;
+      const deg = orientation === 'horizontal' ? 90 : 0;
+      if (selectedBox.kind === 'panel') {
+        updatePanel(selectedBox.id, {
+          boxOrientation: orientation,
+          boxRotationDeg: deg
+        });
+      } else {
+        updateElectricalElement(selectedBox.id, {
+          boxOrientation: orientation,
+          boxRotationDeg: deg
+        });
+      }
+    },
+    [selectedBox, updatePanel, updateElectricalElement]
+  );
+
   const patchSelectedOpening = useCallback(
     (patch: OpeningElevationPatch) => {
       if (!wall || !target || !selectedOpening) return;
@@ -383,6 +425,9 @@ export function useWallElevationViewModel() {
     zoomAt,
     wheelZoomFactor,
     fit,
+    fitWall,
+    rotateSelectedBox,
+    setBoxOrientation,
     panBy
   };
 }

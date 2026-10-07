@@ -718,6 +718,25 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   </button>
                 )}
 
+                {/* Orientación de caja en pared (Vertical ↔ Horizontal) */}
+                {selectedElectricalElement.wallId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curOri = selectedElectricalElement.boxOrientation || 'vertical';
+                      const nextOri = curOri === 'vertical' ? 'horizontal' : 'vertical';
+                      updateElectricalElement(selectedElectricalElement.id, {
+                        boxOrientation: nextOri,
+                        boxRotationDeg: nextOri === 'horizontal' ? 90 : 0
+                      });
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-300"
+                    title="Alternar orientación de caja (Vertical ↔ Horizontal)"
+                  >
+                    <span>{selectedElectricalElement.boxOrientation === 'horizontal' ? '↔ Horiz' : '↕ Vert'}</span>
+                  </button>
+                )}
+
                 {/* Estado (Proyectado / Existente / Reemplazar) */}
                 <button
                   type="button"

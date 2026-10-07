@@ -11,11 +11,13 @@
  * - Cotas de nivel altimétricas reglamentarias (NPT +0.00, +0.30, +1.10, +2.80).
  * - Cotas lineales acumuladas a esquinas y vanos.
  * - Arrastre interactivo de cajas con snap magnético a presets de altura AEA.
- * - Edición bidireccional inmediata sincronizada con la planta CAD.
+ * - Rotación de cajas (0° vertical / 90° horizontal) con cambio de dimensiones reales.
+ * - Modo responsivo para celulares con gestos multitáctiles (pinch zoom y pan),
+ *   botones de encuadre al muro y cajón de inspección ergonómico inferior.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import {
   useWallElevationViewModel
 } from '../../../viewmodels/useWallElevationViewModel';
@@ -32,7 +34,9 @@ import {
   MoveHorizontal,
   MoveVertical,
   DoorOpen,
-  Info
+  Info,
+  RotateCw,
+  Focus
 } from 'lucide-react';
 
 export const WallElevationModal: React.FC = () => {
@@ -62,18 +66,32 @@ export const WallElevationModal: React.FC = () => {
     setSelectedBoxX,
     setSelectedBoxZ,
     nudgeSelectedBox,
+    rotateSelectedBox,
+    setBoxOrientation,
     patchSelectedOpening,
     zoomIn,
     zoomOut,
     zoomAt,
     wheelZoomFactor,
     fit,
+    fitWall,
     panBy
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ clientX: number; clientY: number }>({ clientX: 0, clientY: 0 });
+
+  // Estado y referencias para gestos multitáctiles en pantallas móviles (Pinch-to-zoom y pan táctil)
+  const touchStateRef = useRef<{
+    type: 'single' | 'pinch';
+    startX: number;
+    startY: number;
+    startDist?: number;
+    startCenter?: { x: number; y: number };
+  } | null>(null);
+
+  const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -117,9 +135,74 @@ export const WallElevationModal: React.FC = () => {
     [clientToWorld, wheelZoomFactor, zoomAt]
   );
 
-  // Paneo sobre el fondo del lienzo SVG
+  // Gestos táctiles nativos para celulares (1 dedo = pan / drag; 2 dedos = pinch to zoom)
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<SVGSVGElement>) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const midClientX = (t1.clientX + t2.clientX) / 2;
+        const midClientY = (t1.clientY + t2.clientY) / 2;
+        const worldCenter = clientToWorld(midClientX, midClientY);
+        touchStateRef.current = {
+          type: 'pinch',
+          startX: midClientX,
+          startY: midClientY,
+          startDist: dist,
+          startCenter: worldCenter ?? undefined
+        };
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        touchStateRef.current = {
+          type: 'single',
+          startX: t.clientX,
+          startY: t.clientY
+        };
+      }
+    },
+    [clientToWorld]
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<SVGSVGElement>) => {
+      if (!touchStateRef.current) return;
+      if (e.touches.length === 2 && touchStateRef.current.type === 'pinch') {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const startDist = touchStateRef.current.startDist || currentDist;
+        if (startDist > 0 && Math.abs(currentDist - startDist) > 2) {
+          const factor = currentDist / startDist;
+          zoomAt(factor, touchStateRef.current.startCenter);
+          touchStateRef.current.startDist = currentDist;
+        }
+      } else if (e.touches.length === 1 && touchStateRef.current.type === 'single' && !isDragging) {
+        const t = e.touches[0];
+        const dxPx = t.clientX - touchStateRef.current.startX;
+        const dyPx = t.clientY - touchStateRef.current.startY;
+        touchStateRef.current.startX = t.clientX;
+        touchStateRef.current.startY = t.clientY;
+        const svg = svgRef.current;
+        if (!svg) return;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return;
+        const dxM = dxPx / ctm.a;
+        const dyM = dyPx / ctm.d;
+        panBy(dxM, dyM);
+      }
+    },
+    [isDragging, zoomAt, panBy]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    touchStateRef.current = null;
+  }, []);
+
+  // Paneo sobre el fondo del lienzo SVG (con Mouse / Pointer)
   const handleBackgroundPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (e.pointerType === 'touch') return;
       if (e.target !== svgRef.current && (e.target as Element).id !== 'elevation-backdrop') return;
       clearSelection();
       isPanningRef.current = true;
@@ -170,6 +253,10 @@ export const WallElevationModal: React.FC = () => {
     [isDragging, endBoxDrag]
   );
 
+  const handleSvgDoubleClick = useCallback(() => {
+    fitWall();
+  }, [fitWall]);
+
   if (!isOpen || !wall || !elevation) return null;
 
   return (
@@ -177,102 +264,137 @@ export const WallElevationModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="wall-elevation-title"
-      className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col select-none animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex flex-col select-none animate-in fade-in duration-150"
     >
       {/* ─── BARRA SUPERIOR / CABECERA ─── */}
-      <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between gap-3 text-white">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 bg-blue-600/30 text-blue-400 rounded-xl border border-blue-500/30">
-            <Ruler size={18} />
+      <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between gap-2 sm:gap-3 text-white shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="p-1.5 sm:p-2 bg-blue-600/30 text-blue-400 rounded-xl border border-blue-500/30 shrink-0">
+            <Ruler size={16} className="sm:w-[18px] sm:h-[18px]" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 id="wall-elevation-title" className="font-bold text-sm text-slate-100 truncate">
+            <div className="flex items-center gap-1.5">
+              <h2 id="wall-elevation-title" className="font-bold text-xs sm:text-sm text-slate-100 truncate">
                 Alzado de Muro
               </h2>
-              <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
-                ID: {wall.id.slice(-6)}
+              <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1 py-0.5 rounded border border-slate-700 shrink-0">
+                {wall.id.slice(-6)}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate">
-              L: {elevation.lengthM.toFixed(2)} m · H: {elevation.wallHeightM.toFixed(2)} m
-              {elevation.ceilingZ !== elevation.wallHeightM && ` · Cielorraso: ${elevation.ceilingZ.toFixed(2)} m`}
+            <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
+              L: {elevation.lengthM.toFixed(2)}m · H: {elevation.wallHeightM.toFixed(2)}m
+              {elevation.ceilingZ !== elevation.wallHeightM && ` · Cielorraso: ${elevation.ceilingZ.toFixed(2)}m`}
             </p>
           </div>
         </div>
 
         {/* Selector de Paramento (Cara Interior vs Exterior) */}
-        <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 gap-1 text-xs font-semibold">
+        <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5 sm:p-1 gap-1 text-[11px] sm:text-xs font-semibold shrink-0">
           {faceOptions.map((opt) => (
             <button
               key={opt.face}
               type="button"
               onClick={() => setFace(opt.face)}
-              className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-2 sm:px-3 py-1 rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 ${
                 face === opt.face
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
               }`}
             >
-              <Layers size={13} />
-              <span className="max-w-[140px] truncate">{opt.label}</span>
+              <Layers size={12} className="sm:w-[13px] sm:h-[13px]" />
+              <span className="max-w-[70px] sm:max-w-[140px] truncate">{opt.label}</span>
             </button>
           ))}
         </div>
 
         {/* Controles de Vista y Botón Cerrar */}
-        <div className="flex items-center gap-1.5">
-          <div className="hidden sm:flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5">
+        <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5">
             <button
               type="button"
               onClick={zoomIn}
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-              title="Acercar (+)"
+              className="p-1 sm:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              title="Acercar"
             >
-              <ZoomIn size={16} />
+              <ZoomIn size={15} />
             </button>
             <button
               type="button"
               onClick={zoomOut}
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-              title="Alejar (-)"
+              className="p-1 sm:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              title="Alejar"
             >
-              <ZoomOut size={16} />
+              <ZoomOut size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={fitWall}
+              className="px-2 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1 border border-blue-500/30"
+              title="Enfocar alzado del muro al ancho de pantalla"
+            >
+              <Focus size={13} />
+              <span className="hidden xs:inline">Muro</span>
             </button>
             <button
               type="button"
               onClick={fit}
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-              title="Ajustar encuadre (Fit)"
+              className="p-1 sm:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors hidden sm:block"
+              title="Ajustar encuadre general (Fit)"
             >
-              <Maximize2 size={16} />
+              <Maximize2 size={15} />
             </button>
           </div>
 
           <button
             type="button"
             onClick={close}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors ml-1"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors ml-0.5"
             title="Cerrar alzado (Esc)"
           >
-            <X size={20} />
+            <X size={18} className="sm:w-[20px] sm:h-[20px]" />
           </button>
         </div>
       </header>
 
       {/* ─── CUERPO PRINCIPAL (LIENZO CAD + PANEL DE INSPECCIÓN) ─── */}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden bg-slate-950">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden bg-slate-950 relative">
         {/* Lienzo SVG CAD 2D */}
-        <div className="flex-1 relative min-h-0 overflow-hidden bg-slate-900/60 flex items-center justify-center">
+        <div className="flex-1 relative min-h-0 overflow-hidden bg-slate-950 flex items-center justify-center touch-none">
+          {/* Botonera flotante en lienzo para celular y escritorio */}
+          <div className="absolute top-3 left-3 z-20 flex items-center bg-slate-900/85 backdrop-blur-md border border-slate-800 rounded-xl p-1 gap-1 shadow-lg">
+            <button
+              type="button"
+              onClick={fitWall}
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm"
+              title="Enfocar muro completo en pantalla"
+            >
+              <Focus size={13} />
+              <span>Ajustar Muro</span>
+            </button>
+            <button
+              type="button"
+              onClick={fit}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white border border-slate-700 rounded-lg text-[11px] font-semibold transition-all"
+              title="Ver cotas generales y cielorraso"
+            >
+              General
+            </button>
+          </div>
+
           <svg
             ref={svgRef}
             viewBox={viewBoxAttribute}
             preserveAspectRatio="xMidYMid meet"
-            className="w-full h-full cursor-grab active:cursor-grabbing outline-none"
+            className="w-full h-full cursor-grab active:cursor-grabbing outline-none select-none"
             onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
             onPointerDown={handleBackgroundPointerDown}
             onPointerMove={handleSvgPointerMove}
             onPointerUp={handleSvgPointerUp}
+            onDoubleClick={handleSvgDoubleClick}
           >
             <defs>
               <pattern id="elevation-grid" width="0.5" height="0.5" patternUnits="userSpaceOnUse">
@@ -283,10 +405,10 @@ export const WallElevationModal: React.FC = () => {
             {/* Fondo de captura de clics y paneo */}
             <rect
               id="elevation-backdrop"
-              x={elevation.bounds.x - 20}
-              y={elevation.bounds.y - 20}
-              width={elevation.bounds.width + 40}
-              height={elevation.bounds.height + 40}
+              x={elevation.bounds.x - 30}
+              y={elevation.bounds.y - 30}
+              width={elevation.bounds.width + 60}
+              height={elevation.bounds.height + 60}
               fill="url(#elevation-grid)"
             />
 
@@ -434,6 +556,17 @@ export const WallElevationModal: React.FC = () => {
                   }}
                   className="cursor-grab active:cursor-grabbing group"
                 >
+                  {/* Hitbox táctil invisible ampliada para toque cómodo con el dedo en celular */}
+                  <rect
+                    x={b.rect.x - 0.08}
+                    y={b.rect.y - 0.08}
+                    width={b.rect.width + 0.16}
+                    height={b.rect.height + 0.16}
+                    fill="transparent"
+                    pointerEvents="all"
+                    className="cursor-pointer"
+                  />
+
                   {/* Halo de selección */}
                   {isSelected && (
                     <rect
@@ -622,8 +755,283 @@ export const WallElevationModal: React.FC = () => {
           </svg>
         </div>
 
-        {/* ─── PANEL LATERAL / DRAWER DE INSPECCIÓN DE ALZADO ─── */}
-        <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 space-y-4 overflow-y-auto text-slate-200">
+        {/* ─── CAJÓN INFERIOR PARA CELULARES (COMPACTO Y ERGONÓMICO) ─── */}
+        <div className="lg:hidden shrink-0 bg-slate-900 border-t border-slate-800 text-slate-200">
+          {selectedBox ? (
+            <div className="p-3 space-y-2.5 max-h-[46vh] overflow-y-auto">
+              {/* Cabecera de la caja seleccionada con botón Rotar 90° inmediato */}
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-1 bg-blue-600/30 text-blue-400 rounded-lg shrink-0">
+                    <Layers size={14} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-xs text-slate-100 truncate">
+                        {selectedBox.kind === 'panel' ? 'Tablero' : 'Caja'}
+                      </h4>
+                      <span className="font-mono text-[10px] text-blue-400">
+                        {selectedBox.label || selectedBox.id.slice(-6)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 truncate block">
+                      {selectedBox.sizeLabel}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={rotateSelectedBox}
+                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    title="Rotar caja 90°"
+                  >
+                    <RotateCw size={13} />
+                    <span>Rotar 90°</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="p-1.5 text-slate-400 hover:text-white rounded-lg"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Botones de Orientación Rápida */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBoxOrientation('vertical')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
+                    selectedBox.orientation === 'vertical'
+                      ? 'bg-blue-600/30 text-blue-300 border-blue-500 font-bold'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  ↕ Vertical (5×10)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoxOrientation('horizontal')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
+                    selectedBox.orientation === 'horizontal'
+                      ? 'bg-blue-600/30 text-blue-300 border-blue-500 font-bold'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  ↔ Horizontal (10×5)
+                </button>
+              </div>
+
+              {/* Controles de posición Z (Altura) y X (Distancia) */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {/* Altura Z */}
+                <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2 space-y-1">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
+                    <span>ALTURA (Z)</span>
+                    <span className="font-mono text-blue-400 font-bold">{selectedBox.centerZ.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => nudgeSelectedBox(0, -0.05)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px] font-mono shrink-0"
+                    >
+                      -5
+                    </button>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={elevation.wallHeightM}
+                      value={selectedBox.centerZ.toFixed(2)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!Number.isNaN(val)) setSelectedBoxZ(val);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-white text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => nudgeSelectedBox(0, 0.05)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px] font-mono shrink-0"
+                    >
+                      +5
+                    </button>
+                  </div>
+                </div>
+
+                {/* Distancia X */}
+                <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2 space-y-1">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
+                    <span>ESQUINA (X)</span>
+                    <span className="font-mono text-blue-400 font-bold">{selectedBox.centerX.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => nudgeSelectedBox(-0.05, 0)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px] font-mono shrink-0"
+                    >
+                      -5
+                    </button>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={elevation.lengthM}
+                      value={selectedBox.centerX.toFixed(2)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!Number.isNaN(val)) setSelectedBoxX(val);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-white text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => nudgeSelectedBox(0.05, 0)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[11px] font-mono shrink-0"
+                    >
+                      +5
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Presets Rápidos AEA en tira horizontal deslizable */}
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block mb-1">PRESETS REGLAMENTARIOS AEA:</span>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {heightPresets.map((hp) => {
+                    const isCurrent = Math.abs(selectedBox.centerZ - hp.meters) < 0.02;
+                    return (
+                      <button
+                        key={hp.id}
+                        type="button"
+                        onClick={() => setSelectedBoxZ(hp.meters)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors border ${
+                          isCurrent
+                            ? 'bg-blue-600 text-white border-blue-500 font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {hp.meters.toFixed(2)}m · {hp.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : selectedOpening ? (
+            <div className="p-3 space-y-2 max-h-[44vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-amber-600/30 text-amber-400 rounded-lg">
+                    <DoorOpen size={14} />
+                  </div>
+                  <h4 className="font-bold text-xs text-slate-100">
+                    {selectedOpening.type === 'door' ? 'Puerta' : selectedOpening.type === 'window' ? 'Ventana' : 'Vano'}
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg text-xs"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Ancho</span>
+                  <input
+                    type="number"
+                    step={0.05}
+                    value={selectedOpening.width.toFixed(2)}
+                    onChange={(e) => patchSelectedOpening({ width: parseFloat(e.target.value) || selectedOpening.width })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded p-1 font-mono text-center text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Alto</span>
+                  <input
+                    type="number"
+                    step={0.05}
+                    value={selectedOpening.height.toFixed(2)}
+                    onChange={(e) => patchSelectedOpening({ height: parseFloat(e.target.value) || selectedOpening.height })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded p-1 font-mono text-center text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Antepecho</span>
+                  <input
+                    type="number"
+                    step={0.05}
+                    value={selectedOpening.sill.toFixed(2)}
+                    onChange={(e) => patchSelectedOpening({ sill: parseFloat(e.target.value) || selectedOpening.sill })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded p-1 font-mono text-center text-xs text-white"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Barra compacta cuando no hay nada seleccionado */
+            <div>
+              <div className="px-3 py-2 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="font-bold text-slate-200">Muro {wall.id.slice(-6)}</span>
+                  <span className="text-slate-400 text-[11px] truncate">
+                    {elevation.lengthM.toFixed(2)}m × {elevation.wallHeightM.toFixed(2)}m · {elevation.boxes.length} bocas
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setFace(face === 'left' ? 'right' : 'left')}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 rounded-lg text-[11px] font-semibold text-slate-200 flex items-center gap-1"
+                    title="Alternar cara opuesta"
+                  >
+                    <ArrowLeftRight size={12} />
+                    <span>Cara</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileInfoOpen(!isMobileInfoOpen)}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1"
+                  >
+                    <Info size={12} />
+                    <span>{isMobileInfoOpen ? 'Ocultar' : 'Info'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Panel expandible con tips y datos del muro */}
+              {isMobileInfoOpen && (
+                <div className="p-3 bg-slate-900/95 border-t border-slate-800 space-y-2 text-xs animate-in fade-in">
+                  <div className="grid grid-cols-2 gap-2 text-slate-300 text-[11px]">
+                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                      <span className="text-slate-400 block text-[10px]">Longitud:</span>
+                      <span className="font-bold font-mono">{elevation.lengthM.toFixed(2)} m</span>
+                    </div>
+                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                      <span className="text-slate-400 block text-[10px]">Altura:</span>
+                      <span className="font-bold font-mono">{elevation.wallHeightM.toFixed(2)} m</span>
+                    </div>
+                  </div>
+                  <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-2 text-[11px] text-blue-200">
+                    💡 Tocá cualquier caja para seleccionarla y rotarla 90° o cambiar su altura de montaje.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ─── PANEL LATERAL DE INSPECCIÓN DE ALZADO (SOLO ESCRITORIO LG+) ─── */}
+        <aside className="hidden lg:block w-80 bg-slate-900 border-l border-slate-800 p-4 space-y-4 overflow-y-auto text-slate-200 shrink-0">
           {/* CASO A: Caja o Gabinete Seleccionado */}
           {selectedBox ? (
             <div className="space-y-4">
@@ -648,6 +1056,46 @@ export const WallElevationModal: React.FC = () => {
                 >
                   Deseleccionar
                 </button>
+              </div>
+
+              {/* Orientación y Rotación de Caja */}
+              <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">Orientación de Caja:</span>
+                  <button
+                    type="button"
+                    onClick={rotateSelectedBox}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    title="Girar 90° (Vertical ↔ Horizontal)"
+                  >
+                    <RotateCw size={12} />
+                    <span>Rotar 90°</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setBoxOrientation('vertical')}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all border text-center ${
+                      selectedBox.orientation === 'vertical'
+                        ? 'bg-blue-600/30 text-blue-300 border-blue-500 font-bold'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    ↕ Vertical
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBoxOrientation('horizontal')}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all border text-center ${
+                      selectedBox.orientation === 'horizontal'
+                        ? 'bg-blue-600/30 text-blue-300 border-blue-500 font-bold'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    ↔ Horizontal
+                  </button>
+                </div>
               </div>
 
               {/* Datos físicos de catálogo */}
@@ -863,7 +1311,7 @@ export const WallElevationModal: React.FC = () => {
               <div className="border-b border-slate-800 pb-2">
                 <h3 className="font-bold text-xs text-slate-100 mb-0.5">Paramento en Inspección</h3>
                 <p className="text-[11px] text-slate-400">
-                  Seleccioná o arrastrá cualquier caja en la vista para reubicarla métricamente.
+                  Seleccioná o arrastrá cualquier caja en la vista para reubicarla métricamente o rotarla.
                 </p>
               </div>
 
@@ -899,8 +1347,9 @@ export const WallElevationModal: React.FC = () => {
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-slate-300 text-[11px]">
                   <li>Arrastrá cajas para desplazarlas; se imantan a alturas AEA (0.30m, 1.10m, 2.20m).</li>
-                  <li>Usá la rueda del mouse o los botones superiores para hacer zoom y paneo libre.</li>
-                  <li>Los cambios en este alzado impactan de inmediato en la planta y en el cómputo métrico.</li>
+                  <li>Rotá cualquier caja 90° entre vertical y apaisada/horizontal.</li>
+                  <li>Usá pellizco táctil con 2 dedos o la rueda del mouse para hacer zoom libre.</li>
+                  <li>Los cambios impactan de inmediato en la planta y en el cómputo métrico.</li>
                 </ul>
               </div>
 

@@ -41,6 +41,8 @@ export interface SpatialElectricalNode {
   wallOffset?: number;
   rotation?: number;
   side?: 'left' | 'right' | 'interior' | 'exterior';
+  boxOrientation?: 'vertical' | 'horizontal';
+  boxRotationDeg?: number;
 }
 
 export interface ElectricalElement extends SpatialElectricalNode {

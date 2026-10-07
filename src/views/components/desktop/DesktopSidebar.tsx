@@ -2974,6 +2974,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           <ArrowLeftRight size={12} />
                           <span>Invertir Cara Física</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curOri = selectedElectricalElement.boxOrientation || 'vertical';
+                            const nextOri = curOri === 'vertical' ? 'horizontal' : 'vertical';
+                            updateElectricalElement(selectedElectricalElement.id, {
+                              boxOrientation: nextOri,
+                              boxRotationDeg: nextOri === 'horizontal' ? 90 : 0
+                            });
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg text-[10px] font-bold text-blue-900 transition-colors shadow-xs"
+                          title="Alternar orientación física de la caja"
+                        >
+                          <RotateCw size={12} />
+                          <span>Caja: {selectedElectricalElement.boxOrientation === 'horizontal' ? 'Horizontal (10×5)' : 'Vertical (5×10)'}</span>
+                        </button>
                       </div>
                     )}
 

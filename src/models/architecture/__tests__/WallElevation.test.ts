@@ -17,7 +17,7 @@ import {
   formatElevationLevel,
   type BuildWallElevationParams
 } from '../wallElevation';
-import { fitViewBox, panViewBox, zoomViewBox, ELEVATION_VIEWPORT_CONSTANTS } from '../elevationViewport';
+import { fitViewBox, fitWallViewBox, panViewBox, zoomViewBox, ELEVATION_VIEWPORT_CONSTANTS } from '../elevationViewport';
 import { resolveConduitColor, WALL_ELEVATION_STYLE } from '../wallElevationStyle';
 
 // Muro horizontal de 4 m sobre +X, espesor 0.20, altura 2.80: normal izquierda = +Y.
@@ -434,5 +434,75 @@ describe('Encuadre del visor', () => {
     expect(panned.x).toBe(-2);
     expect(panned.y).toBe(1);
     expect(fitViewBox(bounds)).toEqual(bounds);
+  });
+
+  it('fitWallViewBox genera un encuadre ajustado al cuerpo del muro ideal para celulares', () => {
+    const wallVb = fitWallViewBox(4.0, 2.8, 2.8, 0.20);
+    expect(wallVb.x).toBe(-0.20);
+    expect(wallVb.y).toBe(-0.20);
+    expect(wallVb.width).toBeCloseTo(4.4, 9);
+    expect(wallVb.height).toBeCloseTo(3.55, 9);
+  });
+});
+
+describe('Rotación y orientación de cajas en alzado', () => {
+  it('soporta rotación horizontal alternando ancho y alto en caja rectangular', () => {
+    const vertical = resolveBoxGeometry({
+      symbolId: 'sym-planta-toma',
+      isPanel: false,
+      boxOrientation: 'vertical'
+    });
+    expect(vertical.widthM).toBeCloseTo(0.05, 9);
+    expect(vertical.heightM).toBeCloseTo(0.10, 9);
+    expect(vertical.orientation).toBe('vertical');
+    expect(vertical.rotationDeg).toBe(0);
+
+    const horizontal = resolveBoxGeometry({
+      symbolId: 'sym-planta-toma',
+      isPanel: false,
+      boxOrientation: 'horizontal'
+    });
+    expect(horizontal.widthM).toBeCloseTo(0.10, 9);
+    expect(horizontal.heightM).toBeCloseTo(0.05, 9);
+    expect(horizontal.orientation).toBe('horizontal');
+    expect(horizontal.rotationDeg).toBe(90);
+  });
+
+  it('interpreta boxRotationDeg de 90° y 270° como orientación horizontal', () => {
+    const rot90 = resolveBoxGeometry({
+      symbolId: 'sym-planta-toma',
+      isPanel: false,
+      boxRotationDeg: 90
+    });
+    expect(rot90.orientation).toBe('horizontal');
+    expect(rot90.widthM).toBeCloseTo(0.10, 9);
+    expect(rot90.heightM).toBeCloseTo(0.05, 9);
+
+    const rot180 = resolveBoxGeometry({
+      symbolId: 'sym-planta-toma',
+      isPanel: false,
+      boxRotationDeg: 180
+    });
+    expect(rot180.orientation).toBe('vertical');
+    expect(rot180.widthM).toBeCloseTo(0.05, 9);
+    expect(rot180.heightM).toBeCloseTo(0.10, 9);
+  });
+
+  it('construye el alzado proyectando cajas con su orientación horizontal', () => {
+    const elHoriz = makeElement({
+      id: 'el-h',
+      x: 2,
+      heightZ: 1.10,
+      side: 'right',
+      boxOrientation: 'horizontal'
+    });
+    const elev = buildWallElevation(params({ elements: [elHoriz], face: 'right' }));
+    expect(elev).not.toBeNull();
+    const box = elev!.boxes.find((b) => b.id === 'el-h');
+    expect(box).toBeDefined();
+    expect(box?.orientation).toBe('horizontal');
+    expect(box?.width).toBeCloseTo(0.10, 9);
+    expect(box?.height).toBeCloseTo(0.05, 9);
+    expect(box?.sizeLabel).toContain('Horizontal');
   });
 });

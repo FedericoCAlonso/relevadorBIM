@@ -164,9 +164,12 @@ export function formatElevationLevel(z: number): string {
   return `${z < 0 ? '-' : '+'}${formatElevationMeters(Math.abs(z))}`;
 }
 
-function formatBoxSize(widthM: number, heightM: number): string {
+function formatBoxSize(widthM: number, heightM: number, orientation?: 'vertical' | 'horizontal'): string {
   const cm = (m: number) => Number((m * WALL_ELEVATION_CONSTANTS.CM_PER_M).toFixed(1));
-  return `${cm(widthM)} × ${cm(heightM)} cm`;
+  const base = `${cm(widthM)} × ${cm(heightM)} cm`;
+  if (orientation === 'horizontal') return `${base} (Horizontal)`;
+  if (orientation === 'vertical' && widthM !== heightM) return `${base} (Vertical)`;
+  return base;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -227,6 +230,8 @@ export interface ElevationBox {
   category: BoxCategory;
   shape: ElevationBoxShape;
   boxTypeName?: string;
+  orientation: 'vertical' | 'horizontal';
+  rotationDeg: number;
   centerX: number;
   centerZ: number;
   width: number;
@@ -240,7 +245,17 @@ export interface ElevationBox {
 
 export type ElevationBoxSeed = Pick<
   ElevationBox,
-  'id' | 'kind' | 'label' | 'symbolId' | 'category' | 'shape' | 'boxTypeName' | 'width' | 'height'
+  | 'id'
+  | 'kind'
+  | 'label'
+  | 'symbolId'
+  | 'category'
+  | 'shape'
+  | 'boxTypeName'
+  | 'width'
+  | 'height'
+  | 'orientation'
+  | 'rotationDeg'
 >;
 
 export interface ElevationConduit {
@@ -298,6 +313,8 @@ export interface ResolvedBoxGeometry {
   widthM: number;
   heightM: number;
   boxTypeName?: string;
+  orientation: 'vertical' | 'horizontal';
+  rotationDeg: number;
 }
 
 export function resolveBoxGeometry(params: {
@@ -305,8 +322,10 @@ export function resolveBoxGeometry(params: {
   symbolId?: string;
   isPanel: boolean;
   catalog?: ProjectMaterialCatalog;
+  boxOrientation?: 'vertical' | 'horizontal';
+  boxRotationDeg?: number;
 }): ResolvedBoxGeometry {
-  const { boxTypeId, symbolId, isPanel, catalog } = params;
+  const { boxTypeId, symbolId, isPanel, catalog, boxOrientation, boxRotationDeg } = params;
   const boxType = boxTypeId ? catalog?.boxTypes.find((b) => b.id === boxTypeId) : undefined;
   const symbolCategory = symbolId ? getSymbolById(symbolId)?.categoria : undefined;
   const category: BoxCategory =
@@ -314,29 +333,61 @@ export function resolveBoxGeometry(params: {
     (isPanel ? 'gabinete_tablero' : (symbolCategory && SYMBOL_CATEGORY_DEFAULT_BOX[symbolCategory]) || FALLBACK_BOX_CATEGORY);
   const defaults = BOX_CATEGORY_ELEVATION_DEFAULTS[category];
   const mm = WALL_ELEVATION_CONSTANTS.MM_PER_M;
+
+  let widthMM = boxType?.widthMM ?? defaults.widthMM;
+  let heightMM = boxType?.heightMM ?? defaults.heightMM;
+
+  const isHorizontal =
+    boxOrientation === 'horizontal' ||
+    boxRotationDeg === 90 ||
+    boxRotationDeg === 270;
+
+  // Si la caja se orienta en horizontal y sus dimensiones difieren (ej: rectangular 50x100mm), invertimos frente y alto
+  if (isHorizontal && widthMM !== heightMM) {
+    const tmp = widthMM;
+    widthMM = heightMM;
+    heightMM = tmp;
+  }
+
+  const rotationDeg = boxRotationDeg ?? (isHorizontal ? 90 : 0);
+  const orientation: 'vertical' | 'horizontal' = isHorizontal ? 'horizontal' : 'vertical';
+
   return {
     category,
     shape: defaults.shape,
-    widthM: (boxType?.widthMM ?? defaults.widthMM) / mm,
-    heightM: (boxType?.heightMM ?? defaults.heightMM) / mm,
-    boxTypeName: boxType?.name
+    widthM: widthMM / mm,
+    heightM: heightMM / mm,
+    boxTypeName: boxType?.name,
+    orientation,
+    rotationDeg
   };
 }
 
 function buildKnockouts(rect: ElevationRect, shape: ElevationBoxShape): ElevationKnockout[] {
   const { KNOCKOUT_RADIUS_M: r, KNOCKOUT_INSET_M: inset, KNOCKOUT_MIN_BOX_HEIGHT_M } = WALL_ELEVATION_CONSTANTS;
-  if (shape === 'cabinet' || rect.height < KNOCKOUT_MIN_BOX_HEIGHT_M) return [];
-  const top = { cx: rect.cx, cy: rect.y + inset, r };
-  const bottom = { cx: rect.cx, cy: rect.y + rect.height - inset, r };
+  if (shape === 'cabinet') return [];
   if (shape === 'octagon') {
     return [
-      top,
-      bottom,
+      { cx: rect.cx, cy: rect.y + inset, r },
+      { cx: rect.cx, cy: rect.y + rect.height - inset, r },
       { cx: rect.x + inset, cy: rect.cy, r },
       { cx: rect.x + rect.width - inset, cy: rect.cy, r }
     ];
   }
-  return [top, bottom];
+  if (rect.width > rect.height) {
+    // Caja horizontal apaisada (ej: 10x5 cm)
+    return [
+      { cx: rect.x + inset, cy: rect.cy, r },
+      { cx: rect.x + rect.width - inset, cy: rect.cy, r },
+      { cx: rect.cx, cy: rect.y + inset, r },
+      { cx: rect.cx, cy: rect.y + rect.height - inset, r }
+    ];
+  }
+  if (rect.height < KNOCKOUT_MIN_BOX_HEIGHT_M) return [];
+  return [
+    { cx: rect.cx, cy: rect.y + inset, r },
+    { cx: rect.cx, cy: rect.y + rect.height - inset, r }
+  ];
 }
 
 function buildOctagonOutline(rect: ElevationRect): ElevationPoint[] {
@@ -373,7 +424,7 @@ export function placeElevationBox(
     centerX,
     centerZ,
     rect,
-    sizeLabel: formatBoxSize(seed.width, seed.height),
+    sizeLabel: formatBoxSize(seed.width, seed.height, seed.orientation),
     outline: seed.shape === 'octagon' ? buildOctagonOutline(rect) : [],
     knockouts: buildKnockouts(rect, seed.shape),
     labelAnchor: { x: rect.cx, y: rect.y - WALL_ELEVATION_CONSTANTS.LABEL_GAP_M }
@@ -515,7 +566,9 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       boxTypeId: entry.boxTypeId,
       symbolId: entry.symbolId,
       isPanel: entry.kind === 'panel',
-      catalog
+      catalog,
+      boxOrientation: entry.node.boxOrientation,
+      boxRotationDeg: entry.node.boxRotationDeg
     });
     boxes.push(
       placeElevationBox(
@@ -528,7 +581,9 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
           shape: geo.shape,
           boxTypeName: geo.boxTypeName,
           width: geo.widthM,
-          height: geo.heightM
+          height: geo.heightM,
+          orientation: geo.orientation,
+          rotationDeg: geo.rotationDeg
         },
         alongWallToScreenX(u, L, face),
         entry.node.heightZ,

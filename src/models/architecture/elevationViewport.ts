@@ -24,6 +24,25 @@ export function fitViewBox(bounds: ElevationViewBox): ElevationViewBox {
 }
 
 /**
+ * Encuadre enfocado directamente en el cuerpo del muro físico con margen ergonómico mínimo,
+ * ideal para pantallas pequeñas / celulares para maximizar el tamaño del alzado.
+ */
+export function fitWallViewBox(
+  wallLengthM: number,
+  wallHeightM: number,
+  drawingHeightM: number,
+  paddingM = 0.20
+): ElevationViewBox {
+  const topY = drawingHeightM - wallHeightM;
+  return {
+    x: -paddingM,
+    y: Math.max(-paddingM, topY - paddingM),
+    width: wallLengthM + paddingM * 2,
+    height: wallHeightM + paddingM * 2 + 0.35
+  };
+}
+
+/**
  * Escala el encuadre manteniendo fijo el punto `focus` (en metros). factor > 1 acerca.
  * El ancho resultante se limita entre un mínimo físico y un múltiplo del encuadre total.
  */

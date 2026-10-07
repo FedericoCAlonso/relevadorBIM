@@ -91,4 +91,31 @@ describe('useWallElevationStore', () => {
     expect(state.target).toBeNull();
     expect(state.selection).toBeNull();
   });
+
+  it('permite rotar y actualizar la orientación de la caja a horizontal en el store del proyecto', () => {
+    useProjectStore.getState().addElectricalElement({
+      id: 'elem-toma-1',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 1,
+      y: 0,
+      heightZ: 1.10,
+      placement: 'wall',
+      symbolId: 'sym-planta-toma',
+      side: 'left',
+      boxOrientation: 'vertical',
+      boxRotationDeg: 0
+    });
+
+    const { updateElectricalElement } = useProjectStore.getState();
+    updateElectricalElement('elem-toma-1', {
+      boxOrientation: 'horizontal',
+      boxRotationDeg: 90
+    });
+
+    const elem = useProjectStore.getState().project.electricalElements.find((e) => e.id === 'elem-toma-1');
+    expect(elem?.boxOrientation).toBe('horizontal');
+    expect(elem?.boxRotationDeg).toBe(90);
+  });
 });
