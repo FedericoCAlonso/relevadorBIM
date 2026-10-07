@@ -18,6 +18,7 @@ import {
 } from '../models/electrical/electricalStandards';
 import type { Conduit, ConduitWaypoint, ElectricalElement } from '../models/electrical/ElectricalModel';
 import { deriveConduitConductors } from '../models/electrical/electricalConductorDerivation';
+import { resolveDefaultRoutingPlane } from '../models/electrical/conduitRouting';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -345,7 +346,11 @@ export function useSurveyViewModel() {
 
           const seqStore = useElectricalSequenceStore.getState();
           const seqMode = seqStore.sequenceRoutingMode || 'schematic_arc';
-          const seqPlane = seqStore.sequenceRoutingPlane || 'ceiling_slab';
+          const seqPlane = resolveDefaultRoutingPlane(
+            fromEl,
+            toEl,
+            seqStore.sequenceRoutingPlane || 'ceiling_slab'
+          );
           const seqDiam = seqStore.sequenceConduitDiameterMM || DEFAULT_CONDUIT_DIAMETER_MM;
           const seqMat = seqStore.sequenceConduitMaterial || DEFAULT_CONDUIT_MATERIAL;
 

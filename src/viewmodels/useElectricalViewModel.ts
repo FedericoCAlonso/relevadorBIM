@@ -56,6 +56,7 @@ import {
   type ElectricalBranch,
   type BranchUpdatePayload
 } from '../models/electrical/electricalBranch';
+import { resolveDefaultRoutingPlane } from '../models/electrical/conduitRouting';
 
 export interface ElectricalSequenceStoreState {
   sequencePrefix: string;
@@ -294,7 +295,7 @@ export function placeElectricalElementInStore(
           isVerticalRiser,
           conductors,
           routingMode: sequenceStore.sequenceRoutingMode,
-          routingPlane: sequenceStore.sequenceRoutingPlane
+          routingPlane: resolveDefaultRoutingPlane(prevElement, placedPanel, sequenceStore.sequenceRoutingPlane)
         });
       }
     }
@@ -366,7 +367,7 @@ export function placeElectricalElementInStore(
         isVerticalRiser,
         conductors,
         routingMode: sequenceStore.sequenceRoutingMode,
-        routingPlane: sequenceStore.sequenceRoutingPlane
+        routingPlane: resolveDefaultRoutingPlane(prevElement, newElement, sequenceStore.sequenceRoutingPlane)
       });
     }
   }
