@@ -195,7 +195,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     toggleDimensions,
     deleteDimensionLine,
     labelDisplayMode,
-    updateElectricalElement
+    updateElectricalElement,
+    updatePanel
   } = useProjectStore();
 
   const selectedEntityMap = useMemo(() => {
@@ -280,14 +281,24 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     origWpY: number;
     moved: boolean;
   } | null>(null);
-  const activeTerminalDragRef = useRef<{
-    elementId: string;
+  const activeNodeDragRef = useRef<{
+    kind: 'element' | 'panel';
+    id: string;
     startX: number;
     startY: number;
-    origElX: number;
-    origElY: number;
+    origX: number;
+    origY: number;
+    origRotation: number;
     moved: boolean;
   } | null>(null);
+  const placementTouchRef = useRef<{
+    startX: number;
+    startY: number;
+    lastClientX: number;
+    lastClientY: number;
+    moved: boolean;
+  } | null>(null);
+  const justPlacedSymbolRef = useRef<boolean>(false);
   const isDraggingObjectRef = useRef<boolean>(false);
 
   // Control para evitar clics espurios al finalizar un gesto de arrastre o paneo
@@ -576,11 +587,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
-    if (activeTerminalDragRef.current) {
-      if (activeTerminalDragRef.current.moved) {
+    if (activeNodeDragRef.current) {
+      if (activeNodeDragRef.current.moved) {
         lastDragEndTimeRef.current = Date.now();
       }
-      activeTerminalDragRef.current = null;
+      activeNodeDragRef.current = null;
       isDraggingObjectRef.current = false;
     }
 
@@ -667,6 +678,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    // Si estamos en modo emplazamiento de símbolo eléctrico y el usuario toca con 1 dedo
+    if (selectedSymbolId && e.touches.length === 1 && containerRef.current) {
+      const t = e.touches[0];
+      placementTouchRef.current = {
+        startX: t.clientX,
+        startY: t.clientY,
+        lastClientX: t.clientX,
+        lastClientY: t.clientY,
+        moved: false
+      };
+      updateHoverCoordinates(t.clientX, t.clientY);
+      isDraggingObjectRef.current = true;
+      return;
+    }
+
     if (e.touches.length === 1) {
       const t = e.touches[0];
       touchStateRef.current = {
@@ -679,6 +705,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       };
       updateHoverCoordinates(t.clientX, t.clientY);
     } else if (e.touches.length === 2) {
+      if (placementTouchRef.current) {
+        placementTouchRef.current = null;
+        setHoverWorldPos(null);
+      }
+      isDraggingObjectRef.current = false;
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
@@ -742,6 +773,20 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    // Si estamos en modo de emplazamiento de símbolo eléctrico (previsualización y arrastre táctil sin mover la vista)
+    if (selectedSymbolId && placementTouchRef.current && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - placementTouchRef.current.startX;
+      const dy = t.clientY - placementTouchRef.current.startY;
+      if (Math.hypot(dx, dy) > 5) {
+        placementTouchRef.current.moved = true;
+      }
+      placementTouchRef.current.lastClientX = t.clientX;
+      placementTouchRef.current.lastClientY = t.clientY;
+      updateHoverCoordinates(t.clientX, t.clientY);
+      return;
+    }
+
     if (isDraggingObjectRef.current) return;
     if (!touchStateRef.current) return;
 
@@ -786,16 +831,33 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (_e: React.TouchEvent) => {
     if (activeWaypointDragRef.current) {
       activeWaypointDragRef.current = null;
     }
-    if (activeTerminalDragRef.current) {
-      if (activeTerminalDragRef.current.moved) {
+    if (activeNodeDragRef.current) {
+      if (activeNodeDragRef.current.moved) {
         lastDragEndTimeRef.current = Date.now();
       }
-      activeTerminalDragRef.current = null;
+      activeNodeDragRef.current = null;
     }
+
+    // Al soltar el dedo en modo emplazamiento, fijar la boca en el punto de snap actual
+    if (selectedSymbolId && placementTouchRef.current) {
+      const pt = placementTouchRef.current;
+      placementTouchRef.current = null;
+      isDraggingObjectRef.current = false;
+
+      triggerPlacementRef.current?.(pt.lastClientX, pt.lastClientY);
+      setHoverWorldPos(null);
+
+      justPlacedSymbolRef.current = true;
+      setTimeout(() => {
+        justPlacedSymbolRef.current = false;
+      }, 200);
+      return;
+    }
+
     isDraggingObjectRef.current = false;
 
     if (isSamplingPattern && !isAdjustingSampleBox && samplingStartWorldPos && hoverWorldPos) {
@@ -821,6 +883,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const triggerPlacement = (clientX: number, clientY: number) => {
     if (isDragging || !containerRef.current) return;
     if (isSamplingPattern || justCompletedSamplingRef.current) return;
+    if (justPlacedSymbolRef.current) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     let wx = (clientX - rect.left - pan.x) / zoom;
@@ -882,6 +945,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (wasDraggingRecentlyRef.current()) return;
+    if (justPlacedSymbolRef.current) return;
     if (justCompletedSamplingRef.current) {
       justCompletedSamplingRef.current = false;
       return;
@@ -2079,68 +2143,83 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={element.id}
             transform={`translate(${pxX}, ${pxY})`}
-            style={{ touchAction: isTerminalRef ? 'none' : undefined }}
+            style={{ touchAction: 'none' }}
             onPointerDown={(e) => {
-              if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
               if (e.button !== 0 && e.pointerType === 'mouse') return;
               e.stopPropagation();
-              if (isTerminalRef) {
-                isDraggingObjectRef.current = true;
-                try {
-                  (e.currentTarget as Element).setPointerCapture(e.pointerId);
-                } catch {
-                  // Fallback
-                }
-                activeTerminalDragRef.current = {
-                  elementId: element.id,
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  origElX: element.x,
-                  origElY: element.y,
-                  moved: false
-                };
+              isDraggingObjectRef.current = true;
+              try {
+                (e.currentTarget as Element).setPointerCapture(e.pointerId);
+              } catch {
+                // Fallback
               }
+              activeNodeDragRef.current = {
+                kind: 'element',
+                id: element.id,
+                startX: e.clientX,
+                startY: e.clientY,
+                origX: element.x,
+                origY: element.y,
+                origRotation: element.rotation || 0,
+                moved: false
+              };
             }}
             onPointerMove={(e) => {
-              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
                 e.stopPropagation();
-                const drag = activeTerminalDragRef.current;
+                const drag = activeNodeDragRef.current;
                 const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
                 if (dist > 3) drag.moved = true;
                 const dxWorld = (e.clientX - drag.startX) / zoom;
                 const dyWorld = (e.clientY - drag.startY) / zoom;
-                const candX = Number((drag.origElX + dxWorld).toFixed(3));
-                const candY = Number((drag.origElY + dyWorld).toFixed(3));
+                let candX = Number((drag.origX + dxWorld).toFixed(3));
+                let candY = Number((drag.origY + dyWorld).toFixed(3));
+                let candRot = drag.origRotation;
+
+                const isCeiling = element.symbolId.includes('techo') || element.symbolId.includes('ventilador');
+                if (!isCeiling && isSnapEnabled && !e.shiftKey) {
+                  const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
+                  const wallSnap = calculateWallSnap({ x: candX, y: candY }, wallsInLevel, verticesMap, 0.40);
+                  if (wallSnap) {
+                    candX = Number(wallSnap.snappedPoint.x.toFixed(3));
+                    candY = Number(wallSnap.snappedPoint.y.toFixed(3));
+                    candRot = wallSnap.rotationDeg;
+                  }
+                }
+
                 updateElectricalElement(element.id, {
                   x: candX,
-                  y: candY
+                  y: candY,
+                  rotation: candRot
                 });
               }
             }}
             onPointerUp={(e) => {
-              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
                 e.stopPropagation();
                 try {
                   (e.currentTarget as Element).releasePointerCapture(e.pointerId);
                 } catch {
                   // Ignore
                 }
-                const drag = activeTerminalDragRef.current;
+                const drag = activeNodeDragRef.current;
                 if (drag.moved) {
                   lastDragEndTimeRef.current = Date.now();
+                  setSelectedEntity({ type: 'electrical_element', id: element.id });
                 }
-                activeTerminalDragRef.current = null;
+                activeNodeDragRef.current = null;
                 isDraggingObjectRef.current = false;
               }
             }}
             onPointerCancel={(e) => {
-              if (activeTerminalDragRef.current && activeTerminalDragRef.current.elementId === element.id) {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
                 try {
                   (e.currentTarget as Element).releasePointerCapture(e.pointerId);
                 } catch {
                   // Ignore
                 }
-                activeTerminalDragRef.current = null;
+                activeNodeDragRef.current = null;
                 isDraggingObjectRef.current = false;
               }
             }}
@@ -2165,8 +2244,25 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
-            className={isTerminalRef ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+            className={isSelected ? 'cursor-move' : isTerminalRef ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
           >
+            {/* Hitbox táctil ampliada para arrastre ergonómico en pantalla táctil */}
+            <circle
+              r={isSelected ? 44 : 36}
+              fill="transparent"
+              pointerEvents="all"
+              className={isSelected ? 'cursor-move' : 'cursor-pointer'}
+            />
+            {isSelected && (
+              <circle
+                r={30}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                className="pointer-events-none opacity-80"
+              />
+            )}
 
             {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
             {isPendingStart && (
@@ -2349,7 +2445,12 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     onElectricalElementClick,
     onElectricalElementDoubleClick,
     updateElectricalElement,
-    isSamplingPattern
+    isSamplingPattern,
+    selectedSymbolId,
+    project.walls,
+    verticesMap,
+    isSnapEnabled,
+    setSelectedEntity
   ]);
 
   // 7b. Tableros Eléctricos Autónomos (Distribuidores de Circuitos)
@@ -2370,6 +2471,82 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <g
             key={panel.id}
             transform={`translate(${pxX}, ${pxY})`}
+            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
+              if (e.button !== 0 && e.pointerType === 'mouse') return;
+              e.stopPropagation();
+              isDraggingObjectRef.current = true;
+              try {
+                (e.currentTarget as Element).setPointerCapture(e.pointerId);
+              } catch {
+                // Fallback
+              }
+              activeNodeDragRef.current = {
+                kind: 'panel',
+                id: panel.id,
+                startX: e.clientX,
+                startY: e.clientY,
+                origX: panel.x,
+                origY: panel.y,
+                origRotation: 0,
+                moved: false
+              };
+            }}
+            onPointerMove={(e) => {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
+                e.stopPropagation();
+                const drag = activeNodeDragRef.current;
+                const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+                if (dist > 3) drag.moved = true;
+                const dxWorld = (e.clientX - drag.startX) / zoom;
+                const dyWorld = (e.clientY - drag.startY) / zoom;
+                let candX = Number((drag.origX + dxWorld).toFixed(3));
+                let candY = Number((drag.origY + dyWorld).toFixed(3));
+
+                if (isSnapEnabled && !e.shiftKey) {
+                  const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
+                  const wallSnap = calculateWallSnap({ x: candX, y: candY }, wallsInLevel, verticesMap, 0.45);
+                  if (wallSnap) {
+                    candX = Number(wallSnap.snappedPoint.x.toFixed(3));
+                    candY = Number(wallSnap.snappedPoint.y.toFixed(3));
+                  }
+                }
+
+                updatePanel(panel.id, {
+                  x: candX,
+                  y: candY
+                });
+              }
+            }}
+            onPointerUp={(e) => {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
+                e.stopPropagation();
+                try {
+                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
+                const drag = activeNodeDragRef.current;
+                if (drag.moved) {
+                  lastDragEndTimeRef.current = Date.now();
+                  setSelectedEntity({ type: 'panel', id: panel.id });
+                }
+                activeNodeDragRef.current = null;
+                isDraggingObjectRef.current = false;
+              }
+            }}
+            onPointerCancel={(e) => {
+              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
+                try {
+                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
+                activeNodeDragRef.current = null;
+                isDraggingObjectRef.current = false;
+              }
+            }}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
               if (isCalibratingUnderlay || isAddingDimension) {
@@ -2403,8 +2580,25 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
-            className="cursor-pointer"
+            className={isSelected ? 'cursor-move' : 'cursor-pointer'}
           >
+            {/* Hitbox táctil ampliada para arrastre de tablero en pantalla táctil */}
+            <circle
+              r={isSelected ? 48 : 36}
+              fill="transparent"
+              pointerEvents="all"
+              className={isSelected ? 'cursor-move' : 'cursor-pointer'}
+            />
+            {isSelected && (
+              <circle
+                r={36}
+                fill="none"
+                stroke="#f59e0b"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                className="pointer-events-none opacity-80"
+              />
+            )}
             {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
             {isPendingStart && (
               <g pointerEvents="none">
@@ -2505,7 +2699,14 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     onElectricalElementClick,
     onElectricalElementDoubleClick,
     onPanelClick,
-    onPanelDoubleClick
+    onPanelDoubleClick,
+    updatePanel,
+    project.walls,
+    verticesMap,
+    isSnapEnabled,
+    selectedSymbolId,
+    setSelectedEntity,
+    isSamplingPattern
   ]);
 
   // 8. Cotas Métricas Libres en el Plano CAD
