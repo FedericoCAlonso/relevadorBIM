@@ -81,10 +81,10 @@ function params(over: Partial<BuildWallElevationParams> = {}): BuildWallElevatio
 }
 
 describe('Proyección base del alzado', () => {
-  it('es una involución: la cara izquierda refleja la coordenada X', () => {
-    expect(alongWallToScreenX(1, 4, 'right')).toBe(1);
-    expect(alongWallToScreenX(1, 4, 'left')).toBe(3);
-    expect(alongWallToScreenX(alongWallToScreenX(1.3, 4, 'left'), 4, 'left')).toBeCloseTo(1.3, 9);
+  it('es una involución: la cara derecha refleja la coordenada X', () => {
+    expect(alongWallToScreenX(1, 4, 'left')).toBe(1);
+    expect(alongWallToScreenX(1, 4, 'right')).toBe(3);
+    expect(alongWallToScreenX(alongWallToScreenX(1.3, 4, 'right'), 4, 'right')).toBeCloseTo(1.3, 9);
   });
 
   it('proyecta un punto de planta sobre el eje (u a lo largo, v perpendicular)', () => {
@@ -109,14 +109,14 @@ describe('Proyección base del alzado', () => {
 });
 
 describe('Aberturas en el alzado', () => {
-  it('cara derecha: X = distancia al vértice inicial', () => {
-    const elev = buildWallElevation(params({ openings: [door], face: 'right' }))!;
+  it('cara izquierda: X = distancia al vértice inicial', () => {
+    const elev = buildWallElevation(params({ openings: [door], face: 'left' }))!;
     expect(elev.openings[0].xLeft).toBeCloseTo(0.5, 9);
     expect(elev.openings[0].zTop).toBeCloseTo(2.05, 9);
   });
 
-  it('cara izquierda: la abertura se refleja respecto a L', () => {
-    const elev = buildWallElevation(params({ openings: [door], face: 'left' }))!;
+  it('cara derecha: la abertura se refleja respecto a L', () => {
+    const elev = buildWallElevation(params({ openings: [door], face: 'right' }))!;
     expect(elev.openings[0].xLeft).toBeCloseTo(4 - 0.5 - 0.8, 9);
   });
 
@@ -202,6 +202,8 @@ describe('Cajas y gabinetes en el alzado', () => {
 
   it('deduce la caja por familia de símbolo cuando no hay boxTypeId', () => {
     expect(resolveBoxGeometry({ symbolId: 'sym-planta-toma', isPanel: false }).category).toBe('caja_rectangular');
+    expect(resolveBoxGeometry({ symbolId: 'sym-planta-llave-1', isPanel: false }).category).toBe('caja_rectangular');
+    expect(resolveBoxGeometry({ symbolId: 'sym-planta-llave-comb', isPanel: false }).category).toBe('caja_rectangular');
     expect(resolveBoxGeometry({ symbolId: 'sym-planta-boca-techo', isPanel: false }).category).toBe('caja_octogonal');
     expect(resolveBoxGeometry({ isPanel: true }).category).toBe('gabinete_tablero');
     expect(resolveBoxGeometry({ symbolId: 'inexistente', isPanel: false }).category).toBe('caja_rectangular');
@@ -224,14 +226,24 @@ describe('Canalizaciones en el alzado', () => {
     routingPlane: 'wall'
   };
 
-  it('vía pared: recorrido ortogonal entre ambas cajas', () => {
+  it('vía pared: recorrido con puente superior cuando están distanciadas (>30 cm)', () => {
     const c = buildWallElevation(params({ elements: [a, b], conduits: [baseConduit], face: 'left' }))!.conduits[0];
     expect(c.segments).toHaveLength(1);
     const pts = c.segments[0];
-    expect(pts).toHaveLength(3);
+    expect(pts).toHaveLength(4);
     expect(pts[0].x).toBeCloseTo(pts[1].x, 9);
     expect(pts[1].y).toBeCloseTo(pts[2].y, 9);
+    expect(pts[2].x).toBeCloseTo(pts[3].x, 9);
     expect(c.widthM).toBeCloseTo(0.019, 9);
+  });
+
+  it('vía pared: enlace recto horizontal entre cajas contiguas (<=30 cm) a la misma altura', () => {
+    const adj1 = makeElement({ id: 'adj1', x: 2, heightZ: 1.2, side: 'left' });
+    const adj2 = makeElement({ id: 'adj2', x: 2.2, heightZ: 1.2, side: 'left' });
+    const cDirect: Conduit = { ...baseConduit, id: 'cdir', fromElementId: 'adj1', toElementId: 'adj2' };
+    const c = buildWallElevation(params({ elements: [adj1, adj2], conduits: [cDirect], face: 'left' }))!.conduits[0];
+    expect(c.segments[0]).toHaveLength(2);
+    expect(c.segments[0][0].y).toBeCloseTo(c.segments[0][1].y, 9);
   });
 
   it('vía losa: cada extremo sube hasta el cielorraso', () => {
@@ -260,8 +272,19 @@ describe('Canalizaciones en el alzado', () => {
     expect(elev.conduits[0].segments[0][1].y).toBeCloseTo(elev.drawingHeightM, 9);
   });
 
-  it('omite tramos cuyos extremos no están en este paramento', () => {
+  it('dibuja caño hacia la esquina cuando conecta con una caja de otra pared', () => {
     const elev = buildWallElevation(params({ elements: [a], conduits: [baseConduit], face: 'left' }))!;
+    expect(elev.conduits).toHaveLength(1);
+    const pts = elev.conduits[0].segments[0];
+    const lastPt = pts[pts.length - 1];
+    expect(lastPt.x === 0 || lastPt.x === 4).toBe(true);
+  });
+
+  it('omite tramos donde ninguna caja pertenece a este paramento', () => {
+    const o1 = makeElement({ id: 'o1', wallId: 'otro' });
+    const o2 = makeElement({ id: 'o2', wallId: 'otro' });
+    const cOther: Conduit = { ...baseConduit, id: 'co', fromElementId: 'o1', toElementId: 'o2' };
+    const elev = buildWallElevation(params({ elements: [a, o1, o2], conduits: [cOther], face: 'left' }))!;
     expect(elev.conduits).toHaveLength(0);
   });
 
@@ -277,15 +300,9 @@ describe('Canalizaciones en el alzado', () => {
     });
   });
 
-  it('un conducto solo no se desplaza respecto del eje de las cajas', () => {
-    const elev = buildWallElevation(params({ elements: [a, b], conduits: [baseConduit], face: 'left' }))!;
-    const box = elev.boxes.find((x) => x.id === 'b')!;
-    expect(elev.conduits[0].segments[0][2].y).toBeCloseTo(box.rect.cy, 9);
-  });
-
-  it('cajas a la misma altura: tramo recto horizontal y paralelos separados en Y', () => {
+  it('cajas contiguas a la misma altura: tramo recto horizontal y paralelos separados en Y', () => {
     const c1 = makeElement({ id: 'c1', x: 2, heightZ: 1.2, side: 'left' });
-    const c2 = makeElement({ id: 'c2', x: 2.5, heightZ: 1.2, side: 'left' });
+    const c2 = makeElement({ id: 'c2', x: 2.25, heightZ: 1.2, side: 'left' });
     const x1: Conduit = { ...baseConduit, id: 'x1', fromElementId: 'c1', toElementId: 'c2' };
     const x2: Conduit = { ...baseConduit, id: 'x2', fromElementId: 'c1', toElementId: 'c2' };
     const elev = buildWallElevation(params({ elements: [c1, c2], conduits: [x1, x2], face: 'left' }))!;
@@ -392,8 +409,8 @@ describe('Traducción de ediciones del alzado a planta', () => {
       targetZ: 0.9
     })!;
     expect(move.y).toBeCloseTo(2.1, 6);
-    expect(move.wallOffset).toBeCloseTo(3, 6);
-    expect(move.x).toBeCloseTo(4, 6);
+    expect(move.wallOffset).toBeCloseTo(1, 6);
+    expect(move.x).toBeCloseTo(2, 6);
   });
 
   it('limita la caja dentro del paramento', () => {
@@ -407,7 +424,7 @@ describe('Traducción de ediciones del alzado a planta', () => {
       targetX: -5,
       targetZ: 99
     })!;
-    expect(move.wallOffset).toBeCloseTo(0.15, 6);
+    expect(move.wallOffset).toBeCloseTo(3.85, 6);
     expect(move.heightZ).toBeCloseTo(2.8 - 0.2, 6);
   });
 
@@ -419,8 +436,8 @@ describe('Traducción de ediciones del alzado a planta', () => {
       face: 'left',
       patch: { xLeft: 0.4 }
     });
-    // Cara izquierda: xLeft = L - d - w -> d = 4 - 0.4 - 0.8 = 2.8
-    expect(upd.distanceAlongWall).toBeCloseTo(2.8, 9);
+    // Cara izquierda: xLeft = distanceAlongWall = 0.4
+    expect(upd.distanceAlongWall).toBeCloseTo(0.4, 9);
     const back = buildWallElevation(params({ openings: [{ ...door, ...upd }], face: 'left' }))!.openings[0];
     expect(back.xLeft).toBeCloseTo(0.4, 9);
   });
@@ -434,7 +451,7 @@ describe('Traducción de ediciones del alzado a planta', () => {
       patch: { width: 1.2 }
     });
     const back = buildWallElevation(params({ openings: [{ ...door, ...upd }], face: 'left' }))!.openings[0];
-    expect(back.xLeft).toBeCloseTo(4 - 0.5 - 0.8, 9);
+    expect(back.xLeft).toBeCloseTo(0.5, 9);
     expect(back.width).toBeCloseTo(1.2, 9);
   });
 
@@ -449,7 +466,7 @@ describe('Traducción de ediciones del alzado a planta', () => {
     expect(upd.height).toBe(2.8);
     expect(upd.sill).toBe(0);
     expect(upd.width).toBe(0.3);
-    expect(upd.distanceAlongWall).toBeCloseTo(3.7, 9);
+    expect(upd.distanceAlongWall).toBeCloseTo(0, 9);
   });
 });
 

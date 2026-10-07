@@ -83,7 +83,14 @@ export function getConduitLengthBreakdown(params: {
   } else if (routingPlane === 'floor_slab') {
     dzLocal = Math.max(0, fromElement.heightZ) + Math.max(0, toElement.heightZ);
   } else {
-    dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
+    const sameWall = Boolean(fromElement.wallId) && fromElement.wallId === toElement.wallId;
+    const distPlanta = Math.hypot(toElement.x - fromElement.x, toElement.y - fromElement.y);
+    if (sameWall && distPlanta > 0.30) {
+      const zBridge = Math.max(fromElement.heightZ, toElement.heightZ, ceilingHeightM - 0.20);
+      dzLocal = Math.max(0, zBridge - fromElement.heightZ) + Math.max(0, zBridge - toElement.heightZ);
+    } else {
+      dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
+    }
   }
 
   // Sumar desniveles explícitos en waypoints intermedios si existen

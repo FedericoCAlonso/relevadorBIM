@@ -34,7 +34,21 @@ describe('Vía de tendido por defecto', () => {
     expect(resolveDefaultRoutingPlane(undefined, undefined, 'ceiling_slab')).toBe('ceiling_slab');
   });
 
-  it('el cómputo por pared no suma subidas ficticias a la losa', () => {
+  it('el cómputo por pared para cajas contiguas (<= 30 cm) hace enlace directo sin subidas', () => {
+    const a = node({ id: 'a', x: 0, heightZ: 0.3 });
+    const b = node({ id: 'b', x: 0.2, heightZ: 0.3 });
+    const wall = getConduitLengthBreakdown({
+      fromElement: a,
+      toElement: b,
+      levelsMap: new Map(),
+      routingPlane: resolveDefaultRoutingPlane(a, b, 'ceiling_slab'),
+      ceilingHeightM: 2.7
+    });
+    expect(wall.dzLocal).toBe(0);
+    expect(wall.totalLengthM).toBeCloseTo(0.2 * 1.1, 3);
+  });
+
+  it('el cómputo por pared para cajas distanciadas (> 30 cm) usa puente superior anticondensación', () => {
     const a = node({ id: 'a', x: 0, heightZ: 0.3 });
     const b = node({ id: 'b', x: 1, heightZ: 0.3 });
     const wall = getConduitLengthBreakdown({
@@ -51,7 +65,8 @@ describe('Vía de tendido por defecto', () => {
       routingPlane: 'ceiling_slab',
       ceilingHeightM: 2.7
     });
-    expect(wall.dzLocal).toBe(0);
+    // Puente superior a 2.7 - 0.2 = 2.5m. Subida y bajada: 2 * (2.5 - 0.3) = 4.4m
+    expect(wall.dzLocal).toBe(4.4);
     expect(wall.totalLengthM).toBeLessThan(slab.totalLengthM);
   });
 });

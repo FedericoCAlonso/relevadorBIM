@@ -73,6 +73,13 @@ export const CONDUIT_ELEVATION_LAYOUT = {
   PARALLEL_GAP_M: 0.035
 } as const;
 
+export const CONDUIT_ROUTE_DEFAULTS = {
+  /** Distancia horizontal máxima entre cajas para considerarlas contiguas / enlace directo (30 cm). */
+  ADJACENT_MAX_GAP_M: 0.30,
+  /** Margen de separación respecto al cielorraso para la cota del puente superior anticondensación (20 cm). */
+  TOP_BRIDGE_MARGIN_M: 0.20
+} as const;
+
 interface BoxElevationDefaults {
   readonly widthMM: number;
   readonly heightMM: number;
@@ -129,7 +136,7 @@ export function projectOnWall(point: Vector2D, frame: WallAxisFrame): { u: numbe
 
 /** Distancia al vértice inicial ⇄ coordenada X del observador (la relación es una involución). */
 export function alongWallToScreenX(u: number, wallLength: number, face: ElevationFace): number {
-  return face === 'right' ? u : wallLength - u;
+  return face === 'left' ? u : wallLength - u;
 }
 
 export const screenXToAlongWall = alongWallToScreenX;
@@ -335,7 +342,11 @@ export function resolveBoxGeometry(params: {
   const symbolCategory = symbolId ? getSymbolById(symbolId)?.categoria : undefined;
   const category: BoxCategory =
     boxType?.category ??
-    (isPanel ? 'gabinete_tablero' : (symbolCategory && SYMBOL_CATEGORY_DEFAULT_BOX[symbolCategory]) || FALLBACK_BOX_CATEGORY);
+    (isPanel
+      ? 'gabinete_tablero'
+      : symbolId && (symbolId.includes('llave') || symbolId.includes('toma'))
+      ? 'caja_rectangular'
+      : (symbolCategory && SYMBOL_CATEGORY_DEFAULT_BOX[symbolCategory]) || FALLBACK_BOX_CATEGORY);
   const defaults = BOX_CATEGORY_ELEVATION_DEFAULTS[category];
   const mm = WALL_ELEVATION_CONSTANTS.MM_PER_M;
 
@@ -507,13 +518,23 @@ function conduitEndBoxes(fromBox: ElevationBox | undefined, toBox: ElevationBox 
  * Claves de "carril": los conductos que comparten clave corren en paralelo y se
  * separan entre sí. Una clave por tramo (pared) o por cada caja alojada (losa/contrapiso).
  */
-function conduitLaneKeys(conduit: Conduit, fromBox: ElevationBox | undefined, toBox: ElevationBox | undefined): string[] {
+function conduitLaneKeys(
+  conduit: Conduit,
+  fromBox: ElevationBox | undefined,
+  toBox: ElevationBox | undefined
+): string[] {
   const plane = conduit.routingPlane ?? 'wall';
   if (plane === 'ceiling_slab' || plane === 'floor_slab') {
     return conduitEndBoxes(fromBox, toBox).map((b) => `${plane}:${b.id}`);
   }
-  if (!fromBox || !toBox || fromBox.id === toBox.id) return [];
-  return [[fromBox.id, toBox.id].sort().join('|')];
+  if (fromBox && toBox && fromBox.id !== toBox.id) {
+    return [[fromBox.id, toBox.id].sort().join('|')];
+  }
+  const localBox = fromBox ?? toBox;
+  if (localBox) {
+    return [`cross:${localBox.id}:${plane}`];
+  }
+  return [];
 }
 
 /** Reparte cada grupo de conductos en carriles simétricos respecto del eje común. */
@@ -530,40 +551,181 @@ function assignLaneOffsets(keysPerConduit: string[][]): number[][] {
   );
 }
 
-function buildWallRunSegment(fromBox: ElevationBox, toBox: ElevationBox, offset: number): ElevationPoint[] {
-  const eps = WALL_ELEVATION_CONSTANTS.DEDUPE_EPSILON_M;
-  const [first, second] = fromBox.id <= toBox.id ? [fromBox, toBox] : [toBox, fromBox];
-  const { cx: fx, cy: fy } = first.rect;
-  const { cx: tx, cy: ty } = second.rect;
-  if (Math.abs(fy - ty) < eps) return [{ x: fx, y: fy + offset }, { x: tx, y: ty + offset }];
-  if (Math.abs(fx - tx) < eps) return [{ x: fx + offset, y: fy }, { x: tx + offset, y: ty }];
+function buildWallRunSegment(
+  fromBox: ElevationBox,
+  toBox: ElevationBox,
+  offset: number,
+  wallHeightM: number,
+  ceilingZ: number,
+  H: number
+): ElevationPoint[] {
+  const [first, second] = fromBox.centerX <= toBox.centerX ? [fromBox, toBox] : [toBox, fromBox];
+  const deltaX = Math.abs(second.centerX - first.centerX);
+  const deltaZ = Math.abs(second.centerZ - first.centerZ);
+
+  // Si están contiguas a la misma altura o similar (distancia horizontal <= 30cm y deltaZ <= 15cm):
+  // Enlace recto directo entre cajas
+  if (deltaX <= CONDUIT_ROUTE_DEFAULTS.ADJACENT_MAX_GAP_M && deltaZ <= 0.15) {
+    const eps = WALL_ELEVATION_CONSTANTS.DEDUPE_EPSILON_M;
+    const { cx: fx, cy: fy } = first.rect;
+    const { cx: tx, cy: ty } = second.rect;
+    if (Math.abs(fy - ty) < eps) return [{ x: fx, y: fy + offset }, { x: tx, y: ty + offset }];
+    return [
+      { x: fx + offset, y: fy },
+      { x: fx + offset, y: ty + offset },
+      { x: tx, y: ty + offset }
+    ];
+  }
+
+  // Si están distanciadas (> 30 cm) o con desnivel significativo:
+  // PUENTE SUPERIOR ANTICONDENSACIÓN (sale por arriba, corre a cota superior y baja a la otra caja)
+  const zBridge = Math.max(
+    first.centerZ,
+    second.centerZ,
+    Math.min(ceilingZ, wallHeightM) - CONDUIT_ROUTE_DEFAULTS.TOP_BRIDGE_MARGIN_M
+  );
+  const yBridge = toDrawingY(zBridge, H);
+
   return [
-    { x: fx + offset, y: fy },
-    { x: fx + offset, y: ty + offset },
-    { x: tx, y: ty + offset }
+    { x: first.centerX + offset, y: first.rect.y },
+    { x: first.centerX + offset, y: yBridge + offset },
+    { x: second.centerX + offset, y: yBridge + offset },
+    { x: second.centerX + offset, y: second.rect.y }
   ];
 }
 
-function buildConduitSegments(
+function buildCrossWallSegment(
   conduit: Conduit,
-  fromBox: ElevationBox | undefined,
-  toBox: ElevationBox | undefined,
+  localBox: ElevationBox,
+  otherNode: SpatialElectricalNode | undefined,
+  wall: Wall,
+  vertices: Map<string, WallVertex>,
+  face: ElevationFace,
   ceilingY: number,
   floorY: number,
-  offsets: number[]
-): ElevationPoint[][] {
+  wallHeightM: number,
+  ceilingZ: number,
+  H: number,
+  offset: number
+): ElevationPoint[] {
   const plane = conduit.routingPlane ?? 'wall';
-  if (plane === 'ceiling_slab' || plane === 'floor_slab') {
-    // Cada extremo alojado en este paramento sube hasta la losa o baja hasta el contrapiso.
-    const target = plane === 'ceiling_slab' ? ceilingY : floorY;
-    return conduitEndBoxes(fromBox, toBox).map((box, i) => {
-      const x = box.centerX + (offsets[i] ?? 0);
-      const from = plane === 'ceiling_slab' ? box.rect.y : box.rect.y + box.rect.height;
-      return [{ x, y: from }, { x, y: target }];
-    });
+  if (plane === 'ceiling_slab') {
+    return [
+      { x: localBox.centerX + offset, y: localBox.rect.y },
+      { x: localBox.centerX + offset, y: ceilingY }
+    ];
   }
-  if (!fromBox || !toBox || fromBox.id === toBox.id) return [];
-  return [buildWallRunSegment(fromBox, toBox, offsets[0] ?? 0)];
+  if (plane === 'floor_slab') {
+    return [
+      { x: localBox.centerX + offset, y: localBox.rect.y + localBox.rect.height },
+      { x: localBox.centerX + offset, y: floorY }
+    ];
+  }
+
+  // plane === 'wall': el caño va por pared hacia la esquina que conecta con el otro elemento
+  const vStart = vertices.get(wall.startVertexId);
+  const vEnd = vertices.get(wall.endVertexId);
+  const frame = getWallAxisFrame(wall, vertices);
+  const L = frame?.length ?? wall.thickness;
+  let exitU = 0;
+  if (otherNode && vStart && vEnd) {
+    const dStart = Math.hypot(otherNode.x - vStart.x, otherNode.y - vStart.y);
+    const dEnd = Math.hypot(otherNode.x - vEnd.x, otherNode.y - vEnd.y);
+    exitU = dEnd < dStart ? L : 0;
+  } else {
+    exitU = localBox.centerX > L / 2 ? L : 0;
+  }
+  const exitX = alongWallToScreenX(exitU, L, face);
+  const distToExit = Math.abs(exitX - localBox.centerX);
+
+  if (distToExit <= CONDUIT_ROUTE_DEFAULTS.ADJACENT_MAX_GAP_M) {
+    return [
+      { x: localBox.centerX, y: localBox.rect.cy + offset },
+      { x: exitX, y: localBox.rect.cy + offset }
+    ];
+  }
+
+  const zBridge = Math.max(
+    localBox.centerZ,
+    Math.min(ceilingZ, wallHeightM) - CONDUIT_ROUTE_DEFAULTS.TOP_BRIDGE_MARGIN_M
+  );
+  const yBridge = toDrawingY(zBridge, H);
+  return [
+    { x: localBox.centerX + offset, y: localBox.rect.y },
+    { x: localBox.centerX + offset, y: yBridge + offset },
+    { x: exitX, y: yBridge + offset }
+  ];
+}
+
+function buildConduitSegments(params: {
+  conduit: Conduit;
+  fromBox: ElevationBox | undefined;
+  toBox: ElevationBox | undefined;
+  allNodesMap: Map<string, SpatialElectricalNode>;
+  wall: Wall;
+  vertices: Map<string, WallVertex>;
+  face: ElevationFace;
+  ceilingY: number;
+  floorY: number;
+  wallHeightM: number;
+  ceilingZ: number;
+  H: number;
+  offsets: number[];
+}): ElevationPoint[][] {
+  const {
+    conduit,
+    fromBox,
+    toBox,
+    allNodesMap,
+    wall,
+    vertices,
+    face,
+    ceilingY,
+    floorY,
+    wallHeightM,
+    ceilingZ,
+    H,
+    offsets
+  } = params;
+  const plane = conduit.routingPlane ?? 'wall';
+
+  // Caso 1: Ambas cajas están en este paramento
+  if (fromBox && toBox && fromBox.id !== toBox.id) {
+    if (plane === 'ceiling_slab' || plane === 'floor_slab') {
+      const target = plane === 'ceiling_slab' ? ceilingY : floorY;
+      return conduitEndBoxes(fromBox, toBox).map((box, i) => {
+        const x = box.centerX + (offsets[i] ?? 0);
+        const from = plane === 'ceiling_slab' ? box.rect.y : box.rect.y + box.rect.height;
+        return [{ x, y: from }, { x, y: target }];
+      });
+    }
+    return [buildWallRunSegment(fromBox, toBox, offsets[0] ?? 0, wallHeightM, ceilingZ, H)];
+  }
+
+  // Caso 2: Solo una caja está en este paramento (la otra viene de otra pared o losa)
+  const localBox = fromBox ?? toBox;
+  if (localBox) {
+    const otherId = localBox.id === conduit.fromElementId ? conduit.toElementId : conduit.fromElementId;
+    const otherNode = allNodesMap.get(otherId);
+    return [
+      buildCrossWallSegment(
+        conduit,
+        localBox,
+        otherNode,
+        wall,
+        vertices,
+        face,
+        ceilingY,
+        floorY,
+        wallHeightM,
+        ceilingZ,
+        H,
+        offsets[0] ?? 0
+      )
+    ];
+  }
+
+  return [];
 }
 
 export function buildWallElevation(params: BuildWallElevationParams): WallElevation | null {
@@ -579,7 +741,7 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
   const elevOpenings: ElevationOpening[] = openings
     .filter((o) => o.wallId === wall.id)
     .map((o) => {
-      const xLeft = face === 'right' ? o.distanceAlongWall : L - o.distanceAlongWall - o.width;
+      const xLeft = face === 'left' ? o.distanceAlongWall : L - o.distanceAlongWall - o.width;
       const zBottom = o.sill;
       const zTop = o.sill + o.height;
       const rect = makeRect(xLeft, xLeft + o.width, zBottom, zTop, H);
@@ -648,6 +810,10 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
     const id = c.circuitId ?? c.circuitIds?.[0];
     return id ? circuits.find((ci) => ci.id === id)?.color : undefined;
   };
+  const allNodesMap = new Map<string, SpatialElectricalNode>([
+    ...elements.map((e) => [e.id, e] as const),
+    ...panels.map((p) => [p.id, p] as const)
+  ]);
   const routed = conduits.map((c) => ({
     conduit: c,
     fromBox: boxById.get(c.fromElementId),
@@ -656,9 +822,21 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
   const laneOffsets = assignLaneOffsets(routed.map((r) => conduitLaneKeys(r.conduit, r.fromBox, r.toBox)));
   const elevConduits: ElevationConduit[] = [];
   routed.forEach(({ conduit: c, fromBox, toBox }, idx) => {
-    const segments = buildConduitSegments(c, fromBox, toBox, ceilingY, floorY, laneOffsets[idx]).filter(
-      (seg) => !pointsAreDegenerate(seg)
-    );
+    const segments = buildConduitSegments({
+      conduit: c,
+      fromBox,
+      toBox,
+      allNodesMap,
+      wall,
+      vertices,
+      face,
+      ceilingY,
+      floorY,
+      wallHeightM,
+      ceilingZ,
+      H,
+      offsets: laneOffsets[idx] ?? [0]
+    }).filter((seg) => !pointsAreDegenerate(seg));
     if (segments.length === 0) return;
     elevConduits.push({
       id: c.id,
@@ -792,12 +970,12 @@ export function computeOpeningUpdateFromElevation(params: {
 }): Pick<Opening, 'width' | 'height' | 'sill' | 'distanceAlongWall'> {
   const { opening, wallLengthM: L, wallHeightM: H, face, patch } = params;
   const m = WALL_ELEVATION_CONSTANTS;
-  const currentXLeft = face === 'right' ? opening.distanceAlongWall : L - opening.distanceAlongWall - opening.width;
+  const currentXLeft = face === 'left' ? opening.distanceAlongWall : L - opening.distanceAlongWall - opening.width;
   const width = clamp(patch.width ?? opening.width, m.MIN_OPENING_WIDTH_M, L);
   const xLeft = clamp(patch.xLeft ?? currentXLeft, 0, L - width);
   const height = clamp(patch.height ?? opening.height, m.MIN_OPENING_HEIGHT_M, H);
   const sill = clamp(patch.sill ?? opening.sill, 0, H - height);
-  const distanceAlongWall = face === 'right' ? xLeft : L - xLeft - width;
+  const distanceAlongWall = face === 'left' ? xLeft : L - xLeft - width;
   return {
     width: round3(width),
     height: round3(height),
