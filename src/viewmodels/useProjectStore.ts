@@ -120,6 +120,19 @@ interface ProjectStoreState {
     label?: string;
   }) => Opening | null;
 
+  /** Inserta una abertura directamente con cota alongWall, dimensiones y antepecho */
+  addOpeningDirect: (params: {
+    wallId: string;
+    type: OpeningType;
+    width: number;
+    height: number;
+    sill: number;
+    distanceAlongWall: number;
+    swing?: OpeningSwing;
+    label?: string;
+    presetId?: string;
+  }) => Opening | null;
+
   updateWall: (wallId: string, updates: Partial<Wall>) => void;
   updateWallLength: (wallId: string, newLengthM: number) => void;
   updateVertexPosition: (vertexId: string, newPos: Vector2D) => void;
@@ -755,6 +768,36 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       distanceAlongWall: Number(distanceAlongWall.toFixed(3)),
       swing,
       label: label || (type === 'door' ? 'P' : 'V')
+    };
+
+    set({
+      project: {
+        ...project,
+        openings: [...project.openings, newOpening],
+        meta: { ...project.meta, updatedAt: Date.now() }
+      },
+      selectedEntity: { type: 'opening', id: newOpening.id }
+    });
+
+    return newOpening;
+  },
+
+  addOpeningDirect: (params) => {
+    const { project } = get();
+    const hostWall = project.walls.find((w) => w.id === params.wallId);
+    if (!hostWall || params.width <= 0) return null;
+
+    const newOpening: Opening = {
+      id: generateUniqueId('open'),
+      wallId: hostWall.id,
+      type: params.type,
+      width: params.width,
+      height: params.height,
+      sill: params.sill,
+      distanceAlongWall: Number(params.distanceAlongWall.toFixed(3)),
+      swing: params.swing ?? (params.type === 'door' ? 'left_in' : 'sliding'),
+      label: params.label || (params.type === 'door' ? 'P' : params.type === 'window' ? 'V' : 'Paso'),
+      presetId: params.presetId
     };
 
     set({

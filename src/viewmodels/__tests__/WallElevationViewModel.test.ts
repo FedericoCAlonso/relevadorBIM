@@ -3,6 +3,8 @@ import { useWallElevationStore } from '../useWallElevationViewModel';
 import { useProjectStore } from '../useProjectStore';
 import { computeNewNodeFromElevation } from '../../models/architecture/elevationPlacement';
 import { placeElectricalElementInStore, useElectricalSequenceStore } from '../useElectricalViewModel';
+import { buildWallElevation } from '../../models/architecture/wallElevation';
+import { DEFAULT_OPENING_TYPES } from '../../models/architecture/openingPresets';
 
 describe('useWallElevationStore', () => {
   beforeEach(() => {
@@ -499,6 +501,104 @@ describe('useWallElevationStore', () => {
     expect(elevOpening.sill).toBe(0.90);
     expect(elevOpening.zBottom).toBe(0.90);
     expect(elevOpening.zTop).toBe(2.00);
+  });
+
+  it('permite insertar directamente una abertura paramétrica con addOpeningDirect en el alzado', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    const preset = DEFAULT_OPENING_TYPES.find((p) => p.id === 'puerta_placa_80')!;
+    expect(preset).toBeDefined();
+
+    const createdOpening = useProjectStore.getState().addOpeningDirect({
+      wallId: wall.id,
+      distanceAlongWall: 1.0,
+      type: preset.type,
+      width: preset.width,
+      height: preset.height,
+      sill: preset.sill,
+      presetId: preset.id
+    });
+
+    expect(createdOpening).not.toBeNull();
+    if (!createdOpening) return;
+
+    expect(createdOpening.id).toBeDefined();
+    expect(createdOpening.wallId).toBe('wall-101');
+    expect(createdOpening.width).toBe(0.80);
+    expect(createdOpening.height).toBe(2.05);
+    expect(createdOpening.sill).toBe(0);
+    expect(createdOpening.presetId).toBe('puerta_placa_80');
+
+    // Comprobar que en la proyección de alzado se renderiza correctamente
+    const elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: useProjectStore.getState().project.openings,
+      elements: [],
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+
+    const elevOp = elev.openings.find((o) => o.id === createdOpening.id)!;
+    expect(elevOp).toBeDefined();
+    expect(elevOp.xLeft).toBeCloseTo(1.0, 2);
+    expect(elevOp.xLeft + elevOp.width).toBeCloseTo(1.80, 2);
+    expect(elevOp.zBottom).toBe(0);
+    expect(elevOp.zTop).toBe(2.05);
+  });
+
+  it('calcula la distancia a lo largo del muro correctamente según la cara al colocar aberturas', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+    const wallLengthM = 4.0;
+    const openingWidth = 1.0;
+
+    // Si el usuario hace clic en xLeft = 1.0 en cara izquierda:
+    // distanceAlongWall = 1.0
+    const opLeft = useProjectStore.getState().addOpeningDirect({
+      wallId: wall.id,
+      distanceAlongWall: 1.0,
+      type: 'door',
+      width: openingWidth,
+      height: 2.05,
+      sill: 0
+    });
+
+    expect(opLeft).not.toBeNull();
+    if (!opLeft) return;
+
+    // En cara izquierda, xLeft debe ser 1.0
+    const elevLeft = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [opLeft],
+      elements: [],
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+    expect(elevLeft.openings[0].xLeft).toBeCloseTo(1.0, 2);
+
+    // En cara derecha (vista en espejo), el extremo que en el muro está en distanceAlongWall = 1.0
+    // se ve desde la derecha a (wallLengthM - distanceAlongWall - openingWidth) = 4 - 1 - 1 = 2.0m
+    const elevRight = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'right',
+      openings: [opLeft],
+      elements: [],
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+    expect(elevRight.openings[0].xLeft).toBeCloseTo(wallLengthM - 1.0 - openingWidth, 2);
   });
 });
 

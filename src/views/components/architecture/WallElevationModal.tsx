@@ -97,6 +97,12 @@ export const WallElevationModal: React.FC = () => {
     cancelPlacement,
     updatePlacementPreview,
     commitPlacement,
+    openingPlacementTool,
+    openingPlacementPreview,
+    startOpeningPlacement,
+    cancelOpeningPlacement,
+    updateOpeningPlacementPreview,
+    commitOpeningPlacement,
     availablePlacementSymbols,
     availableCircuits,
     cabinetSizePresets,
@@ -121,9 +127,12 @@ export const WallElevationModal: React.FC = () => {
     startCenter?: { x: number; y: number };
   } | null>(null);
 
-  const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
   const [isPlacementMenuOpen, setIsPlacementMenuOpen] = useState(false);
+  const [isOpeningPlacementMenuOpen, setIsOpeningPlacementMenuOpen] = useState(false);
   const [placementCircuitId, setPlacementCircuitId] = useState<string | null>(null);
+  const [mobileSheetMode, setMobileSheetMode] = useState<'none' | 'add_box' | 'add_opening' | 'info'>('none');
+  const [boxCategoryTab, setBoxCategoryTab] = useState<'tomas' | 'llaves' | 'tableros' | 'paso' | 'apliques'>('tomas');
+  const [openingCategoryTab, setOpeningCategoryTab] = useState<'door' | 'window' | 'passage'>('door');
 
   // Cerrar con Escape
   useEffect(() => {
@@ -132,8 +141,14 @@ export const WallElevationModal: React.FC = () => {
       if (e.key === 'Escape') {
         if (placementTool) {
           cancelPlacement();
+        } else if (openingPlacementTool) {
+          cancelOpeningPlacement();
         } else if (isPlacementMenuOpen) {
           setIsPlacementMenuOpen(false);
+        } else if (isOpeningPlacementMenuOpen) {
+          setIsOpeningPlacementMenuOpen(false);
+        } else if (mobileSheetMode !== 'none') {
+          setMobileSheetMode('none');
         } else if (isDragging) {
           cancelBoxDrag();
         } else if (isGripDragging) {
@@ -148,10 +163,14 @@ export const WallElevationModal: React.FC = () => {
   }, [
     isOpen,
     placementTool,
+    openingPlacementTool,
     isPlacementMenuOpen,
+    isOpeningPlacementMenuOpen,
+    mobileSheetMode,
     isDragging,
     isGripDragging,
     cancelPlacement,
+    cancelOpeningPlacement,
     cancelBoxDrag,
     cancelRoutePointDrag,
     close
@@ -255,6 +274,11 @@ export const WallElevationModal: React.FC = () => {
         if (world) commitPlacement(world);
         return;
       }
+      if (openingPlacementTool) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) commitOpeningPlacement(world);
+        return;
+      }
       if (e.pointerType === 'touch') return;
       if (e.target !== svgRef.current && (e.target as Element).id !== 'elevation-backdrop') return;
       clearSelection();
@@ -262,7 +286,7 @@ export const WallElevationModal: React.FC = () => {
       panStartRef.current = { clientX: e.clientX, clientY: e.clientY };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [placementTool, clientToWorld, commitPlacement, clearSelection]
+    [placementTool, openingPlacementTool, clientToWorld, commitPlacement, commitOpeningPlacement, clearSelection]
   );
 
   const handleSvgPointerMove = useCallback(
@@ -270,6 +294,11 @@ export const WallElevationModal: React.FC = () => {
       if (placementTool) {
         const world = clientToWorld(e.clientX, e.clientY);
         if (world) updatePlacementPreview(world);
+        return;
+      }
+      if (openingPlacementTool) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) updateOpeningPlacementPreview(world);
         return;
       }
       if (isDragging) {
@@ -298,10 +327,12 @@ export const WallElevationModal: React.FC = () => {
     },
     [
       placementTool,
+      openingPlacementTool,
       isDragging,
       isGripDragging,
       clientToWorld,
       updatePlacementPreview,
+      updateOpeningPlacementPreview,
       moveBoxDrag,
       moveRoutePointDrag,
       panBy
@@ -363,8 +394,20 @@ export const WallElevationModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Selector de Paramento (Cara Interior vs Exterior) */}
-        <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5 sm:p-1 gap-1 text-[11px] sm:text-xs font-semibold shrink-0">
+        {/* Selector de Paramento */}
+        {/* Móvil: botón compacto toggle */}
+        <button
+          type="button"
+          onClick={() => setFace(face === 'left' ? 'right' : 'left')}
+          className="sm:hidden px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-slate-200 flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
+          title="Alternar cara opuesta"
+        >
+          <Layers size={13} className="text-blue-400" />
+          <span className="truncate max-w-[80px]">{face === 'left' ? 'Cara Izq.' : 'Cara Der.'}</span>
+        </button>
+
+        {/* Escritorio: selector expandido con 2 opciones */}
+        <div className="hidden sm:flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5 sm:p-1 gap-1 text-[11px] sm:text-xs font-semibold shrink-0">
           {faceOptions.map((opt) => (
             <button
               key={opt.face}
@@ -382,106 +425,195 @@ export const WallElevationModal: React.FC = () => {
           ))}
         </div>
 
-        {/* Herramienta de Agregar Bocas / Cajas / Tableros en el muro */}
-        <div className="relative shrink-0">
-          {placementTool ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl text-[11px] font-bold">
-              <span className="truncate max-w-[100px] sm:max-w-none">Colocando en muro...</span>
-              <button
-                type="button"
-                onClick={cancelPlacement}
-                className="p-1 hover:bg-amber-500/30 rounded-lg text-amber-200 transition-colors"
-                title="Cancelar colocación (Esc)"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ) : (
+        {/* Indicador de Colocación Activa en Cabecera */}
+        {(placementTool || openingPlacementTool) && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl text-[11px] font-bold shrink-0">
+            <span className="truncate max-w-[90px] sm:max-w-none">
+              {placementTool ? 'Colocando boca...' : 'Colocando vano...'}
+            </span>
             <button
               type="button"
-              onClick={() => setIsPlacementMenuOpen((v) => !v)}
-              className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
-                isPlacementMenuOpen
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-emerald-600/80 hover:bg-emerald-600 text-emerald-100 hover:text-white border border-emerald-500/30'
-              }`}
-              title="Agregar nueva boca o tablero en este muro"
+              onClick={cancelPlacement}
+              className="p-1 hover:bg-amber-500/30 rounded-lg text-amber-200 transition-colors"
+              title="Cancelar colocación (Esc)"
             >
-              <Plus size={14} />
-              <span className="hidden xs:inline">+ Boca</span>
+              <X size={13} />
             </button>
+          </div>
+        )}
+
+        {/* Botones de Colocación para Escritorio */}
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+          {/* Botón Desktop + Boca */}
+          {!placementTool && !openingPlacementTool && (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPlacementMenuOpen((v) => !v);
+                  setIsOpeningPlacementMenuOpen(false);
+                }}
+                className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                  isPlacementMenuOpen
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-emerald-600/80 hover:bg-emerald-600 text-emerald-100 hover:text-white border border-emerald-500/30'
+                }`}
+                title="Agregar nueva boca o tablero en este muro"
+              >
+                <Plus size={14} />
+                <span>+ Boca</span>
+              </button>
+
+              {isPlacementMenuOpen && (
+                <div className="absolute top-full mt-2 right-0 w-72 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-2xl z-50 text-slate-200 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-slate-100">Agregar elemento en muro</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPlacementMenuOpen(false)}
+                      className="p-1 text-slate-400 hover:text-white rounded-lg"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Circuito asignado:
+                    </label>
+                    <select
+                      value={placementCircuitId ?? ''}
+                      onChange={(e) => setPlacementCircuitId(e.target.value ? e.target.value : null)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Por defecto / Automático</option>
+                      {availableCircuits.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Seleccionar tipo de elemento:
+                    </label>
+                    <div className="grid grid-cols-1 gap-1 max-h-48 overflow-y-auto pr-1">
+                      {availablePlacementSymbols.map((sym) => (
+                        <button
+                          key={sym.id}
+                          type="button"
+                          onClick={() => {
+                            startPlacement(sym.id, placementCircuitId);
+                            setIsPlacementMenuOpen(false);
+                          }}
+                          className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs bg-slate-800/60 hover:bg-emerald-600 hover:text-white border border-slate-700/60 transition-colors flex items-center justify-between group"
+                        >
+                          <span className="font-semibold truncate">{sym.label}</span>
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-700/80 group-hover:bg-emerald-700 text-slate-300 group-hover:text-white shrink-0 ml-1">
+                            {sym.id.includes('tp') || sym.id.includes('ts') || sym.id.includes('medidor')
+                              ? 'Tablero'
+                              : sym.id.includes('toma')
+                              ? 'Toma'
+                              : sym.id.includes('llave')
+                              ? 'Llave'
+                              : 'Boca'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
-          {/* Popover / Menú de selección de símbolo y circuito */}
-          {isPlacementMenuOpen && (
-            <div className="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto w-72 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-2xl z-50 text-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-100">Agregar elemento en muro</span>
-                <button
-                  type="button"
-                  onClick={() => setIsPlacementMenuOpen(false)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg"
-                >
-                  <X size={14} />
-                </button>
-              </div>
+          {/* Botón Desktop + Abertura */}
+          {!placementTool && !openingPlacementTool && (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpeningPlacementMenuOpen((v) => !v);
+                  setIsPlacementMenuOpen(false);
+                }}
+                className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                  isOpeningPlacementMenuOpen
+                    ? 'bg-amber-500 text-slate-900 font-extrabold'
+                    : 'bg-amber-600/80 hover:bg-amber-600 text-amber-100 hover:text-white border border-amber-500/30'
+                }`}
+                title="Agregar nueva puerta, ventana o vano en este muro"
+              >
+                <DoorOpen size={14} />
+                <span>+ Abertura</span>
+              </button>
 
-              {/* Selector de Circuito de asignación */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Circuito asignado:
-                </label>
-                <select
-                  value={placementCircuitId ?? ''}
-                  onChange={(e) => setPlacementCircuitId(e.target.value ? e.target.value : null)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-                >
-                  <option value="">Por defecto / Automático</option>
-                  {availableCircuits.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.type})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Símbolos agrupados */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Seleccionar tipo de elemento:
-                </label>
-                <div className="grid grid-cols-1 gap-1 max-h-48 overflow-y-auto pr-1">
-                  {availablePlacementSymbols.map((sym) => (
+              {isOpeningPlacementMenuOpen && (
+                <div className="absolute top-full mt-2 right-0 w-80 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-2xl z-50 text-slate-200 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-slate-100">Agregar abertura en muro</span>
                     <button
-                      key={sym.id}
                       type="button"
-                      onClick={() => {
-                        startPlacement(sym.id, placementCircuitId);
-                        setIsPlacementMenuOpen(false);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs bg-slate-800/60 hover:bg-blue-600 hover:text-white border border-slate-700/60 transition-colors flex items-center justify-between group"
+                      onClick={() => setIsOpeningPlacementMenuOpen(false)}
+                      className="p-1 text-slate-400 hover:text-white rounded-lg"
                     >
-                      <span className="font-semibold truncate">{sym.label}</span>
-                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-700/80 group-hover:bg-blue-700 text-slate-300 group-hover:text-white shrink-0 ml-1">
-                        {sym.id.includes('tp') || sym.id.includes('ts') || sym.id.includes('medidor')
-                          ? 'Tablero'
-                          : sym.id.includes('toma')
-                          ? 'Toma'
-                          : sym.id.includes('llave')
-                          ? 'Llave'
-                          : 'Boca'}
-                      </span>
+                      <X size={14} />
                     </button>
-                  ))}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1 bg-slate-800 p-0.5 rounded-xl text-[11px] font-semibold text-center">
+                    {(['door', 'window', 'passage'] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setOpeningCategoryTab(cat)}
+                        className={`py-1 rounded-lg transition-colors ${
+                          openingCategoryTab === cat
+                            ? 'bg-amber-600 text-white font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {cat === 'door' ? 'Puertas' : cat === 'window' ? 'Ventanas' : 'Vanos'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                    {openingTypes
+                      .filter((p) => p.type === openingCategoryTab)
+                      .map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            startOpeningPlacement(preset.id);
+                            setIsOpeningPlacementMenuOpen(false);
+                          }}
+                          className="w-full text-left p-2 rounded-xl bg-slate-800/70 hover:bg-slate-700 border border-slate-700/60 hover:border-amber-500/50 transition-all group flex items-center justify-between"
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-slate-100 group-hover:text-amber-300">
+                              {preset.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              {preset.width.toFixed(2)}m × {preset.height.toFixed(2)}m
+                              {preset.sill > 0 ? ` · Antepecho +${preset.sill.toFixed(2)}m` : ' · NPT 0.00m'}
+                            </div>
+                          </div>
+                          <Plus size={14} className="text-slate-400 group-hover:text-amber-400 shrink-0" />
+                        </button>
+                      ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Controles de Vista y Botón Cerrar */}
         <div className="flex items-center gap-1 shrink-0">
-          <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5">
+          <div className="hidden sm:flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5">
             <button
               type="button"
               onClick={zoomIn}
@@ -505,12 +637,12 @@ export const WallElevationModal: React.FC = () => {
               title="Enfocar alzado del muro al ancho de pantalla"
             >
               <Focus size={13} />
-              <span className="hidden xs:inline">Muro</span>
+              <span>Muro</span>
             </button>
             <button
               type="button"
               onClick={fit}
-              className="p-1 sm:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors hidden sm:block"
+              className="p-1 sm:p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
               title="Ajustar encuadre general (Fit)"
             >
               <Maximize2 size={15} />
@@ -924,6 +1056,68 @@ export const WallElevationModal: React.FC = () => {
                 );
               })()}
 
+            {/* Previsualización fantasma de inserción de abertura en el muro */}
+            {openingPlacementPreview && (
+              <g className="pointer-events-none">
+                <rect
+                  x={openingPlacementPreview.xLeft}
+                  y={toDrawingY(
+                    openingPlacementPreview.sill + openingPlacementPreview.height,
+                    elevation.drawingHeightM
+                  )}
+                  width={openingPlacementPreview.width}
+                  height={openingPlacementPreview.height}
+                  fill="rgba(245, 158, 11, 0.20)"
+                  stroke="#f59e0b"
+                  strokeWidth={0.015}
+                  strokeDasharray="0.04 0.02"
+                />
+                <rect
+                  x={openingPlacementPreview.xLeft}
+                  y={toDrawingY(
+                    openingPlacementPreview.sill + openingPlacementPreview.height,
+                    elevation.drawingHeightM
+                  )}
+                  width={openingPlacementPreview.width}
+                  height={0.025}
+                  fill="#f59e0b"
+                  opacity={0.8}
+                />
+                <text
+                  x={openingPlacementPreview.xLeft + openingPlacementPreview.width / 2}
+                  y={toDrawingY(
+                    openingPlacementPreview.sill + openingPlacementPreview.height / 2,
+                    elevation.drawingHeightM
+                  )}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={0.065}
+                  fontWeight="bold"
+                  fill="#fbbf24"
+                  fontFamily="sans-serif"
+                >
+                  {openingPlacementPreview.name}
+                </text>
+                <text
+                  x={openingPlacementPreview.xLeft + openingPlacementPreview.width / 2}
+                  y={
+                    toDrawingY(
+                      openingPlacementPreview.sill + openingPlacementPreview.height / 2,
+                      elevation.drawingHeightM
+                    ) + 0.065
+                  }
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={0.045}
+                  fontWeight="bold"
+                  fill="#fde68a"
+                  fontFamily="monospace"
+                >
+                  {openingPlacementPreview.width.toFixed(2)}m × {openingPlacementPreview.height.toFixed(2)}m (sill: +{openingPlacementPreview.sill.toFixed(2)}m)
+                </text>
+              </g>
+            )}
+
             {/* 6. Guía Magnética de Altura Reglamentaria AEA Activa en Arrastre */}
             {guideY != null && (
               <g className="pointer-events-none">
@@ -1041,7 +1235,55 @@ export const WallElevationModal: React.FC = () => {
 
         {/* ─── CAJÓN INFERIOR PARA CELULARES (COMPACTO Y ERGONÓMICO) ─── */}
         <div className="lg:hidden shrink-0 bg-slate-900 border-t border-slate-800 text-slate-200">
-          {selectedBox ? (
+          {placementTool ? (
+            <div className="p-3 bg-emerald-950/70 border-t border-emerald-500/40 text-emerald-200 flex items-center justify-between gap-2 animate-in slide-in-from-bottom duration-150">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg shrink-0 animate-pulse">
+                  <Zap size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate">
+                    Colocando en muro
+                  </div>
+                  <div className="text-[10px] text-emerald-300 truncate">
+                    Tocá la pared para ubicar · Snap a cotas AEA
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelPlacement}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-700 shrink-0"
+              >
+                <X size={14} />
+                <span>Cancelar</span>
+              </button>
+            </div>
+          ) : openingPlacementTool ? (
+            <div className="p-3 bg-amber-950/70 border-t border-amber-500/40 text-amber-200 flex items-center justify-between gap-2 animate-in slide-in-from-bottom duration-150">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 bg-amber-500/20 text-amber-300 rounded-lg shrink-0 animate-pulse">
+                  <DoorOpen size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate">
+                    Colocando abertura
+                  </div>
+                  <div className="text-[10px] text-amber-300 truncate">
+                    Tocá la pared para ubicar el vano
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelOpeningPlacement}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-700 shrink-0"
+              >
+                <X size={14} />
+                <span>Cancelar</span>
+              </button>
+            </div>
+          ) : selectedBox ? (
             <div className="p-3 space-y-2.5 max-h-[46vh] overflow-y-auto">
               {/* Cabecera de la caja seleccionada con botón Rotar 90° inmediato */}
               <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
@@ -1462,9 +1704,28 @@ export const WallElevationModal: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Barra compacta cuando no hay nada seleccionado */
-            <div>
-              <div className="px-3 py-2 flex items-center justify-between text-xs">
+            /* Barra móvil cuando no hay nada seleccionado: botones ergonómicos para el pulgar */
+            <div className="p-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMobileSheetMode('add_box')}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md border border-emerald-500/40 transition-transform"
+                >
+                  <Plus size={15} />
+                  <span>+ Boca / Tablero</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileSheetMode('add_opening')}
+                  className="w-full py-2.5 px-3 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md border border-amber-500/40 transition-transform"
+                >
+                  <DoorOpen size={15} />
+                  <span>+ Abertura</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-xs px-1">
                 <div className="flex items-center gap-2 truncate">
                   <span className="font-bold text-slate-200">Muro {wall.id.slice(-6)}</span>
                   <span className="text-slate-400 text-[11px] truncate">
@@ -1483,36 +1744,285 @@ export const WallElevationModal: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsMobileInfoOpen(!isMobileInfoOpen)}
+                    onClick={() => setMobileSheetMode('info')}
                     className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1"
                   >
                     <Info size={12} />
-                    <span>{isMobileInfoOpen ? 'Ocultar' : 'Info'}</span>
+                    <span>Info</span>
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
 
-              {/* Panel expandible con tips y datos del muro */}
-              {isMobileInfoOpen && (
-                <div className="p-3 bg-slate-900/95 border-t border-slate-800 space-y-2 text-xs animate-in fade-in">
-                  <div className="grid grid-cols-2 gap-2 text-slate-300 text-[11px]">
-                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
-                      <span className="text-slate-400 block text-[10px]">Longitud:</span>
-                      <span className="font-bold font-mono">{elevation.lengthM.toFixed(2)} m</span>
+        {/* ─── BOTTOM SHEET MÓVIL DESLIZANTE PARA AGREGAR ELEMENTOS O VER INFO ─── */}
+        {mobileSheetMode !== 'none' && (
+          <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
+            {/* Fondo oscurecido con cierre al tocar */}
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+              onClick={() => setMobileSheetMode('none')}
+            />
+
+            {/* Contenedor del Bottom Sheet */}
+            <div className="relative bg-slate-900 border-t border-slate-700 rounded-t-3xl shadow-2xl p-4 max-h-[85vh] flex flex-col z-10 animate-in slide-in-from-bottom duration-200 pb-safe">
+              {/* Manija táctil de arrastre visual */}
+              <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto mb-3 shrink-0" />
+
+              {/* MODO A: Agregar Boca o Tablero */}
+              {mobileSheetMode === 'add_box' && (
+                <div className="flex flex-col min-h-0 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                        <Plus size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Agregar Boca o Tablero</h3>
+                        <p className="text-[11px] text-slate-400">Elegí el elemento a colocar en este muro</p>
+                      </div>
                     </div>
-                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
-                      <span className="text-slate-400 block text-[10px]">Altura:</span>
-                      <span className="font-bold font-mono">{elevation.wallHeightM.toFixed(2)} m</span>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSheetMode('none')}
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Selector de circuito */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Circuito asignado:
+                    </label>
+                    <select
+                      value={placementCircuitId ?? ''}
+                      onChange={(e) => setPlacementCircuitId(e.target.value ? e.target.value : null)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="">Por defecto / Automático</option>
+                      {availableCircuits.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Pestañas de categorías de bocas */}
+                  <div className="grid grid-cols-5 gap-1 bg-slate-800/80 p-1 rounded-xl text-[11px] font-semibold text-center shrink-0">
+                    {(
+                      [
+                        { id: 'tomas', label: 'Tomas' },
+                        { id: 'llaves', label: 'Llaves' },
+                        { id: 'tableros', label: 'Tableros' },
+                        { id: 'paso', label: 'Paso' },
+                        { id: 'apliques', label: 'Luces' }
+                      ] as const
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setBoxCategoryTab(tab.id)}
+                        className={`py-1.5 px-1 rounded-lg text-[10px] sm:text-xs font-bold transition-colors truncate ${
+                          boxCategoryTab === tab.id
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Lista táctil de símbolos según tab */}
+                  <div className="overflow-y-auto max-h-[46vh] space-y-1.5 pr-1">
+                    {availablePlacementSymbols
+                      .filter((s) => {
+                        if (boxCategoryTab === 'tableros')
+                          return s.categoria === 'tableros' || s.id.includes('tp') || s.id.includes('ts') || s.id.includes('medidor');
+                        if (boxCategoryTab === 'tomas')
+                          return s.categoria === 'tomacorrientes' || s.id.includes('toma');
+                        if (boxCategoryTab === 'paso')
+                          return s.categoria === 'cajas_pase' || s.id.includes('paso') || s.id.includes('derivacion');
+                        if (boxCategoryTab === 'llaves')
+                          return s.id.includes('llave') || s.id.includes('efecto') || s.id.includes('pulsador') || s.id.includes('combinacion');
+                        return (
+                          s.id.includes('aplique') ||
+                          s.id.includes('brazo') ||
+                          (!s.id.includes('tp') &&
+                            !s.id.includes('ts') &&
+                            !s.id.includes('medidor') &&
+                            !s.id.includes('toma') &&
+                            !s.id.includes('paso') &&
+                            !s.id.includes('derivacion') &&
+                            !s.id.includes('llave') &&
+                            !s.id.includes('efecto') &&
+                            !s.id.includes('pulsador') &&
+                            !s.id.includes('combinacion'))
+                        );
+                      })
+                      .map((sym) => (
+                        <button
+                          key={sym.id}
+                          type="button"
+                          onClick={() => {
+                            startPlacement(sym.id, placementCircuitId);
+                            setMobileSheetMode('none');
+                          }}
+                          className="w-full text-left p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700 active:scale-[0.98] border border-slate-700/70 hover:border-emerald-500/60 transition-all flex items-center justify-between group shadow-sm"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="text-xs font-bold text-slate-100 group-hover:text-emerald-300 truncate">
+                              {sym.label}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {sym.id}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-700 group-hover:bg-emerald-600 text-slate-300 group-hover:text-white shrink-0 transition-colors">
+                            Colocar ➔
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* MODO B: Agregar Abertura */}
+              {mobileSheetMode === 'add_opening' && (
+                <div className="flex flex-col min-h-0 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg">
+                        <DoorOpen size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Agregar Abertura</h3>
+                        <p className="text-[11px] text-slate-400">Seleccioná carpintería estándar o vano libre</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSheetMode('none')}
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Pestañas de categorías de aberturas */}
+                  <div className="grid grid-cols-3 gap-1 bg-slate-800 p-1 rounded-xl text-xs font-semibold text-center shrink-0">
+                    {(
+                      [
+                        { id: 'door', label: 'Puertas' },
+                        { id: 'window', label: 'Ventanas' },
+                        { id: 'passage', label: 'Vanos' }
+                      ] as const
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setOpeningCategoryTab(tab.id)}
+                        className={`py-1.5 rounded-lg transition-colors font-bold ${
+                          openingCategoryTab === tab.id
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Lista táctil de presets de aberturas */}
+                  <div className="overflow-y-auto max-h-[46vh] space-y-1.5 pr-1">
+                    {openingTypes
+                      .filter((p) => p.type === openingCategoryTab)
+                      .map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            startOpeningPlacement(preset.id);
+                            setMobileSheetMode('none');
+                          }}
+                          className="w-full text-left p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700 active:scale-[0.98] border border-slate-700/70 hover:border-amber-500/60 transition-all flex items-center justify-between group shadow-sm"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="text-xs font-bold text-slate-100 group-hover:text-amber-300">
+                              {preset.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              {preset.width.toFixed(2)}m × {preset.height.toFixed(2)}m
+                              {preset.sill > 0 ? ` · Antep: ${preset.sill.toFixed(2)}m` : ' · Sin antepecho'}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-700 group-hover:bg-amber-600 text-slate-300 group-hover:text-white shrink-0 transition-colors">
+                            Colocar ➔
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* MODO C: Info y Tips de Pantalla */}
+              {mobileSheetMode === 'info' && (
+                <div className="flex flex-col min-h-0 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-blue-500/20 text-blue-400 rounded-lg">
+                        <Info size={16} />
+                      </div>
+                      <h3 className="text-sm font-bold text-white">Información del Muro y Tips</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSheetMode('none')}
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/70">
+                      <span className="text-slate-400 block text-[10px]">Longitud</span>
+                      <span className="font-bold font-mono text-sm text-slate-100">{elevation.lengthM.toFixed(2)} m</span>
+                    </div>
+                    <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/70">
+                      <span className="text-slate-400 block text-[10px]">Altura Muro</span>
+                      <span className="font-bold font-mono text-sm text-slate-100">{elevation.wallHeightM.toFixed(2)} m</span>
+                    </div>
+                    <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/70">
+                      <span className="text-slate-400 block text-[10px]">Cielorraso</span>
+                      <span className="font-bold font-mono text-sm text-slate-100">{elevation.ceilingZ.toFixed(2)} m</span>
+                    </div>
+                    <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/70">
+                      <span className="text-slate-400 block text-[10px]">Espesor</span>
+                      <span className="font-bold font-mono text-sm text-slate-100">{wall.thickness.toFixed(2)} m</span>
                     </div>
                   </div>
-                  <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg p-2 text-[11px] text-blue-200">
-                    💡 Tocá cualquier caja para seleccionarla y rotarla 90° o cambiar su altura de montaje.
+
+                  <div className="bg-blue-950/40 border border-blue-800/40 rounded-2xl p-3 text-xs text-blue-200 space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5 text-blue-300">
+                      <span>💡 Gestos y Operación Táctil</span>
+                    </div>
+                    <ul className="list-disc pl-4 space-y-1 text-slate-300 text-[11px]">
+                      <li><strong>Zoom:</strong> Pellizcá la pantalla con 2 dedos o doble toque rápido para encuadrar.</li>
+                      <li><strong>Desplazar:</strong> Arrastrá cualquier caja con el dedo para cambiar su posición. Se imanta automáticamente a las alturas AEA (+0.30m, +1.10m, +2.20m).</li>
+                      <li><strong>Rotar:</strong> Tocá la caja y usá el botón &quot;Rotar 90°&quot; para pasar de formato rectangular vertical a horizontal.</li>
+                      <li><strong>Canalizaciones:</strong> Tocá una cañería para elegir su trazado (Directo, Por Pared, Curva Superior).</li>
+                    </ul>
                   </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ─── PANEL LATERAL DE INSPECCIÓN DE ALZADO (SOLO ESCRITORIO LG+) ─── */}
         <aside className="hidden lg:block w-80 bg-slate-900 border-l border-slate-800 p-4 space-y-4 overflow-y-auto text-slate-200 shrink-0">

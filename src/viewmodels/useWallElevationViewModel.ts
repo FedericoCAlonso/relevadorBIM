@@ -10,7 +10,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useProjectStore } from './useProjectStore';
-import type { Opening } from '../models/architecture/Opening';
+import type { Opening, OpeningType } from '../models/architecture/Opening';
 import type { Wall } from '../models/architecture/Wall';
 import {
   alongWallToScreenX,
@@ -70,6 +70,7 @@ import {
 } from '../models/electrical/electricalStandards';
 import {
   DEFAULT_OPENING_TYPES,
+  findOpeningTypeById,
   type OpeningTypeDefinition
 } from '../models/architecture/openingPresets';
 import { computeNewNodeFromElevation } from '../models/architecture/elevationPlacement';
@@ -102,6 +103,19 @@ export interface ElevationPlacementPreview {
   z: number;
   guideZ: number | null;
   symbolId: string;
+}
+
+export interface ElevationOpeningPlacementToolState {
+  presetId: string;
+}
+
+export interface ElevationOpeningPlacementPreview {
+  xLeft: number;
+  width: number;
+  height: number;
+  sill: number;
+  name: string;
+  type: OpeningType;
 }
 
 interface WallElevationStoreState {
@@ -168,6 +182,7 @@ export function useWallElevationViewModel() {
   const updateElectricalElement = useProjectStore((s) => s.updateElectricalElement);
   const updatePanel = useProjectStore((s) => s.updatePanel);
   const updateOpening = useProjectStore((s) => s.updateOpening);
+  const addOpeningDirect = useProjectStore((s) => s.addOpeningDirect);
   const updateConduit = useProjectStore((s) => s.updateConduit);
   const setProjectSelection = useProjectStore((s) => s.setSelectedEntity);
 
@@ -181,6 +196,8 @@ export function useWallElevationViewModel() {
   const [gripDrag, setGripDrag] = useState<RouteGripDragState | null>(null);
   const [placementTool, setPlacementTool] = useState<ElevationPlacementToolState | null>(null);
   const [placementPreview, setPlacementPreview] = useState<ElevationPlacementPreview | null>(null);
+  const [openingPlacementTool, setOpeningPlacementTool] = useState<ElevationOpeningPlacementToolState | null>(null);
+  const [openingPlacementPreview, setOpeningPlacementPreview] = useState<ElevationOpeningPlacementPreview | null>(null);
   const [viewport, setViewport] = useState<ViewportOverride | null>(null);
 
   const levelsMap = useMemo(() => new Map(project.levels.map((l) => [l.id, l])), [project.levels]);
@@ -395,6 +412,8 @@ export function useWallElevationViewModel() {
   const startPlacement = useCallback(
     (symbolId: string, circuitId?: string | null) => {
       setSelection(null);
+      setOpeningPlacementTool(null);
+      setOpeningPlacementPreview(null);
       setPlacementTool({ symbolId, circuitId });
       setPlacementPreview(null);
     },
@@ -404,7 +423,93 @@ export function useWallElevationViewModel() {
   const cancelPlacement = useCallback(() => {
     setPlacementTool(null);
     setPlacementPreview(null);
+    setOpeningPlacementTool(null);
+    setOpeningPlacementPreview(null);
   }, []);
+
+  // ─── Inserción interactiva de aberturas y carpinterías desde el alzado ───
+  const startOpeningPlacement = useCallback(
+    (presetId: string) => {
+      setSelection(null);
+      setPlacementTool(null);
+      setPlacementPreview(null);
+      setOpeningPlacementTool({ presetId });
+      setOpeningPlacementPreview(null);
+    },
+    [setSelection]
+  );
+
+  const cancelOpeningPlacement = useCallback(() => {
+    setOpeningPlacementTool(null);
+    setOpeningPlacementPreview(null);
+  }, []);
+
+  const updateOpeningPlacementPreview = useCallback(
+    (point: ElevationPointerPoint) => {
+      if (!openingPlacementTool || !elevation || !wall || !target) return;
+      const preset = findOpeningTypeById(openingPlacementTool.presetId, project.materialCatalog);
+      if (!preset) return;
+
+      const step = WALL_ELEVATION_CONSTANTS.DRAG_STEP_M;
+      const snappedCenterX = Math.round(point.x / step) * step;
+      const halfW = preset.width / 2;
+      const xLeft = Math.max(0, Math.min(elevation.lengthM - preset.width, snappedCenterX - halfW));
+
+      setOpeningPlacementPreview({
+        xLeft,
+        width: preset.width,
+        height: preset.height,
+        sill: preset.sill,
+        name: preset.name,
+        type: preset.type
+      });
+    },
+    [openingPlacementTool, elevation, wall, target, project.materialCatalog]
+  );
+
+  const commitOpeningPlacement = useCallback(
+    (point: ElevationPointerPoint) => {
+      if (!openingPlacementTool || !elevation || !wall || !target) return;
+      const preset = findOpeningTypeById(openingPlacementTool.presetId, project.materialCatalog);
+      if (!preset) return;
+
+      const step = WALL_ELEVATION_CONSTANTS.DRAG_STEP_M;
+      const snappedCenterX = Math.round(point.x / step) * step;
+      const halfW = preset.width / 2;
+      const xLeft = Math.max(0, Math.min(elevation.lengthM - preset.width, snappedCenterX - halfW));
+      const distanceAlongWall = target.face === 'left' ? xLeft : elevation.lengthM - xLeft - preset.width;
+
+      const created = addOpeningDirect({
+        wallId: wall.id,
+        type: preset.type,
+        width: preset.width,
+        height: preset.height,
+        sill: preset.sill,
+        distanceAlongWall,
+        swing: preset.defaultSwing,
+        label: preset.type === 'door' ? 'P' : preset.type === 'window' ? 'V' : 'Paso',
+        presetId: preset.id
+      });
+
+      if (created) {
+        setSelection({ type: 'opening', id: created.id });
+        setProjectSelection({ type: 'opening', id: created.id });
+      }
+
+      setOpeningPlacementPreview(null);
+      setOpeningPlacementTool(null);
+    },
+    [
+      openingPlacementTool,
+      elevation,
+      wall,
+      target,
+      project.materialCatalog,
+      addOpeningDirect,
+      setSelection,
+      setProjectSelection
+    ]
+  );
 
   const updatePlacementPreview = useCallback(
     (point: ElevationPointerPoint) => {
@@ -859,6 +964,12 @@ export function useWallElevationViewModel() {
     cancelPlacement,
     updatePlacementPreview,
     commitPlacement,
+    openingPlacementTool,
+    openingPlacementPreview,
+    startOpeningPlacement,
+    cancelOpeningPlacement,
+    updateOpeningPlacementPreview,
+    commitOpeningPlacement,
     availablePlacementSymbols,
     availableCircuits,
     cabinetSizePresets: CABINET_SIZE_PRESETS,
