@@ -23,6 +23,7 @@ import type {
   PanelType,
   ConduitRoutingPlane
 } from './ElectricalModel';
+import { DEFAULT_OPENING_TYPES } from '../architecture/openingPresets';
 
 export type {
   ConduitSizeOption,
@@ -720,14 +721,47 @@ export const DEFAULT_CONDUIT_TYPES: ConduitTypeDefinition[] = [
   {
     id: 'bandeja_perforada_20',
     name: 'Bandeja Perforada de 20',
-    description: 'Chapa de acero perforada ala 20 mm para montaje superficial',
+    description: 'Chapa de acero perforada ala 20 mm para montaje superficial y distribución secundaria',
     defaultSizeMM: 100,
+    isTray: true,
+    trayFlangeHeightMM: 20,
     availableSizes: [
-      { value: 50, label: '50 × 20 mm', standardSize: 'Bandeja 50x20', usefulAreaMM2: 1000, isTray: true },
-      { value: 100, label: '100 × 20 mm', standardSize: 'Bandeja 100x20', usefulAreaMM2: 2000, isTray: true },
-      { value: 150, label: '150 × 20 mm', standardSize: 'Bandeja 150x20', usefulAreaMM2: 3000, isTray: true },
-      { value: 200, label: '200 × 20 mm', standardSize: 'Bandeja 200x20', usefulAreaMM2: 4000, isTray: true },
-      { value: 300, label: '300 × 20 mm', standardSize: 'Bandeja 300x20', usefulAreaMM2: 6000, isTray: true }
+      { value: 50, label: '50 × 20 mm', standardSize: 'Bandeja 50x20', usefulAreaMM2: 1000, isTray: true, trayWidthMM: 50, trayHeightMM: 20 },
+      { value: 100, label: '100 × 20 mm', standardSize: 'Bandeja 100x20', usefulAreaMM2: 2000, isTray: true, trayWidthMM: 100, trayHeightMM: 20 },
+      { value: 150, label: '150 × 20 mm', standardSize: 'Bandeja 150x20', usefulAreaMM2: 3000, isTray: true, trayWidthMM: 150, trayHeightMM: 20 },
+      { value: 200, label: '200 × 20 mm', standardSize: 'Bandeja 200x20', usefulAreaMM2: 4000, isTray: true, trayWidthMM: 200, trayHeightMM: 20 },
+      { value: 300, label: '300 × 20 mm', standardSize: 'Bandeja 300x20', usefulAreaMM2: 6000, isTray: true, trayWidthMM: 300, trayHeightMM: 20 }
+    ]
+  },
+  {
+    id: 'bandeja_perforada_50',
+    name: 'Bandeja Perforada Ala 50 mm',
+    description: 'Chapa de acero perforada ala 50 mm para distribución troncal y fuerza motriz',
+    defaultSizeMM: 150,
+    isTray: true,
+    trayFlangeHeightMM: 50,
+    availableSizes: [
+      { value: 100, label: '100 × 50 mm', standardSize: 'Bandeja 100x50', usefulAreaMM2: 5000, isTray: true, trayWidthMM: 100, trayHeightMM: 50 },
+      { value: 150, label: '150 × 50 mm', standardSize: 'Bandeja 150x50', usefulAreaMM2: 7500, isTray: true, trayWidthMM: 150, trayHeightMM: 50 },
+      { value: 200, label: '200 × 50 mm', standardSize: 'Bandeja 200x50', usefulAreaMM2: 10000, isTray: true, trayWidthMM: 200, trayHeightMM: 50 },
+      { value: 300, label: '300 × 50 mm', standardSize: 'Bandeja 300x50', usefulAreaMM2: 15000, isTray: true, trayWidthMM: 300, trayHeightMM: 50 },
+      { value: 450, label: '450 × 50 mm', standardSize: 'Bandeja 450x50', usefulAreaMM2: 22500, isTray: true, trayWidthMM: 450, trayHeightMM: 50 },
+      { value: 600, label: '600 × 50 mm', standardSize: 'Bandeja 600x50', usefulAreaMM2: 30000, isTray: true, trayWidthMM: 600, trayHeightMM: 50 }
+    ]
+  },
+  {
+    id: 'bandeja_escalera_100',
+    name: 'Bandeja Tipo Escalera Ala 100 mm',
+    description: 'Bandeja portacables tipo escalera pesada para montantes y acometidas principales',
+    defaultSizeMM: 200,
+    isTray: true,
+    trayFlangeHeightMM: 100,
+    availableSizes: [
+      { value: 150, label: '150 × 100 mm', standardSize: 'Escalera 150x100', usefulAreaMM2: 15000, isTray: true, trayWidthMM: 150, trayHeightMM: 100 },
+      { value: 200, label: '200 × 100 mm', standardSize: 'Escalera 200x100', usefulAreaMM2: 20000, isTray: true, trayWidthMM: 200, trayHeightMM: 100 },
+      { value: 300, label: '300 × 100 mm', standardSize: 'Escalera 300x100', usefulAreaMM2: 30000, isTray: true, trayWidthMM: 300, trayHeightMM: 100 },
+      { value: 450, label: '450 × 100 mm', standardSize: 'Escalera 450x100', usefulAreaMM2: 45000, isTray: true, trayWidthMM: 450, trayHeightMM: 100 },
+      { value: 600, label: '600 × 100 mm', standardSize: 'Escalera 600x100', usefulAreaMM2: 60000, isTray: true, trayWidthMM: 600, trayHeightMM: 100 }
     ]
   }
 ];
@@ -852,12 +886,46 @@ export const DEFAULT_BOX_TYPES: BoxTypeDefinition[] = [
   }
 ];
 
+export function createCableTraySizeOptions(
+  widths: readonly number[],
+  flangeHeightMM: number
+): ConduitSizeOption[] {
+  return widths.map((w) => ({
+    value: w,
+    label: `${w} × ${flangeHeightMM} mm`,
+    standardSize: `Bandeja ${w}x${flangeHeightMM}`,
+    usefulAreaMM2: w * flangeHeightMM,
+    isTray: true,
+    trayWidthMM: w,
+    trayHeightMM: flangeHeightMM
+  }));
+}
+
 export function createDefaultMaterialCatalog(): ProjectMaterialCatalog {
   return {
     conduitTypes: [...DEFAULT_CONDUIT_TYPES],
     cableTypes: [...DEFAULT_CABLE_TYPES],
-    boxTypes: [...DEFAULT_BOX_TYPES]
+    boxTypes: [...DEFAULT_BOX_TYPES],
+    openingTypes: [...DEFAULT_OPENING_TYPES]
   };
+}
+
+export function formatConduitSizeLabel(
+  materialId?: string,
+  diameterOrWidthMM?: number,
+  catalog?: ProjectMaterialCatalog
+): string {
+  if (diameterOrWidthMM === undefined || diameterOrWidthMM === null) return '';
+  if (!materialId) return `Ø${diameterOrWidthMM} mm`;
+  const sizes = getSizesForConduitType(materialId, catalog);
+  const matched = sizes.find((s) => s.value === diameterOrWidthMM);
+  if (matched) return matched.label;
+  const conduitType = catalog?.conduitTypes.find((c) => c.id === materialId);
+  if (conduitType?.isTray || materialId.includes('bandeja')) {
+    const flange = conduitType?.trayFlangeHeightMM ?? 50;
+    return `${diameterOrWidthMM} × ${flange} mm`;
+  }
+  return `Ø${diameterOrWidthMM} mm`;
 }
 
 export function getSizesForConduitType(

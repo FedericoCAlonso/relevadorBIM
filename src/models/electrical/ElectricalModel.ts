@@ -6,6 +6,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import type { OpeningTypeDefinition } from '../architecture/openingPresets';
+
 export type ElementPlacement = 'ceiling' | 'wall' | 'floor';
 
 export type ConductorRole =
@@ -110,19 +112,23 @@ export type CableStandard = BuiltinCableStandard | (string & {});
 
 export interface ConduitSizeOption {
   value: number;            // Dimensión en mm (diámetro exterior o ancho de bandeja)
-  label: string;            // Etiqueta legible (ej: 'RS 19 (3/4")')
+  label: string;            // Etiqueta legible (ej: 'RS 19 (3/4")', '100 × 50 mm')
   standardSize?: string;    // Denominación estándar comercial
   usefulAreaMM2?: number;   // Sección útil interior en mm² para cálculo de ocupación
   isTray?: boolean;         // ¿Es bandeja portacables?
+  trayWidthMM?: number;     // Ancho de bandeja en mm
+  trayHeightMM?: number;    // Altura de pestaña / ala de bandeja en mm
 }
 
 export interface ConduitTypeDefinition {
   id: string;
-  name: string;             // Ej: "Caño Hierro Semipesado RS", "Manguera Negra de Riego"
+  name: string;             // Ej: "Caño Hierro Semipesado RS", "Bandeja Perforada Ala 50 mm"
   description?: string;
   availableSizes: ConduitSizeOption[];
   defaultSizeMM: number;
   isCustom?: boolean;       // True si fue agregado por el usuario
+  isTray?: boolean;         // True si es bandeja portacables
+  trayFlangeHeightMM?: number; // Altura de pestaña de la bandeja en mm (ej: 20, 50, 100)
 }
 
 export interface CableTypeDefinition {
@@ -159,6 +165,7 @@ export interface ProjectMaterialCatalog {
   conduitTypes: ConduitTypeDefinition[];
   cableTypes: CableTypeDefinition[];
   boxTypes: BoxTypeDefinition[];
+  openingTypes?: OpeningTypeDefinition[];
 }
 
 export type ConduitRoutingPlane = 'ceiling_slab' | 'floor_slab' | 'wall';

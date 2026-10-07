@@ -46,6 +46,7 @@ import {
 import type {
   ConduitRoutePreset,
   ConduitElevationPoint,
+  ConduitMaterial,
   SpatialElectricalNode
 } from '../models/electrical/ElectricalModel';
 import {
@@ -61,14 +62,21 @@ import {
 import {
   AEA_HEIGHT_PRESETS,
   CABINET_SIZE_PRESETS,
+  DEFAULT_BOX_TYPES,
+  formatConduitSizeLabel,
   type HeightPresetOption,
-  type CabinetSizePreset
+  type CabinetSizePreset,
+  type BoxTypeDefinition
 } from '../models/electrical/electricalStandards';
+import {
+  DEFAULT_OPENING_TYPES,
+  type OpeningTypeDefinition
+} from '../models/architecture/openingPresets';
 import { computeNewNodeFromElevation } from '../models/architecture/elevationPlacement';
 import { placeElectricalElementInStore } from './useElectricalViewModel';
 import { getPlantaSymbols, type ElectricalSymbolDefinition } from '../models/electrical/symbolsLib';
 
-export type { CabinetSizePreset };
+export type { CabinetSizePreset, BoxTypeDefinition, OpeningTypeDefinition };
 
 export type ElevationSelection =
   | { type: 'box'; id: string }
@@ -737,6 +745,49 @@ export function useWallElevationViewModel() {
     [updatePanel]
   );
 
+  const setElementBoxType = useCallback(
+    (elementId: string, boxTypeId: string) => {
+      updateElectricalElement(elementId, { boxTypeId });
+    },
+    [updateElectricalElement]
+  );
+
+  const applyOpeningPreset = useCallback(
+    (presetId: string) => {
+      if (!wall || !target || !selectedOpening) return;
+      const opening = project.openings.find((o) => o.id === selectedOpening.id);
+      if (!opening) return;
+      const presets = project.materialCatalog?.openingTypes || DEFAULT_OPENING_TYPES;
+      const preset = presets.find((p) => p.id === presetId);
+      if (!preset) return;
+      const updated = computeOpeningUpdateFromElevation({
+        opening,
+        wallLengthM: elevation?.lengthM ?? 0,
+        wallHeightM: wall.height,
+        face: target.face,
+        patch: {
+          width: preset.width,
+          height: preset.height,
+          sill: preset.sill
+        }
+      });
+      updateOpening(opening.id, {
+        ...updated,
+        type: preset.type,
+        swing: preset.defaultSwing ?? opening.swing,
+        presetId: preset.id
+      });
+    },
+    [wall, target, selectedOpening, project.openings, project.materialCatalog, elevation, updateOpening]
+  );
+
+  const formatConduitSize = useCallback(
+    (material?: ConduitMaterial, diameterMM?: number) => {
+      return formatConduitSizeLabel(material, diameterMM, project.materialCatalog);
+    },
+    [project.materialCatalog]
+  );
+
   // ─── Catálogos expuestos a la vista ───
   const heightPresets: readonly HeightPresetOption[] = useMemo(
     () => AEA_HEIGHT_PRESETS.filter((p) => elevation !== null && p.meters <= elevation.wallHeightM),
@@ -811,6 +862,11 @@ export function useWallElevationViewModel() {
     availablePlacementSymbols,
     availableCircuits,
     cabinetSizePresets: CABINET_SIZE_PRESETS,
-    setPanelDimensions
+    setPanelDimensions,
+    boxTypes: project.materialCatalog?.boxTypes || DEFAULT_BOX_TYPES,
+    openingTypes: project.materialCatalog?.openingTypes || DEFAULT_OPENING_TYPES,
+    setElementBoxType,
+    applyOpeningPreset,
+    formatConduitSize
   };
 }

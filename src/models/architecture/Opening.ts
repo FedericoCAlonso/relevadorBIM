@@ -23,6 +23,7 @@ export interface Opening {
   distanceAlongWall: number;   // Distancia métrica desde el StartVertex del muro hasta la 1ra jamba
   swing: OpeningSwing;         // Sentido de giro / batiente
   label?: string;              // Ej: "P1", "V2"
+  presetId?: string;           // ID del preset / plantilla de carpintería aplicada si aplica
 }
 
 export interface JambPoint {

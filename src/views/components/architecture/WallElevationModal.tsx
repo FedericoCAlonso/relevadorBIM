@@ -100,7 +100,12 @@ export const WallElevationModal: React.FC = () => {
     availablePlacementSymbols,
     availableCircuits,
     cabinetSizePresets,
-    setPanelDimensions
+    setPanelDimensions,
+    boxTypes,
+    openingTypes,
+    setElementBoxType,
+    applyOpeningPreset,
+    formatConduitSize
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1105,6 +1110,28 @@ export const WallElevationModal: React.FC = () => {
                 </button>
               </div>
 
+              {/* Selector de Tipo de Caja Física (Catálogo) */}
+              {selectedBox.kind !== 'panel' && (
+                <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2 space-y-1">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
+                    <span>TIPO DE CAJA FÍSICA</span>
+                    <span className="font-mono text-cyan-300 font-bold">{selectedBox.sizeLabel}</span>
+                  </div>
+                  <select
+                    value={selectedBox.boxTypeId || ''}
+                    onChange={(e) => setElementBoxType(selectedBox.id, e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  >
+                    <option value="">Por defecto ({selectedBox.category})</option>
+                    {boxTypes.map((bt) => (
+                      <option key={bt.id} value={bt.id}>
+                        {bt.name} ({bt.widthMM ?? '?'}×{bt.heightMM ?? '?'} mm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Edición paramétrica de dimensiones del Tablero */}
               {selectedBox.kind === 'panel' && (
                 <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
@@ -1344,6 +1371,36 @@ export const WallElevationModal: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Presets Rápidos de Carpintería */}
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block mb-1">PRESETS DE CARPINTERÍA:</span>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {openingTypes
+                    .filter((p) => p.type === selectedOpening.type)
+                    .map((preset) => {
+                      const isCurrent =
+                        Math.abs(selectedOpening.width - preset.width) < 0.02 &&
+                        Math.abs(selectedOpening.height - preset.height) < 0.02 &&
+                        Math.abs(selectedOpening.sill - preset.sill) < 0.02;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyOpeningPreset(preset.id)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap shrink-0 transition-colors border ${
+                            isCurrent
+                              ? 'bg-amber-600 text-white border-amber-500 font-bold shadow-sm'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                          title={preset.description}
+                        >
+                          {preset.name}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
             </div>
           ) : selectedConduit ? (
             /* Barra móvil de canalización seleccionada */
@@ -1355,7 +1412,7 @@ export const WallElevationModal: React.FC = () => {
                   </div>
                   <div>
                     <h4 className="font-bold text-xs text-slate-100">
-                      Canalización Ø{selectedConduit.diameterMM} mm
+                      Canalización {formatConduitSize(selectedConduit.material, selectedConduit.diameterMM)}
                     </h4>
                     <span className="text-[10px] text-cyan-300 font-mono">
                       {selectedConduitMetric ? `${selectedConduitMetric.totalLengthM.toFixed(2)} m` : ''}
@@ -1538,6 +1595,27 @@ export const WallElevationModal: React.FC = () => {
                   <span className="font-mono text-slate-200 text-[11px]">{selectedBox.sizeLabel}</span>
                 </div>
               </div>
+
+              {/* Selector de Tipo de Caja Física (Catálogo) */}
+              {selectedBox.kind !== 'panel' && (
+                <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
+                  <label className="text-[11px] text-slate-300 font-bold block">
+                    Caja Física en Pared (Catálogo):
+                  </label>
+                  <select
+                    value={selectedBox.boxTypeId || ''}
+                    onChange={(e) => setElementBoxType(selectedBox.id, e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  >
+                    <option value="">Por defecto ({selectedBox.category})</option>
+                    {boxTypes.map((bt) => (
+                      <option key={bt.id} value={bt.id}>
+                        {bt.name} ({bt.widthMM ?? '?'}×{bt.heightMM ?? '?'} mm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Edición paramétrica de dimensiones del Tablero */}
               {selectedBox.kind === 'panel' && (
@@ -1764,6 +1842,42 @@ export const WallElevationModal: React.FC = () => {
                 </button>
               </div>
 
+              {/* Selector de Presets de Carpintería */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
+                  Presets de Carpintería de Proyecto
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
+                  {openingTypes
+                    .filter((p) => p.type === selectedOpening.type)
+                    .map((preset) => {
+                      const isCurrent =
+                        Math.abs(selectedOpening.width - preset.width) < 0.02 &&
+                        Math.abs(selectedOpening.height - preset.height) < 0.02 &&
+                        Math.abs(selectedOpening.sill - preset.sill) < 0.02;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyOpeningPreset(preset.id)}
+                          className={`p-1.5 rounded-lg text-left text-xs transition-colors border ${
+                            isCurrent
+                              ? 'bg-amber-600/30 text-amber-200 border-amber-500 font-bold'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                          title={preset.description}
+                        >
+                          <div className="font-semibold text-[11px] truncate">{preset.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {preset.width.toFixed(2)}×{preset.height.toFixed(2)}m
+                            {preset.sill > 0 ? ` (s:${preset.sill.toFixed(2)})` : ''}
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
               {/* Ancho del Vano */}
               <div>
                 <div className="flex justify-between text-[11px] font-bold text-slate-300 mb-1">
@@ -1831,7 +1945,7 @@ export const WallElevationModal: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-xs text-slate-100">
-                      Canalización Ø{selectedConduit.diameterMM} mm
+                      Canalización {formatConduitSize(selectedConduit.material, selectedConduit.diameterMM)}
                     </h3>
                     <p className="text-[10px] text-slate-400 font-mono">
                       {selectedConduit.label || selectedConduit.id.slice(-6)}

@@ -31,6 +31,7 @@ import type {
   BoxTypeDefinition,
   LabelDisplayMode
 } from '../models/electrical/ElectricalModel';
+import type { OpeningTypeDefinition } from '../models/architecture/openingPresets';
 import { createDefaultMaterialCatalog } from '../models/electrical/electricalStandards';
 import type { UnderlaySheet } from '../models/underlay/UnderlaySheet';
 import type { DimensionLine } from '../models/architecture/DimensionLine';
@@ -166,13 +167,15 @@ interface ProjectStoreState {
   deletePanel: (panelId: string) => void;
   ensureDefaultCircuits: () => void;
 
-  // Catálogo Abierto de Materiales (3 Categorías)
+  // Catálogo Abierto de Materiales y Elementos Paramétricos
   addConduitType: (def: ConduitTypeDefinition) => void;
   removeConduitType: (id: string) => void;
   addCableType: (def: CableTypeDefinition) => void;
   removeCableType: (id: string) => void;
   addBoxType: (def: BoxTypeDefinition) => void;
   removeBoxType: (id: string) => void;
+  addOpeningType: (def: OpeningTypeDefinition) => void;
+  removeOpeningType: (id: string) => void;
 
   // Láminas de Fondo (Underlays / Planos PDF e Imágenes)
   setUnderlaySheet: (levelId: string, sheet: UnderlaySheet) => void;
@@ -342,6 +345,36 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           materialCatalog: {
             ...current,
             boxTypes: current.boxTypes.filter((b) => b.id !== id)
+          }
+        }
+      };
+    }),
+
+  addOpeningType: (def) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      const existing = current.openingTypes || [];
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            openingTypes: [...existing.filter((o) => o.id !== def.id), def]
+          }
+        }
+      };
+    }),
+
+  removeOpeningType: (id) =>
+    set((state) => {
+      const current = state.project.materialCatalog || createDefaultMaterialCatalog();
+      const existing = current.openingTypes || [];
+      return {
+        project: {
+          ...state.project,
+          materialCatalog: {
+            ...current,
+            openingTypes: existing.filter((o) => o.id !== id)
           }
         }
       };

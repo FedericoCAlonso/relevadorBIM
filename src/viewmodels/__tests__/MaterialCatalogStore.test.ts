@@ -101,4 +101,34 @@ describe('Gestión de Catálogo de Materiales en Store (ViewModel layer)', () =>
       state.project.materialCatalog?.boxTypes.some((b) => b.id === 'custom_caja_estanca_ip67')
     ).toBe(false);
   });
+
+  it('debe permitir agregar y eliminar tipos de abertura personalizados', () => {
+    const { addOpeningType, removeOpeningType } = useProjectStore.getState();
+
+    const customOpening = {
+      id: 'custom_porton_garage',
+      name: 'Portón Levadizo 260×220',
+      type: 'door' as const,
+      width: 2.60,
+      height: 2.20,
+      sill: 0.0,
+      defaultSwing: 'none' as const,
+      description: 'Portón de acceso vehicular',
+      isCustom: true
+    };
+
+    addOpeningType(customOpening);
+
+    let state = useProjectStore.getState();
+    expect(
+      state.project.materialCatalog?.openingTypes?.some((o) => o.id === 'custom_porton_garage')
+    ).toBe(true);
+
+    removeOpeningType('custom_porton_garage');
+
+    state = useProjectStore.getState();
+    expect(
+      state.project.materialCatalog?.openingTypes?.some((o) => o.id === 'custom_porton_garage')
+    ).toBe(false);
+  });
 });

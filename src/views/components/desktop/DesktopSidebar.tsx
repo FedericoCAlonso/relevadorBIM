@@ -22,6 +22,7 @@ import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../..
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
 import { CircuitColorPicker } from '../electrical/CircuitColorPicker';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
+import { DEFAULT_OPENING_TYPES } from '../../../models/architecture/openingPresets';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import type { CircuitType, ConduitMaterial, ConductorRole } from '../../../models/electrical/ElectricalModel';
 import { countPanelBocas } from '../../../models/electrical/electricalBranch';
@@ -927,6 +928,50 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           {t === 'door' ? 'Puerta' : t === 'window' ? 'Ventana' : 'Vano'}
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Presets de Carpintería */}
+                  <div>
+                    <label className="text-[10px] font-bold text-amber-900 block mb-1">
+                      PRESETS DE CARPINTERÍA
+                    </label>
+                    <div className="flex gap-1 overflow-x-auto pb-1">
+                      {(project.materialCatalog?.openingTypes || DEFAULT_OPENING_TYPES)
+                        .filter((p) => p.type === selectedOpening.type)
+                        .map((preset) => {
+                          const isCurrent =
+                            Math.abs(selectedOpening.width - preset.width) < 0.02 &&
+                            Math.abs(selectedOpening.height - preset.height) < 0.02 &&
+                            Math.abs(selectedOpening.sill - preset.sill) < 0.02;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                const clampedW = Math.max(
+                                  0.40,
+                                  Math.min(hostWallLength - selectedOpening.distanceAlongWall, preset.width)
+                                );
+                                updateOpening(selectedOpening.id, {
+                                  width: Number(clampedW.toFixed(2)),
+                                  height: preset.height,
+                                  sill: preset.sill,
+                                  swing: preset.defaultSwing ?? selectedOpening.swing,
+                                  presetId: preset.id
+                                });
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap shrink-0 border transition-all ${
+                                isCurrent
+                                  ? 'bg-amber-600 text-white border-amber-700 font-bold shadow-sm'
+                                  : 'bg-white border-amber-200 text-amber-800 hover:bg-amber-100/60'
+                              }`}
+                              title={preset.description}
+                            >
+                              {preset.name}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
 

@@ -22,6 +22,7 @@ import type {
   Circuit,
   Conduit,
   ConduitElevationRoute,
+  ConduitMaterial,
   ConduitRoutingPlane,
   ElectricalElement,
   Panel,
@@ -255,6 +256,7 @@ export interface ElevationBox {
   outline: ElevationPoint[];
   knockouts: ElevationKnockout[];
   labelAnchor: ElevationPoint;
+  boxTypeId?: string;
   widthMM: number;
   heightMM: number;
   depthMM?: number;
@@ -275,6 +277,7 @@ export type ElevationBoxSeed = Pick<
   | 'orientation'
   | 'rotationDeg'
 > & {
+  boxTypeId?: string;
   widthMM?: number;
   heightMM?: number;
   depthMM?: number;
@@ -287,6 +290,7 @@ export interface ElevationConduit {
   color: string;
   widthM: number;
   diameterMM: number;
+  material?: ConduitMaterial;
   segments: ElevationPoint[][];
   routingPlane?: ConduitRoutingPlane;
   elevationRoute?: ConduitElevationRoute;
@@ -865,6 +869,7 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
           category: geo.category,
           shape: geo.shape,
           boxTypeName: geo.boxTypeName,
+          boxTypeId: entry.boxTypeId,
           width: geo.widthM,
           height: geo.heightM,
           orientation: geo.orientation,
@@ -923,6 +928,7 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       color: resolveConduitColor(circuitColor(c), String(c.material)),
       widthM: Math.max(c.diameterMM / WALL_ELEVATION_CONSTANTS.MM_PER_M, WALL_ELEVATION_CONSTANTS.MIN_CONDUIT_DRAW_WIDTH_M),
       diameterMM: c.diameterMM,
+      material: c.material,
       segments,
       routingPlane: c.routingPlane,
       elevationRoute: c.elevationRoute,

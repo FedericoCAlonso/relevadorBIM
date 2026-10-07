@@ -360,4 +360,145 @@ describe('useWallElevationStore', () => {
     expect(box.heightMM).toBe(600);
     expect(box.dinModules).toBe(48);
   });
+
+  it('permite asociar un boxTypeId de catálogo a un elemento eléctrico y reflejarlo en el alzado', async () => {
+    const { buildWallElevation } = await import('../../models/architecture/wallElevation');
+    useProjectStore.getState().addElectricalElement({
+      id: 'elem-box-1',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 1.5,
+      y: 0,
+      heightZ: 1.10,
+      placement: 'wall',
+      symbolId: 'sym-planta-toma',
+      side: 'left',
+      boxOrientation: 'vertical'
+    });
+
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    // Inicialmente toma la caja rectangular 100x50 por defecto
+    let elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [],
+      elements: useProjectStore.getState().project.electricalElements,
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: [],
+      catalog: useProjectStore.getState().project.materialCatalog
+    })!;
+
+    let box = elev.boxes.find((b) => b.id === 'elem-box-1')!;
+    expect(box).toBeDefined();
+    expect(box.shape).toBe('rect');
+    expect(box.widthMM).toBe(50);
+    expect(box.heightMM).toBe(100);
+
+    // Cambiar a caja cuadrada de paso 100x100 de catálogo
+    useProjectStore.getState().updateElectricalElement('elem-box-1', {
+      boxTypeId: 'caja_cuadrada_10x10'
+    });
+
+    elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [],
+      elements: useProjectStore.getState().project.electricalElements,
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: [],
+      catalog: useProjectStore.getState().project.materialCatalog
+    })!;
+
+    box = elev.boxes.find((b) => b.id === 'elem-box-1')!;
+    expect(box.boxTypeId).toBe('caja_cuadrada_10x10');
+    expect(box.shape).toBe('rect');
+    expect(box.widthMM).toBe(100);
+    expect(box.heightMM).toBe(100);
+  });
+
+  it('permite aplicar un preset paramétrico de abertura y actualizar las cotas en el alzado', async () => {
+    const { buildWallElevation, computeOpeningUpdateFromElevation } = await import('../../models/architecture/wallElevation');
+    const { DEFAULT_OPENING_TYPES } = await import('../../models/architecture/openingPresets');
+
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    useProjectStore.setState({
+      project: {
+        ...useProjectStore.getState().project,
+        openings: [
+          {
+            id: 'op-elev-1',
+            wallId: 'wall-101',
+            distanceAlongWall: 1.0,
+            width: 0.80,
+            height: 2.05,
+            sill: 0.0,
+            type: 'door',
+            swing: 'left_in'
+          }
+        ]
+      }
+    });
+
+    const preset = DEFAULT_OPENING_TYPES.find((p) => p.id === 'ventana_estandar_150')!;
+    expect(preset).toBeDefined();
+
+    const opening = useProjectStore.getState().project.openings.find((o) => o.id === 'op-elev-1')!;
+    const updated = computeOpeningUpdateFromElevation({
+      opening,
+      wallLengthM: 4.0,
+      wallHeightM: wall.height,
+      face: 'left',
+      patch: {
+        width: preset.width,
+        height: preset.height,
+        sill: preset.sill
+      }
+    });
+
+    useProjectStore.getState().updateOpening(opening.id, {
+      ...updated,
+      type: preset.type,
+      swing: preset.defaultSwing ?? opening.swing,
+      presetId: preset.id
+    });
+
+    const projectOpening = useProjectStore.getState().project.openings.find((o) => o.id === 'op-elev-1')!;
+    expect(projectOpening.presetId).toBe('ventana_estandar_150');
+    expect(projectOpening.type).toBe('window');
+    expect(projectOpening.width).toBe(1.50);
+    expect(projectOpening.height).toBe(1.10);
+    expect(projectOpening.sill).toBe(0.90);
+
+    const elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: useProjectStore.getState().project.openings,
+      elements: [],
+      panels: [],
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+
+    const elevOpening = elev.openings.find((o) => o.id === 'op-elev-1')!;
+    expect(elevOpening).toBeDefined();
+    expect(elevOpening.width).toBe(1.50);
+    expect(elevOpening.height).toBe(1.10);
+    expect(elevOpening.sill).toBe(0.90);
+    expect(elevOpening.zBottom).toBe(0.90);
+    expect(elevOpening.zTop).toBe(2.00);
+  });
 });
+
