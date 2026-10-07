@@ -59,6 +59,8 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
   const [newBoxCategory, setNewBoxCategory] = useState<BoxCategory>('caja_rectangular');
   const [newBoxMaterial, setNewBoxMaterial] = useState<BoxMaterialBase>('chapa');
   const [newBoxDesc, setNewBoxDesc] = useState('');
+  const [newBoxWidthMM, setNewBoxWidthMM] = useState(50);
+  const [newBoxHeightMM, setNewBoxHeightMM] = useState(100);
 
   if (!isOpen) return null;
 
@@ -108,6 +110,8 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
       category: newBoxCategory,
       materialBase: newBoxMaterial,
       description: newBoxDesc.trim() || undefined,
+      widthMM: newBoxWidthMM > 0 ? newBoxWidthMM : undefined,
+      heightMM: newBoxHeightMM > 0 ? newBoxHeightMM : undefined,
       isCustom: true
     });
     setNewBoxName('');
@@ -537,7 +541,26 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                           <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Categoría:</label>
                           <select
                             value={newBoxCategory}
-                            onChange={(e) => setNewBoxCategory(e.target.value as BoxCategory)}
+                            onChange={(e) => {
+                              const cat = e.target.value as BoxCategory;
+                              setNewBoxCategory(cat);
+                              if (cat === 'gabinete_tablero') {
+                                setNewBoxWidthMM(300);
+                                setNewBoxHeightMM(400);
+                              } else if (cat === 'caja_rectangular') {
+                                setNewBoxWidthMM(50);
+                                setNewBoxHeightMM(100);
+                              } else if (cat === 'caja_cuadrada') {
+                                setNewBoxWidthMM(100);
+                                setNewBoxHeightMM(100);
+                              } else if (cat === 'caja_octogonal') {
+                                setNewBoxWidthMM(90);
+                                setNewBoxHeightMM(90);
+                              } else if (cat === 'caja_mignon') {
+                                setNewBoxWidthMM(50);
+                                setNewBoxHeightMM(50);
+                              }
+                            }}
                             className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                           >
                             {BOX_CATEGORIES_CATALOG.map((cat) => (
@@ -560,6 +583,32 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                               </option>
                             ))}
                           </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Ancho de Frente (mm):</label>
+                          <input
+                            type="number"
+                            step={5}
+                            min={30}
+                            max={1500}
+                            value={newBoxWidthMM}
+                            onChange={(e) => setNewBoxWidthMM(Number(e.target.value))}
+                            className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500 font-mono font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Alto de Frente (mm):</label>
+                          <input
+                            type="number"
+                            step={5}
+                            min={30}
+                            max={2000}
+                            value={newBoxHeightMM}
+                            onChange={(e) => setNewBoxHeightMM(Number(e.target.value))}
+                            className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500 font-mono font-medium"
+                          />
                         </div>
                       </div>
                       <div>
@@ -604,6 +653,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                           )}
                           <span className="text-[10px] text-slate-400 capitalize">
                             {b.category.replace(/_/g, ' ')} {b.materialBase ? `· ${b.materialBase}` : ''}
+                            {b.widthMM && b.heightMM ? ` · ${b.widthMM}×${b.heightMM} mm` : ''}
                           </span>
                         </div>
                         {b.isCustom && (

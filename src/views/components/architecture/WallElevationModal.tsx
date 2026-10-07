@@ -22,9 +22,10 @@ import {
   useWallElevationViewModel
 } from '../../../viewmodels/useWallElevationViewModel';
 import { WALL_ELEVATION_STYLE } from '../../../models/architecture/wallElevationStyle';
-import { WALL_ELEVATION_CONSTANTS } from '../../../models/architecture/wallElevation';
+import { WALL_ELEVATION_CONSTANTS, toDrawingY } from '../../../models/architecture/wallElevation';
 import {
   X,
+  Plus,
   ZoomIn,
   ZoomOut,
   Maximize2,
@@ -89,7 +90,17 @@ export const WallElevationModal: React.FC = () => {
     wheelZoomFactor,
     fit,
     fitWall,
-    panBy
+    panBy,
+    placementTool,
+    placementPreview,
+    startPlacement,
+    cancelPlacement,
+    updatePlacementPreview,
+    commitPlacement,
+    availablePlacementSymbols,
+    availableCircuits,
+    cabinetSizePresets,
+    setPanelDimensions
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -106,13 +117,19 @@ export const WallElevationModal: React.FC = () => {
   } | null>(null);
 
   const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
+  const [isPlacementMenuOpen, setIsPlacementMenuOpen] = useState(false);
+  const [placementCircuitId, setPlacementCircuitId] = useState<string | null>(null);
 
   // Cerrar con Escape
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isDragging) {
+        if (placementTool) {
+          cancelPlacement();
+        } else if (isPlacementMenuOpen) {
+          setIsPlacementMenuOpen(false);
+        } else if (isDragging) {
           cancelBoxDrag();
         } else if (isGripDragging) {
           cancelRoutePointDrag();
@@ -123,7 +140,17 @@ export const WallElevationModal: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isDragging, isGripDragging, cancelBoxDrag, cancelRoutePointDrag, close]);
+  }, [
+    isOpen,
+    placementTool,
+    isPlacementMenuOpen,
+    isDragging,
+    isGripDragging,
+    cancelPlacement,
+    cancelBoxDrag,
+    cancelRoutePointDrag,
+    close
+  ]);
 
   // Transforma coordenadas de pantalla a coordenadas del dibujo (metros)
   const clientToWorld = useCallback((clientX: number, clientY: number) => {
@@ -218,6 +245,11 @@ export const WallElevationModal: React.FC = () => {
   // Paneo sobre el fondo del lienzo SVG (con Mouse / Pointer)
   const handleBackgroundPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (placementTool) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) commitPlacement(world);
+        return;
+      }
       if (e.pointerType === 'touch') return;
       if (e.target !== svgRef.current && (e.target as Element).id !== 'elevation-backdrop') return;
       clearSelection();
@@ -225,11 +257,16 @@ export const WallElevationModal: React.FC = () => {
       panStartRef.current = { clientX: e.clientX, clientY: e.clientY };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [clearSelection]
+    [placementTool, clientToWorld, commitPlacement, clearSelection]
   );
 
   const handleSvgPointerMove = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (placementTool) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) updatePlacementPreview(world);
+        return;
+      }
       if (isDragging) {
         const world = clientToWorld(e.clientX, e.clientY);
         if (world) moveBoxDrag(world);
@@ -254,7 +291,16 @@ export const WallElevationModal: React.FC = () => {
         panBy(dxM, dyM);
       }
     },
-    [isDragging, isGripDragging, clientToWorld, moveBoxDrag, moveRoutePointDrag, panBy]
+    [
+      placementTool,
+      isDragging,
+      isGripDragging,
+      clientToWorld,
+      updatePlacementPreview,
+      moveBoxDrag,
+      moveRoutePointDrag,
+      panBy
+    ]
   );
 
   const handleSvgPointerUp = useCallback(
@@ -329,6 +375,103 @@ export const WallElevationModal: React.FC = () => {
               <span className="max-w-[70px] sm:max-w-[140px] truncate">{opt.label}</span>
             </button>
           ))}
+        </div>
+
+        {/* Herramienta de Agregar Bocas / Cajas / Tableros en el muro */}
+        <div className="relative shrink-0">
+          {placementTool ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl text-[11px] font-bold">
+              <span className="truncate max-w-[100px] sm:max-w-none">Colocando en muro...</span>
+              <button
+                type="button"
+                onClick={cancelPlacement}
+                className="p-1 hover:bg-amber-500/30 rounded-lg text-amber-200 transition-colors"
+                title="Cancelar colocación (Esc)"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsPlacementMenuOpen((v) => !v)}
+              className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                isPlacementMenuOpen
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-600/80 hover:bg-emerald-600 text-emerald-100 hover:text-white border border-emerald-500/30'
+              }`}
+              title="Agregar nueva boca o tablero en este muro"
+            >
+              <Plus size={14} />
+              <span className="hidden xs:inline">+ Boca</span>
+            </button>
+          )}
+
+          {/* Popover / Menú de selección de símbolo y circuito */}
+          {isPlacementMenuOpen && (
+            <div className="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto w-72 bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-2xl z-50 text-slate-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-slate-100">Agregar elemento en muro</span>
+                <button
+                  type="button"
+                  onClick={() => setIsPlacementMenuOpen(false)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Selector de Circuito de asignación */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Circuito asignado:
+                </label>
+                <select
+                  value={placementCircuitId ?? ''}
+                  onChange={(e) => setPlacementCircuitId(e.target.value ? e.target.value : null)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Por defecto / Automático</option>
+                  {availableCircuits.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Símbolos agrupados */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Seleccionar tipo de elemento:
+                </label>
+                <div className="grid grid-cols-1 gap-1 max-h-48 overflow-y-auto pr-1">
+                  {availablePlacementSymbols.map((sym) => (
+                    <button
+                      key={sym.id}
+                      type="button"
+                      onClick={() => {
+                        startPlacement(sym.id, placementCircuitId);
+                        setIsPlacementMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs bg-slate-800/60 hover:bg-blue-600 hover:text-white border border-slate-700/60 transition-colors flex items-center justify-between group"
+                    >
+                      <span className="font-semibold truncate">{sym.label}</span>
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-700/80 group-hover:bg-blue-700 text-slate-300 group-hover:text-white shrink-0 ml-1">
+                        {sym.id.includes('tp') || sym.id.includes('ts') || sym.id.includes('medidor')
+                          ? 'Tablero'
+                          : sym.id.includes('toma')
+                          ? 'Toma'
+                          : sym.id.includes('llave')
+                          ? 'Llave'
+                          : 'Boca'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Controles de Vista y Botón Cerrar */}
@@ -409,7 +552,9 @@ export const WallElevationModal: React.FC = () => {
             ref={svgRef}
             viewBox={viewBoxAttribute}
             preserveAspectRatio="xMidYMid meet"
-            className="w-full h-full cursor-grab active:cursor-grabbing outline-none select-none"
+            className={`w-full h-full ${
+              placementTool ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+            } outline-none select-none`}
             onWheel={handleWheel}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
@@ -736,6 +881,44 @@ export const WallElevationModal: React.FC = () => {
               );
             })}
 
+            {/* Previsualización fantasma de colocación interactiva de boca o tablero con snap */}
+            {placementPreview &&
+              (() => {
+                const isPanelPrev =
+                  placementPreview.symbolId.includes('tablero') ||
+                  placementPreview.symbolId.includes('tp') ||
+                  placementPreview.symbolId.includes('ts') ||
+                  placementPreview.symbolId.includes('medidor');
+                const w = isPanelPrev ? 0.30 : 0.10;
+                const h = isPanelPrev ? 0.40 : 0.10;
+                const y = toDrawingY(placementPreview.z, elevation.drawingHeightM) - h / 2;
+                return (
+                  <g className="pointer-events-none">
+                    <rect
+                      x={placementPreview.x - w / 2}
+                      y={y}
+                      width={w}
+                      height={h}
+                      fill="rgba(56, 189, 248, 0.25)"
+                      stroke="#38bdf8"
+                      strokeWidth={0.006}
+                      strokeDasharray="0.02 0.01"
+                      rx={isPanelPrev ? 0.015 : 0.005}
+                    />
+                    <text
+                      x={placementPreview.x}
+                      y={y + h / 2 + 0.015}
+                      textAnchor="middle"
+                      fontSize={0.045}
+                      fontWeight="bold"
+                      fill="#38bdf8"
+                    >
+                      +{placementPreview.z.toFixed(2)}m
+                    </text>
+                  </g>
+                );
+              })()}
+
             {/* 6. Guía Magnética de Altura Reglamentaria AEA Activa en Arrastre */}
             {guideY != null && (
               <g className="pointer-events-none">
@@ -921,6 +1104,95 @@ export const WallElevationModal: React.FC = () => {
                   ↔ Horizontal (10×5)
                 </button>
               </div>
+
+              {/* Edición paramétrica de dimensiones del Tablero */}
+              {selectedBox.kind === 'panel' && (
+                <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                      Gabinete DIN:
+                    </span>
+                    {selectedBox.dinModules ? (
+                      <span className="font-mono text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded border border-blue-700/50 font-bold">
+                        {selectedBox.dinModules} Módulos
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Presets rápidos */}
+                  <div className="grid grid-cols-4 gap-1">
+                    {cabinetSizePresets.map((pre) => {
+                      const isCurrent =
+                        Math.abs(selectedBox.widthMM - pre.widthMM) < 20 &&
+                        Math.abs(selectedBox.heightMM - pre.heightMM) < 20;
+                      return (
+                        <button
+                          key={pre.id}
+                          type="button"
+                          onClick={() =>
+                            setPanelDimensions(selectedBox.id, {
+                              widthMM: pre.widthMM,
+                              heightMM: pre.heightMM,
+                              depthMM: pre.depthMM,
+                              dinModules: pre.dinModules
+                            })
+                          }
+                          className={`px-1 py-1 rounded text-[10px] font-bold border transition-colors truncate ${
+                            isCurrent
+                              ? 'bg-blue-600 text-white border-blue-400 shadow-sm'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                          }`}
+                          title={`${pre.label} (${pre.widthMM}x${pre.heightMM}mm)`}
+                        >
+                          {pre.label.split(' ')[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Inputs milimétricos */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/50">
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">
+                        Ancho (mm):
+                      </label>
+                      <input
+                        type="number"
+                        step={10}
+                        min={100}
+                        max={1200}
+                        value={selectedBox.widthMM}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (Number.isFinite(val) && val >= 50) {
+                            setPanelDimensions(selectedBox.id, { widthMM: val });
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">
+                        Alto (mm):
+                      </label>
+                      <input
+                        type="number"
+                        step={10}
+                        min={100}
+                        max={2000}
+                        value={selectedBox.heightMM}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (Number.isFinite(val) && val >= 50) {
+                            setPanelDimensions(selectedBox.id, { heightMM: val });
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Controles de posición Z (Altura) y X (Distancia) */}
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1266,6 +1538,95 @@ export const WallElevationModal: React.FC = () => {
                   <span className="font-mono text-slate-200 text-[11px]">{selectedBox.sizeLabel}</span>
                 </div>
               </div>
+
+              {/* Edición paramétrica de dimensiones del Tablero */}
+              {selectedBox.kind === 'panel' && (
+                <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                      Gabinete DIN:
+                    </span>
+                    {selectedBox.dinModules ? (
+                      <span className="font-mono text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded border border-blue-700/50 font-bold">
+                        {selectedBox.dinModules} Módulos
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Presets rápidos */}
+                  <div className="grid grid-cols-4 gap-1">
+                    {cabinetSizePresets.map((pre) => {
+                      const isCurrent =
+                        Math.abs(selectedBox.widthMM - pre.widthMM) < 20 &&
+                        Math.abs(selectedBox.heightMM - pre.heightMM) < 20;
+                      return (
+                        <button
+                          key={pre.id}
+                          type="button"
+                          onClick={() =>
+                            setPanelDimensions(selectedBox.id, {
+                              widthMM: pre.widthMM,
+                              heightMM: pre.heightMM,
+                              depthMM: pre.depthMM,
+                              dinModules: pre.dinModules
+                            })
+                          }
+                          className={`px-1 py-1 rounded text-[10px] font-bold border transition-colors truncate ${
+                            isCurrent
+                              ? 'bg-blue-600 text-white border-blue-400 shadow-sm'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                          }`}
+                          title={`${pre.label} (${pre.widthMM}x${pre.heightMM}mm)`}
+                        >
+                          {pre.label.split(' ')[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Inputs milimétricos */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/50">
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">
+                        Ancho (mm):
+                      </label>
+                      <input
+                        type="number"
+                        step={10}
+                        min={100}
+                        max={1200}
+                        value={selectedBox.widthMM}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (Number.isFinite(val) && val >= 50) {
+                            setPanelDimensions(selectedBox.id, { widthMM: val });
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">
+                        Alto (mm):
+                      </label>
+                      <input
+                        type="number"
+                        step={10}
+                        min={100}
+                        max={2000}
+                        value={selectedBox.heightMM}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          if (Number.isFinite(val) && val >= 50) {
+                            setPanelDimensions(selectedBox.id, { heightMM: val });
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Posición Métrica: X desde esquina y Altura Z */}
               <div className="space-y-3">

@@ -58,7 +58,17 @@ import {
   zoomViewBox,
   type ElevationViewBox
 } from '../models/architecture/elevationViewport';
-import { AEA_HEIGHT_PRESETS, type HeightPresetOption } from '../models/electrical/electricalStandards';
+import {
+  AEA_HEIGHT_PRESETS,
+  CABINET_SIZE_PRESETS,
+  type HeightPresetOption,
+  type CabinetSizePreset
+} from '../models/electrical/electricalStandards';
+import { computeNewNodeFromElevation } from '../models/architecture/elevationPlacement';
+import { placeElectricalElementInStore } from './useElectricalViewModel';
+import { getPlantaSymbols, type ElectricalSymbolDefinition } from '../models/electrical/symbolsLib';
+
+export type { CabinetSizePreset };
 
 export type ElevationSelection =
   | { type: 'box'; id: string }
@@ -72,6 +82,18 @@ export interface ElevationRouteGrip {
   u: number;
   z: number;
   isEndpoint: boolean;
+}
+
+export interface ElevationPlacementToolState {
+  symbolId: string;
+  circuitId?: string | null;
+}
+
+export interface ElevationPlacementPreview {
+  x: number;
+  z: number;
+  guideZ: number | null;
+  symbolId: string;
 }
 
 interface WallElevationStoreState {
@@ -149,6 +171,8 @@ export function useWallElevationViewModel() {
 
   const [drag, setDrag] = useState<DragState | null>(null);
   const [gripDrag, setGripDrag] = useState<RouteGripDragState | null>(null);
+  const [placementTool, setPlacementTool] = useState<ElevationPlacementToolState | null>(null);
+  const [placementPreview, setPlacementPreview] = useState<ElevationPlacementPreview | null>(null);
   const [viewport, setViewport] = useState<ViewportOverride | null>(null);
 
   const levelsMap = useMemo(() => new Map(project.levels.map((l) => [l.id, l])), [project.levels]);
@@ -356,8 +380,98 @@ export function useWallElevationViewModel() {
     });
   }, [elevation, target, gripDrag]);
 
-  const guideZ = drag?.guideZ ?? gripDrag?.guideZ ?? null;
+  const guideZ = drag?.guideZ ?? gripDrag?.guideZ ?? placementPreview?.guideZ ?? null;
   const guideY = guideZ != null && elevation ? toDrawingY(guideZ, elevation.drawingHeightM) : null;
+
+  // ─── Inserción interactiva de nuevas bocas y tableros desde el alzado ───
+  const startPlacement = useCallback(
+    (symbolId: string, circuitId?: string | null) => {
+      setSelection(null);
+      setPlacementTool({ symbolId, circuitId });
+      setPlacementPreview(null);
+    },
+    [setSelection]
+  );
+
+  const cancelPlacement = useCallback(() => {
+    setPlacementTool(null);
+    setPlacementPreview(null);
+  }, []);
+
+  const updatePlacementPreview = useCallback(
+    (point: ElevationPointerPoint) => {
+      if (!placementTool || !elevation || !wall || !target) return;
+      const rawZ = elevation.drawingHeightM - point.y;
+      const snapped = snapElevationHeight(rawZ, elevation.wallHeightM);
+      const step = WALL_ELEVATION_CONSTANTS.DRAG_STEP_M;
+      const snappedX = Math.round(point.x / step) * step;
+
+      setPlacementPreview({
+        x: snappedX,
+        z: snapped.z,
+        guideZ: snapped.guideZ,
+        symbolId: placementTool.symbolId
+      });
+    },
+    [placementTool, elevation, wall, target]
+  );
+
+  const commitPlacement = useCallback(
+    (point: ElevationPointerPoint) => {
+      if (!placementTool || !elevation || !wall || !target) return;
+      const rawZ = elevation.drawingHeightM - point.y;
+      const snapped = snapElevationHeight(rawZ, elevation.wallHeightM);
+      const step = WALL_ELEVATION_CONSTANTS.DRAG_STEP_M;
+      const snappedX = Math.round(point.x / step) * step;
+
+      const placement = computeNewNodeFromElevation({
+        wall,
+        vertices: verticesMap,
+        face: target.face,
+        targetX: snappedX,
+        targetZ: snapped.z
+      });
+      if (!placement) return;
+
+      const isPanel =
+        placementTool.symbolId.includes('tablero') ||
+        placementTool.symbolId.includes('tp') ||
+        placementTool.symbolId.includes('ts') ||
+        placementTool.symbolId.includes('medidor');
+
+      const placedNode = placeElectricalElementInStore({
+        worldX: placement.x,
+        worldY: placement.y,
+        symbolId: placementTool.symbolId,
+        snapInfo: {
+          wallId: wall.id,
+          wallOffset: placement.wallOffset,
+          side: placement.side,
+          rotationDeg: placement.rotationDeg
+        },
+        rotationDeg: placement.rotationDeg,
+        overrideCircuitId: placementTool.circuitId,
+        overrideHeightZ: placement.heightZ
+      });
+
+      setSelection({ type: 'box', id: placedNode.id });
+      setProjectSelection({ type: isPanel ? 'panel' : 'electrical_element', id: placedNode.id });
+      setPlacementPreview(null);
+      setPlacementTool(null);
+    },
+    [placementTool, elevation, wall, target, verticesMap, setSelection, setProjectSelection]
+  );
+
+  const availablePlacementSymbols: ElectricalSymbolDefinition[] = useMemo(() => {
+    return getPlantaSymbols().filter(
+      (s) =>
+        s.id !== 'sym-planta-boca-techo' &&
+        s.id !== 'sym-terminal-referencia' &&
+        s.id !== 'sym-planta-montante'
+    );
+  }, []);
+
+  const availableCircuits = useMemo(() => project.circuits, [project.circuits]);
 
   // ─── Edición numérica y selección ───
   const selectedBox = selection?.type === 'box' ? (displayBoxes.find((b) => b.id === selection.id) ?? null) : null;
@@ -613,6 +727,16 @@ export function useWallElevationViewModel() {
     [wall, target, selectedOpening, project.openings, elevation, updateOpening]
   );
 
+  const setPanelDimensions = useCallback(
+    (
+      panelId: string,
+      dimensions: { widthMM?: number; heightMM?: number; depthMM?: number; dinModules?: number }
+    ) => {
+      updatePanel(panelId, dimensions);
+    },
+    [updatePanel]
+  );
+
   // ─── Catálogos expuestos a la vista ───
   const heightPresets: readonly HeightPresetOption[] = useMemo(
     () => AEA_HEIGHT_PRESETS.filter((p) => elevation !== null && p.meters <= elevation.wallHeightM),
@@ -677,6 +801,16 @@ export function useWallElevationViewModel() {
     fitWall,
     rotateSelectedBox,
     setBoxOrientation,
-    panBy
+    panBy,
+    placementTool,
+    placementPreview,
+    startPlacement,
+    cancelPlacement,
+    updatePlacementPreview,
+    commitPlacement,
+    availablePlacementSymbols,
+    availableCircuits,
+    cabinetSizePresets: CABINET_SIZE_PRESETS,
+    setPanelDimensions
   };
 }

@@ -133,6 +133,7 @@ export interface PlaceElectricalElementInput {
   rotationDeg?: number;
   overridePrefix?: string;
   overrideCircuitId?: string | null;
+  overrideHeightZ?: number;
 }
 
 /**
@@ -151,7 +152,8 @@ export function placeElectricalElementInStore(
     snapInfo,
     rotationDeg = 0,
     overridePrefix,
-    overrideCircuitId
+    overrideCircuitId,
+    overrideHeightZ
   } = params;
 
   const { project, addElectricalElement, addConduit, addPanel, updatePanel } = projectStore;
@@ -197,13 +199,16 @@ export function placeElectricalElementInStore(
     symbolId.includes('ts') ||
     symbolId.includes('medidor');
 
-  const heightZ = isCeiling
-    ? ceilingH
-    : isPanel
-    ? 1.40
-    : symbolId.includes('enchufe') || symbolId.includes('toma')
-    ? 0.30
-    : 1.20;
+  const heightZ =
+    overrideHeightZ !== undefined
+      ? overrideHeightZ
+      : isCeiling
+      ? ceilingH
+      : isPanel
+      ? 1.40
+      : symbolId.includes('enchufe') || symbolId.includes('toma')
+      ? 0.30
+      : 1.20;
 
   const elementRotation = snapInfo?.rotationDeg ?? rotationDeg ?? 0;
 

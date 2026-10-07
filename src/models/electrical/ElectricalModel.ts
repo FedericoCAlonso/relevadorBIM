@@ -282,6 +282,13 @@ export interface Panel extends SpatialElectricalNode {
   hasEarthBar?: boolean;          // Barra colectora de puesta a tierra (PE)
   earthResistanceOhms?: number;   // Medición de resistencia de jabalina asociada
 
+  // ─── DIMENSIONES FÍSICAS PARAMÉTRICAS DEL GABINETE ───
+  widthMM?: number;               // Ancho físico de frente del gabinete en mm (ej: 300)
+  heightMM?: number;              // Alto físico de frente del gabinete en mm (ej: 400)
+  depthMM?: number;               // Profundidad de embutir o sobreponer en mm (ej: 120)
+  dinModules?: number;            // Capacidad de corte en módulos DIN (ej: 12, 24, 36)
+  dinRows?: number;               // Filas de riel DIN (ej: 1, 2, 3)
+
   // Metadatos técnicos y relevamiento libre
   attributes?: Array<{ key: string; value: string }>;
 

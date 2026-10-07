@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useWallElevationStore } from '../useWallElevationViewModel';
 import { useProjectStore } from '../useProjectStore';
+import { computeNewNodeFromElevation } from '../../models/architecture/elevationPlacement';
+import { placeElectricalElementInStore, useElectricalSequenceStore } from '../useElectricalViewModel';
 
 describe('useWallElevationStore', () => {
   beforeEach(() => {
@@ -179,5 +181,183 @@ describe('useWallElevationStore', () => {
     const cond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-1');
     expect(cond?.elevationRoute?.preset).toBe('top_bridge');
     expect(cond?.elevationRoute?.points).toHaveLength(4);
+  });
+
+  it('permite insertar una boca en el muro desde el alzado con auto-conexión secuencial', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    // Emplazar primer elemento (toma a 0.30m)
+    const place1 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 1.0,
+      targetZ: 0.30
+    })!;
+
+    expect(place1).not.toBeNull();
+    expect(place1.side).toBe('left');
+    expect(place1.wallOffset).toBe(1.0);
+    expect(place1.heightZ).toBe(0.30);
+
+    useElectricalSequenceStore.getState().resetAllSequenceState();
+    const initialElements = useProjectStore.getState().project.electricalElements.length;
+    const initialConduits = useProjectStore.getState().project.conduits.length;
+
+    const node1 = placeElectricalElementInStore({
+      worldX: place1.x,
+      worldY: place1.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: {
+        wallId: wall.id,
+        wallOffset: place1.wallOffset,
+        side: place1.side,
+        rotationDeg: place1.rotationDeg
+      },
+      overrideHeightZ: place1.heightZ
+    });
+
+    expect(node1.id).toBeDefined();
+    expect(useProjectStore.getState().project.electricalElements).toHaveLength(initialElements + 1);
+
+    // Emplazar segundo elemento contiguo en el mismo muro (toma a 1.20m de X, 0.30m de Z)
+    const place2 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 1.25,
+      targetZ: 0.30
+    })!;
+
+    const node2 = placeElectricalElementInStore({
+      worldX: place2.x,
+      worldY: place2.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: {
+        wallId: wall.id,
+        wallOffset: place2.wallOffset,
+        side: place2.side,
+        rotationDeg: place2.rotationDeg
+      },
+      overrideHeightZ: place2.heightZ
+    });
+
+    expect(node2.id).toBeDefined();
+    expect(useProjectStore.getState().project.electricalElements).toHaveLength(initialElements + 2);
+
+    // Debe haberse auto-conectado con un conducto
+    const conduits = useProjectStore.getState().project.conduits;
+    expect(conduits).toHaveLength(initialConduits + 1);
+    const addedConduit = conduits.find((c) => c.fromElementId === node1.id && c.toElementId === node2.id);
+    expect(addedConduit).toBeDefined();
+  });
+
+  it('permite insertar un tablero principal desde el alzado', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    const placePanel = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 2.0,
+      targetZ: 1.40,
+      boxWidthM: 0.40,
+      boxHeightM: 0.50
+    })!;
+
+    expect(placePanel).not.toBeNull();
+    expect(placePanel.heightZ).toBe(1.40);
+
+    const panelNode = placeElectricalElementInStore({
+      worldX: placePanel.x,
+      worldY: placePanel.y,
+      symbolId: 'sym-planta-tp',
+      snapInfo: {
+        wallId: wall.id,
+        wallOffset: placePanel.wallOffset,
+        side: placePanel.side,
+        rotationDeg: placePanel.rotationDeg
+      },
+      overrideHeightZ: placePanel.heightZ
+    });
+
+    const panels = useProjectStore.getState().project.panels;
+    expect(panels.some((p) => p.id === panelNode.id)).toBe(true);
+    const addedPanel = panels.find((p) => p.id === panelNode.id)!;
+    expect(addedPanel.heightZ).toBe(1.40);
+    expect(addedPanel.wallId).toBe('wall-101');
+    expect(addedPanel.isPlaced).toBe(true);
+  });
+
+  it('permite modificar dimensiones paramétricas de tableros (widthMM, heightMM, dinModules) y reflejarlas en el alzado', async () => {
+    const { buildWallElevation } = await import('../../models/architecture/wallElevation');
+    useProjectStore.getState().addPanel({
+      id: 'pan-param-1',
+      name: 'Tablero Seccional Paramétrico',
+      type: 'seccional',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 2.0,
+      y: 0,
+      heightZ: 1.40,
+      isPlaced: true,
+      symbolId: 'sym-planta-ts',
+      incomings: [],
+      widthMM: 300,
+      heightMM: 400,
+      dinModules: 24
+    });
+
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    let elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [],
+      elements: [],
+      panels: useProjectStore.getState().project.panels,
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+
+    let box = elev.boxes.find((b) => b.id === 'pan-param-1')!;
+    expect(box).toBeDefined();
+    expect(box.width).toBe(0.30);
+    expect(box.height).toBe(0.40);
+    expect(box.widthMM).toBe(300);
+    expect(box.heightMM).toBe(400);
+    expect(box.dinModules).toBe(24);
+
+    // Modificar dimensiones del tablero a 48 módulos DIN (400x600mm)
+    useProjectStore.getState().updatePanel('pan-param-1', {
+      widthMM: 400,
+      heightMM: 600,
+      dinModules: 48
+    });
+
+    elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [],
+      elements: [],
+      panels: useProjectStore.getState().project.panels,
+      conduits: [],
+      circuits: [],
+      spaces: []
+    })!;
+
+    box = elev.boxes.find((b) => b.id === 'pan-param-1')!;
+    expect(box.width).toBe(0.40);
+    expect(box.height).toBe(0.60);
+    expect(box.widthMM).toBe(400);
+    expect(box.heightMM).toBe(600);
+    expect(box.dinModules).toBe(48);
   });
 });

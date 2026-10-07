@@ -935,3 +935,24 @@ export function createConductorsForTerminal(
   ];
 }
 
+export interface CabinetSizePreset {
+  id: string;
+  label: string;
+  dinModules: number;
+  widthMM: number;
+  heightMM: number;
+  depthMM: number;
+  description: string;
+}
+
+export const CABINET_SIZE_PRESETS: readonly CabinetSizePreset[] = [
+  { id: 'din-8', label: '8 DIN (1F)', dinModules: 8, widthMM: 200, heightMM: 180, depthMM: 95, description: 'Gabinete 1 fila (8 módulos)' },
+  { id: 'din-12', label: '12 DIN (1F)', dinModules: 12, widthMM: 280, heightMM: 220, depthMM: 100, description: 'Gabinete estándar 1 fila (12 módulos)' },
+  { id: 'din-24', label: '24 DIN (2F)', dinModules: 24, widthMM: 300, heightMM: 360, depthMM: 105, description: 'Gabinete 2 filas (24 módulos)' },
+  { id: 'din-36', label: '36 DIN (3F)', dinModules: 36, widthMM: 320, heightMM: 480, depthMM: 115, description: 'Gabinete 3 filas (36 módulos)' },
+  { id: 'din-48', label: '48 DIN (4F)', dinModules: 48, widthMM: 400, heightMM: 600, depthMM: 130, description: 'Gabinete 4 filas (48 módulos)' },
+  { id: 'din-72', label: '72 DIN (4F/6F)', dinModules: 72, widthMM: 500, heightMM: 800, depthMM: 150, description: 'Gabinete modular (72 módulos)' },
+  { id: 'medidor-mono', label: 'Medidor Mono', dinModules: 0, widthMM: 220, heightMM: 350, depthMM: 160, description: 'Caja medidor monofásico normalizado' },
+  { id: 'medidor-tri', label: 'Medidor Trifásico', dinModules: 0, widthMM: 280, heightMM: 450, depthMM: 190, description: 'Caja medidor trifásico normalizado' }
+];
+

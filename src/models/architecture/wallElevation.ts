@@ -255,6 +255,10 @@ export interface ElevationBox {
   outline: ElevationPoint[];
   knockouts: ElevationKnockout[];
   labelAnchor: ElevationPoint;
+  widthMM: number;
+  heightMM: number;
+  depthMM?: number;
+  dinModules?: number;
 }
 
 export type ElevationBoxSeed = Pick<
@@ -270,7 +274,12 @@ export type ElevationBoxSeed = Pick<
   | 'height'
   | 'orientation'
   | 'rotationDeg'
->;
+> & {
+  widthMM?: number;
+  heightMM?: number;
+  depthMM?: number;
+  dinModules?: number;
+};
 
 export interface ElevationConduit {
   id: string;
@@ -330,6 +339,8 @@ export interface ResolvedBoxGeometry {
   shape: ElevationBoxShape;
   widthM: number;
   heightM: number;
+  widthMM: number;
+  heightMM: number;
   boxTypeName?: string;
   orientation: 'vertical' | 'horizontal';
   rotationDeg: number;
@@ -342,8 +353,19 @@ export function resolveBoxGeometry(params: {
   catalog?: ProjectMaterialCatalog;
   boxOrientation?: 'vertical' | 'horizontal';
   boxRotationDeg?: number;
+  customWidthMM?: number;
+  customHeightMM?: number;
 }): ResolvedBoxGeometry {
-  const { boxTypeId, symbolId, isPanel, catalog, boxOrientation, boxRotationDeg } = params;
+  const {
+    boxTypeId,
+    symbolId,
+    isPanel,
+    catalog,
+    boxOrientation,
+    boxRotationDeg,
+    customWidthMM,
+    customHeightMM
+  } = params;
   const boxType = boxTypeId ? catalog?.boxTypes.find((b) => b.id === boxTypeId) : undefined;
   const symbolCategory = symbolId ? getSymbolById(symbolId)?.categoria : undefined;
   const category: BoxCategory =
@@ -356,8 +378,8 @@ export function resolveBoxGeometry(params: {
   const defaults = BOX_CATEGORY_ELEVATION_DEFAULTS[category];
   const mm = WALL_ELEVATION_CONSTANTS.MM_PER_M;
 
-  let widthMM = boxType?.widthMM ?? defaults.widthMM;
-  let heightMM = boxType?.heightMM ?? defaults.heightMM;
+  let widthMM = customWidthMM ?? boxType?.widthMM ?? defaults.widthMM;
+  let heightMM = customHeightMM ?? boxType?.heightMM ?? defaults.heightMM;
 
   const isHorizontal =
     boxOrientation === 'horizontal' ||
@@ -379,6 +401,8 @@ export function resolveBoxGeometry(params: {
     shape: defaults.shape,
     widthM: widthMM / mm,
     heightM: heightMM / mm,
+    widthMM,
+    heightMM,
     boxTypeName: boxType?.name,
     orientation,
     rotationDeg
@@ -449,7 +473,11 @@ export function placeElevationBox(
     sizeLabel: formatBoxSize(seed.width, seed.height, seed.orientation),
     outline: seed.shape === 'octagon' ? buildOctagonOutline(rect) : [],
     knockouts: buildKnockouts(rect, seed.shape),
-    labelAnchor: { x: rect.cx, y: rect.y - WALL_ELEVATION_CONSTANTS.LABEL_GAP_M }
+    labelAnchor: { x: rect.cx, y: rect.y - WALL_ELEVATION_CONSTANTS.LABEL_GAP_M },
+    widthMM: seed.widthMM ?? Math.round(seed.width * WALL_ELEVATION_CONSTANTS.MM_PER_M),
+    heightMM: seed.heightMM ?? Math.round(seed.height * WALL_ELEVATION_CONSTANTS.MM_PER_M),
+    depthMM: seed.depthMM,
+    dinModules: seed.dinModules
   };
 }
 
@@ -778,13 +806,39 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       };
     });
 
-  const nodes: Array<{ node: SpatialElectricalNode; kind: ElevationBoxKind; label: string; symbolId?: string; boxTypeId?: string }> = [
+  const nodes: Array<{
+    node: SpatialElectricalNode;
+    kind: ElevationBoxKind;
+    label: string;
+    symbolId?: string;
+    boxTypeId?: string;
+    customWidthMM?: number;
+    customHeightMM?: number;
+    depthMM?: number;
+    dinModules?: number;
+  }> = [
     ...elements
       .filter((e) => e.wallId === wall.id && e.levelId === wall.levelId && !e.isTerminalReference)
-      .map((e) => ({ node: e, kind: 'electrical_element' as const, label: e.label ?? '', symbolId: e.symbolId, boxTypeId: e.boxTypeId })),
+      .map((e) => ({
+        node: e,
+        kind: 'electrical_element' as const,
+        label: e.label ?? '',
+        symbolId: e.symbolId,
+        boxTypeId: e.boxTypeId
+      })),
     ...panels
       .filter((p) => p.wallId === wall.id && p.levelId === wall.levelId && p.isPlaced !== false)
-      .map((p) => ({ node: p, kind: 'panel' as const, label: p.name, symbolId: p.symbolId, boxTypeId: p.gabineteBoxTypeId }))
+      .map((p) => ({
+        node: p,
+        kind: 'panel' as const,
+        label: p.name,
+        symbolId: p.symbolId,
+        boxTypeId: p.gabineteBoxTypeId,
+        customWidthMM: p.widthMM,
+        customHeightMM: p.heightMM,
+        depthMM: p.depthMM,
+        dinModules: p.dinModules
+      }))
   ];
 
   const boxes: ElevationBox[] = [];
@@ -797,7 +851,9 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       isPanel: entry.kind === 'panel',
       catalog,
       boxOrientation: entry.node.boxOrientation,
-      boxRotationDeg: entry.node.boxRotationDeg
+      boxRotationDeg: entry.node.boxRotationDeg,
+      customWidthMM: entry.customWidthMM,
+      customHeightMM: entry.customHeightMM
     });
     boxes.push(
       placeElevationBox(
@@ -812,7 +868,11 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
           width: geo.widthM,
           height: geo.heightM,
           orientation: geo.orientation,
-          rotationDeg: geo.rotationDeg
+          rotationDeg: geo.rotationDeg,
+          widthMM: geo.widthMM,
+          heightMM: geo.heightMM,
+          depthMM: entry.depthMM,
+          dinModules: entry.dinModules
         },
         alongWallToScreenX(u, L, face),
         entry.node.heightZ,
