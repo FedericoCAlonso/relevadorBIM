@@ -8,9 +8,11 @@
 import type {
   SpatialElectricalNode,
   ConduitRoutingPlane,
-  ConduitWaypoint
+  ConduitWaypoint,
+  ConduitElevationRoute
 } from './ElectricalModel';
 import type { Level } from '../architecture/Level';
+import { routeLengthBreakdown } from '../architecture/conduitElevationRoute';
 import { AEA_CALCULATION_CONSTANTS, calculateConduitUsefulArea } from './electricalStandards';
 
 export { calculateConduitUsefulArea };
@@ -39,6 +41,7 @@ export function getConduitLengthBreakdown(params: {
   routingPlane?: ConduitRoutingPlane;
   ceilingHeightM?: number;
   waypoints?: ConduitWaypoint[];
+  elevationRoute?: ConduitElevationRoute;
   additionalLengthM?: number;
 }): ConduitLengthBreakdown {
   const {
@@ -49,55 +52,63 @@ export function getConduitLengthBreakdown(params: {
     routingPlane = 'wall',
     ceilingHeightM = 2.70,
     waypoints = [],
+    elevationRoute,
     additionalLengthM = 0
   } = params;
 
   const dx = Math.abs(toElement.x - fromElement.x);
   const dy = Math.abs(toElement.y - fromElement.y);
 
-  // 1. Distancia en planta horizontal según vía de tendido
-  const allPoints: Array<{ x: number; y: number }> = [
-    { x: fromElement.x, y: fromElement.y },
-    ...(waypoints || []).map((w) => ({ x: w.x, y: w.y })),
-    { x: toElement.x, y: toElement.y }
-  ];
-
   let distPlantaHorizontal = 0;
-  for (let i = 0; i < allPoints.length - 1; i++) {
-    const segDx = Math.abs(allPoints[i + 1].x - allPoints[i].x);
-    const segDy = Math.abs(allPoints[i + 1].y - allPoints[i].y);
-
-    if (routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab') {
-      distPlantaHorizontal += Math.hypot(segDx, segDy);
-    } else {
-      distPlantaHorizontal += isOrthogonalRouting ? segDx + segDy : Math.hypot(segDx, segDy);
-    }
-  }
-
-  // 2. Desniveles verticales locales (subidas y bajadas por pared)
   let dzLocal = 0;
-  if (routingPlane === 'ceiling_slab') {
-    const subidaOrigen = Math.max(0, ceilingHeightM - fromElement.heightZ);
-    const bajadaDestino = Math.max(0, ceilingHeightM - toElement.heightZ);
-    dzLocal = subidaOrigen + bajadaDestino;
-  } else if (routingPlane === 'floor_slab') {
-    dzLocal = Math.max(0, fromElement.heightZ) + Math.max(0, toElement.heightZ);
-  } else {
-    const sameWall = Boolean(fromElement.wallId) && fromElement.wallId === toElement.wallId;
-    const distPlanta = Math.hypot(toElement.x - fromElement.x, toElement.y - fromElement.y);
-    if (sameWall && distPlanta > 0.30) {
-      const zBridge = Math.max(fromElement.heightZ, toElement.heightZ, ceilingHeightM - 0.20);
-      dzLocal = Math.max(0, zBridge - fromElement.heightZ) + Math.max(0, zBridge - toElement.heightZ);
-    } else {
-      dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
-    }
-  }
 
-  // Sumar desniveles explícitos en waypoints intermedios si existen
-  if (waypoints && waypoints.length > 0) {
-    for (const wp of waypoints) {
-      if (typeof wp.dzLocal === 'number' && wp.dzLocal > 0) {
-        dzLocal += wp.dzLocal;
+  if (elevationRoute && elevationRoute.points.length >= 2) {
+    const routeBreakdown = routeLengthBreakdown(elevationRoute.points);
+    distPlantaHorizontal = routeBreakdown.horizontalM;
+    dzLocal = routeBreakdown.verticalM;
+  } else {
+    // 1. Distancia en planta horizontal según vía de tendido
+    const allPoints: Array<{ x: number; y: number }> = [
+      { x: fromElement.x, y: fromElement.y },
+      ...(waypoints || []).map((w) => ({ x: w.x, y: w.y })),
+      { x: toElement.x, y: toElement.y }
+    ];
+
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const segDx = Math.abs(allPoints[i + 1].x - allPoints[i].x);
+      const segDy = Math.abs(allPoints[i + 1].y - allPoints[i].y);
+
+      if (routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab') {
+        distPlantaHorizontal += Math.hypot(segDx, segDy);
+      } else {
+        distPlantaHorizontal += isOrthogonalRouting ? segDx + segDy : Math.hypot(segDx, segDy);
+      }
+    }
+
+    // 2. Desniveles verticales locales (subidas y bajadas por pared)
+    if (routingPlane === 'ceiling_slab') {
+      const subidaOrigen = Math.max(0, ceilingHeightM - fromElement.heightZ);
+      const bajadaDestino = Math.max(0, ceilingHeightM - toElement.heightZ);
+      dzLocal = subidaOrigen + bajadaDestino;
+    } else if (routingPlane === 'floor_slab') {
+      dzLocal = Math.max(0, fromElement.heightZ) + Math.max(0, toElement.heightZ);
+    } else {
+      const sameWall = Boolean(fromElement.wallId) && fromElement.wallId === toElement.wallId;
+      const distPlanta = Math.hypot(toElement.x - fromElement.x, toElement.y - fromElement.y);
+      if (sameWall && distPlanta > 0.30) {
+        const zBridge = Math.max(fromElement.heightZ, toElement.heightZ, ceilingHeightM - 0.20);
+        dzLocal = Math.max(0, zBridge - fromElement.heightZ) + Math.max(0, zBridge - toElement.heightZ);
+      } else {
+        dzLocal = Math.abs(toElement.heightZ - fromElement.heightZ);
+      }
+    }
+
+    // Sumar desniveles explícitos en waypoints intermedios si existen
+    if (waypoints && waypoints.length > 0) {
+      for (const wp of waypoints) {
+        if (typeof wp.dzLocal === 'number' && wp.dzLocal > 0) {
+          dzLocal += wp.dzLocal;
+        }
       }
     }
   }
@@ -136,6 +147,7 @@ export function calculateConduitRealLength(params: {
   routingPlane?: ConduitRoutingPlane;
   ceilingHeightM?: number;
   waypoints?: ConduitWaypoint[];
+  elevationRoute?: ConduitElevationRoute;
   additionalLengthM?: number;
 }): number {
   return getConduitLengthBreakdown(params).totalLengthM;

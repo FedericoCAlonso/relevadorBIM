@@ -36,7 +36,8 @@ import {
   DoorOpen,
   Info,
   RotateCw,
-  Focus
+  Focus,
+  Zap
 } from 'lucide-react';
 
 export const WallElevationModal: React.FC = () => {
@@ -47,22 +48,35 @@ export const WallElevationModal: React.FC = () => {
     faceOptions,
     elevation,
     displayBoxes,
+    displayConduits,
     guideY,
     isDragging,
+    isGripDragging,
     selection,
     selectedBox,
     selectedOpening,
+    selectedConduit,
+    selectedConduitMetric,
+    routeGrips,
+    conduitPresetOptions,
     heightPresets,
     viewBoxAttribute,
     close,
     setFace,
     selectBox,
     selectOpening,
+    selectConduit,
     clearSelection,
     beginBoxDrag,
     moveBoxDrag,
     endBoxDrag,
     cancelBoxDrag,
+    setConduitPreset,
+    resetConduitRoute,
+    beginRoutePointDrag,
+    moveRoutePointDrag,
+    endRoutePointDrag,
+    cancelRoutePointDrag,
     setSelectedBoxX,
     setSelectedBoxZ,
     nudgeSelectedBox,
@@ -100,6 +114,8 @@ export const WallElevationModal: React.FC = () => {
       if (e.key === 'Escape') {
         if (isDragging) {
           cancelBoxDrag();
+        } else if (isGripDragging) {
+          cancelRoutePointDrag();
         } else {
           close();
         }
@@ -107,7 +123,7 @@ export const WallElevationModal: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isDragging, cancelBoxDrag, close]);
+  }, [isOpen, isDragging, isGripDragging, cancelBoxDrag, cancelRoutePointDrag, close]);
 
   // Transforma coordenadas de pantalla a coordenadas del dibujo (metros)
   const clientToWorld = useCallback((clientX: number, clientY: number) => {
@@ -219,6 +235,11 @@ export const WallElevationModal: React.FC = () => {
         if (world) moveBoxDrag(world);
         return;
       }
+      if (isGripDragging) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) moveRoutePointDrag(world);
+        return;
+      }
       if (isPanningRef.current) {
         const svg = svgRef.current;
         if (!svg) return;
@@ -233,13 +254,16 @@ export const WallElevationModal: React.FC = () => {
         panBy(dxM, dyM);
       }
     },
-    [isDragging, clientToWorld, moveBoxDrag, panBy]
+    [isDragging, isGripDragging, clientToWorld, moveBoxDrag, moveRoutePointDrag, panBy]
   );
 
   const handleSvgPointerUp = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
       if (isDragging) {
         endBoxDrag();
+      }
+      if (isGripDragging) {
+        endRoutePointDrag();
       }
       if (isPanningRef.current) {
         isPanningRef.current = false;
@@ -250,7 +274,7 @@ export const WallElevationModal: React.FC = () => {
         }
       }
     },
-    [isDragging, endBoxDrag]
+    [isDragging, isGripDragging, endBoxDrag, endRoutePointDrag]
   );
 
   const handleSvgDoubleClick = useCallback(() => {
@@ -510,35 +534,103 @@ export const WallElevationModal: React.FC = () => {
             })}
 
             {/* 4. Canalizaciones (Cañerías Físicas a Escala 1:1) */}
-            {elevation.conduits.map((c) => (
-              <g key={c.id} className="pointer-events-none">
-                {c.segments.map((seg, sIdx) => {
-                  const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-                  return (
-                    <g key={sIdx}>
-                      {/* Borde exterior */}
+            {displayConduits.map((c) => {
+              const isSelectedConduit = selection?.type === 'conduit' && selection.id === c.id;
+              return (
+                <g key={c.id}>
+                  {/* Hitbox táctil invisible para toque fácil en celular y mouse */}
+                  {c.segments.map((seg, sIdx) => {
+                    const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    return (
                       <path
+                        key={`hit-${sIdx}`}
                         d={dStr}
                         fill="none"
-                        stroke={WALL_ELEVATION_STYLE.conduit.outline}
-                        strokeWidth={c.widthM + 0.004}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                        stroke="transparent"
+                        strokeWidth={Math.max(c.widthM + 0.08, 0.08)}
+                        pointerEvents="stroke"
+                        className="cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectConduit(c.id);
+                        }}
                       />
-                      {/* Núcleo coloreado según tecnología o circuito */}
-                      <path
-                        d={dStr}
-                        fill="none"
-                        stroke={c.color}
-                        strokeWidth={c.widthM}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </g>
-                  );
-                })}
-              </g>
-            ))}
+                    );
+                  })}
+
+                  {/* Renderizado visual de canalización */}
+                  {c.segments.map((seg, sIdx) => {
+                    const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    return (
+                      <g key={sIdx} className="pointer-events-none">
+                        {/* Halo de selección */}
+                        {isSelectedConduit && (
+                          <path
+                            d={dStr}
+                            fill="none"
+                            stroke={WALL_ELEVATION_STYLE.selection.halo}
+                            strokeWidth={c.widthM + 0.02}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        )}
+                        {/* Borde exterior */}
+                        <path
+                          d={dStr}
+                          fill="none"
+                          stroke={isSelectedConduit ? WALL_ELEVATION_STYLE.selection.stroke : WALL_ELEVATION_STYLE.conduit.outline}
+                          strokeWidth={c.widthM + 0.004}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {/* Núcleo coloreado según tecnología o circuito */}
+                        <path
+                          d={dStr}
+                          fill="none"
+                          stroke={c.color}
+                          strokeWidth={c.widthM}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+
+            {/* Grips interactivos de recorrido cuando hay un conducto seleccionado */}
+            {selection?.type === 'conduit' &&
+              routeGrips.map((grip) => (
+                <g
+                  key={`grip-${grip.index}`}
+                  className={grip.isEndpoint ? 'pointer-events-none' : 'cursor-move'}
+                  onPointerDown={(e) => {
+                    if (grip.isEndpoint || !selectedConduit) return;
+                    e.stopPropagation();
+                    beginRoutePointDrag(selectedConduit.id, grip.index);
+                  }}
+                >
+                  {/* Hitbox del grip */}
+                  <circle
+                    cx={grip.x}
+                    cy={grip.y}
+                    r={0.06}
+                    fill="transparent"
+                    pointerEvents={grip.isEndpoint ? 'none' : 'all'}
+                  />
+                  {/* Visual del grip */}
+                  <circle
+                    cx={grip.x}
+                    cy={grip.y}
+                    r={grip.isEndpoint ? 0.012 : 0.022}
+                    fill={grip.isEndpoint ? '#64748b' : '#3b82f6'}
+                    stroke="#ffffff"
+                    strokeWidth={0.005}
+                    className="pointer-events-none"
+                  />
+                </g>
+              ))}
 
             {/* 5. Cajas Eléctricas y Gabinetes a Escala 1:1 */}
             {displayBoxes.map((b) => {
@@ -981,6 +1073,65 @@ export const WallElevationModal: React.FC = () => {
                 </div>
               </div>
             </div>
+          ) : selectedConduit ? (
+            /* Barra móvil de canalización seleccionada */
+            <div className="p-3 space-y-2 max-h-[44vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-cyan-600/30 text-cyan-400 rounded-lg">
+                    <Zap size={14} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-100">
+                      Canalización Ø{selectedConduit.diameterMM} mm
+                    </h4>
+                    <span className="text-[10px] text-cyan-300 font-mono">
+                      {selectedConduitMetric ? `${selectedConduitMetric.totalLengthM.toFixed(2)} m` : ''}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg text-xs"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Presets en tira deslizable */}
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold block mb-1">PRESET DE TRAZADO:</span>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {conduitPresetOptions.map((opt) => {
+                    const isCurrent = selectedConduit.elevationRoute?.preset === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setConduitPreset(selectedConduit.id, opt.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors border ${
+                          isCurrent
+                            ? 'bg-blue-600 text-white border-blue-500 font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                  {selectedConduit.elevationRoute && (
+                    <button
+                      type="button"
+                      onClick={() => resetConduitRoute(selectedConduit.id)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap shrink-0 bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700"
+                    >
+                      Restablecer
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : (
             /* Barra compacta cuando no hay nada seleccionado */
             <div>
@@ -1309,8 +1460,97 @@ export const WallElevationModal: React.FC = () => {
                 />
               </div>
             </div>
+          ) : selectedConduit ? (
+            /* CASO C: Canalización Seleccionada */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-cyan-600/30 text-cyan-400 rounded-lg">
+                    <Zap size={16} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs text-slate-100">
+                      Canalización Ø{selectedConduit.diameterMM} mm
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      {selectedConduit.label || selectedConduit.id.slice(-6)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg transition-colors text-[10px]"
+                >
+                  Deseleccionar
+                </button>
+              </div>
+
+              {/* Métrica calculada objetiva */}
+              <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
+                <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider block">
+                  Cómputo Métrico:
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-slate-200">
+                  <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block text-[10px]">Longitud total:</span>
+                    <span className="font-bold font-mono text-cyan-300">
+                      {selectedConduitMetric ? `${selectedConduitMetric.totalLengthM.toFixed(2)} m` : '—'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <span className="text-slate-400 block text-[10px]">Desglose:</span>
+                    <span className="text-[11px] font-mono text-slate-300">
+                      {selectedConduitMetric
+                        ? `${selectedConduitMetric.distPlantaHorizontal.toFixed(2)}m H + ${selectedConduitMetric.dzLocal.toFixed(2)}m V`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Presets de trazado */}
+              <div className="space-y-2">
+                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider block">
+                  Trazado en Alzado:
+                </span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {conduitPresetOptions.map((opt) => {
+                    const isCurrent = selectedConduit.elevationRoute?.preset === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setConduitPreset(selectedConduit.id, opt.id)}
+                        className={`p-2 rounded-xl text-left text-xs transition-all border ${
+                          isCurrent
+                            ? 'bg-blue-600/30 text-blue-200 border-blue-500 font-semibold'
+                            : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">{opt.label}</div>
+                        <div className="text-[10px] text-slate-400">{opt.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedConduit.elevationRoute && (
+                  <button
+                    type="button"
+                    onClick={() => resetConduitRoute(selectedConduit.id)}
+                    className="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg text-[11px] transition-colors border border-slate-700 mt-2"
+                  >
+                    Restablecer trazado automático
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 text-[11px] text-slate-400">
+                💡 Arrastrá los puntos azules sobre la cañería para desplazar la altura del puente o quiebres ortogonales.
+              </div>
+            </div>
           ) : (
-            /* CASO C: Información General del Muro y Leyenda */
+            /* CASO D: Información General del Muro y Leyenda */
             <div className="space-y-4">
               <div className="border-b border-slate-800 pb-2">
                 <h3 className="font-bold text-xs text-slate-100 mb-0.5">Paramento en Inspección</h3>

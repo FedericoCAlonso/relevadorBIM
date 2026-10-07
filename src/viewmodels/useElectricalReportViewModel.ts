@@ -212,7 +212,16 @@ export function computeElectricalReport(project: BuildingProject): ElectricalRep
         const toEl = elementsMap.get(c.toElementId);
         const len =
           c.manualLengthM ||
-          (fromEl && toEl ? calculateConduitRealLength({ fromElement: fromEl, toElement: toEl, levelsMap }) : 0);
+          (fromEl && toEl
+            ? calculateConduitRealLength({
+                fromElement: fromEl,
+                toElement: toEl,
+                levelsMap,
+                routingPlane: c.routingPlane,
+                waypoints: c.waypoints,
+                elevationRoute: c.elevationRoute
+              })
+            : 0);
         lengthM += len;
       }
       lengthM = Number(lengthM.toFixed(2));

@@ -176,6 +176,21 @@ export interface ConduitWaypoint {
 
 export type ConduitRoutingMode = 'orthogonal' | 'schematic_arc';
 
+export interface ConduitElevationPoint {
+  /** Coordenada métrica a lo largo del eje del muro desde el vértice de origen */
+  u: number;
+  /** Cota métrica de altura respecto al nivel de piso terminado (NPT) */
+  z: number;
+}
+
+export type ConduitRoutePreset = 'direct' | 'top_bridge' | 'ceiling_exit' | 'floor_exit' | 'custom';
+
+export interface ConduitElevationRoute {
+  wallId: string;
+  preset: ConduitRoutePreset;
+  points: ConduitElevationPoint[];
+}
+
 export interface Conduit {
   id: string;
   circuitId?: string | null;
@@ -194,6 +209,7 @@ export interface Conduit {
   routingMode?: ConduitRoutingMode; // Ruteo en escuadra ortogonal ('orthogonal') o arco unifilar ('schematic_arc')
   routingPlane?: ConduitRoutingPlane; // Vía de tendido: 'ceiling_slab' (losa techo), 'floor_slab' (contrapiso), 'wall' (pared)
   waypoints?: ConduitWaypoint[]; // Puntos intermedios 2D/3D
+  elevationRoute?: ConduitElevationRoute; // Traza explícita en alzado de muro
   isRiserTerminal?: boolean; // Termina en montante vertical / pase de losa
   additionalLengthM?: number; // Metros adicionales restantes cargados a mano (ej: hasta subsuelo o azotea)
   targetDescription?: string; // Descripción del destino de montante (ej: "A Tablero General")

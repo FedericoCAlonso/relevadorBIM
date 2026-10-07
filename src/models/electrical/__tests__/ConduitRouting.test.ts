@@ -69,4 +69,29 @@ describe('Vía de tendido por defecto', () => {
     expect(wall.dzLocal).toBe(4.4);
     expect(wall.totalLengthM).toBeLessThan(slab.totalLengthM);
   });
+
+  it('el cómputo con elevationRoute utiliza la poligonal exacta en el muro', () => {
+    const a = node({ id: 'a', x: 0, heightZ: 0.3 });
+    const b = node({ id: 'b', x: 2, heightZ: 1.1 });
+    const res = getConduitLengthBreakdown({
+      fromElement: a,
+      toElement: b,
+      levelsMap: new Map(),
+      elevationRoute: {
+        wallId: 'w1',
+        preset: 'custom',
+        points: [
+          { u: 0, z: 0.3 },
+          { u: 0, z: 2.0 },
+          { u: 2, z: 2.0 },
+          { u: 2, z: 1.1 }
+        ]
+      }
+    });
+    // horizontal: 2.0m, dzLocal: (2.0 - 0.3) + (2.0 - 1.1) = 1.7 + 0.9 = 2.6m
+    // total: (2.0 + 2.6) * 1.10 = 5.06m
+    expect(res.distPlantaHorizontal).toBe(2.0);
+    expect(res.dzLocal).toBe(2.6);
+    expect(res.totalLengthM).toBeCloseTo(5.06, 2);
+  });
 });

@@ -2334,7 +2334,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 ? calculateConduitRealLength({
                     fromElement: element,
                     toElement: otherEl,
-                    levelsMap
+                    levelsMap,
+                    routingPlane: connectedConduit?.routingPlane,
+                    waypoints: connectedConduit?.waypoints,
+                    elevationRoute: connectedConduit?.elevationRoute
                   })
                 : 0;
               const totalLen =

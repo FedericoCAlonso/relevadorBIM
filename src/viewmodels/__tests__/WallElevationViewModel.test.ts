@@ -118,4 +118,66 @@ describe('useWallElevationStore', () => {
     expect(elem?.boxOrientation).toBe('horizontal');
     expect(elem?.boxRotationDeg).toBe(90);
   });
+
+  it('permite seleccionar canalizaciones y actualizar su traza elevationRoute', () => {
+    useProjectStore.getState().addElectricalElement({
+      id: 'e1',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 1,
+      y: 0,
+      heightZ: 0.30,
+      placement: 'wall',
+      symbolId: 'sym-toma',
+      side: 'left'
+    });
+    useProjectStore.getState().addElectricalElement({
+      id: 'e2',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 3,
+      y: 0,
+      heightZ: 1.10,
+      placement: 'wall',
+      symbolId: 'sym-toma',
+      side: 'left'
+    });
+
+    useProjectStore.getState().addConduit({
+      id: 'cond-1',
+      fromElementId: 'e1',
+      toElementId: 'e2',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 22,
+      material: 'hierro_semipesado',
+      isVerticalRiser: false,
+      conductors: [],
+      routingPlane: 'wall'
+    });
+
+    // Selección de canalización
+    useWallElevationStore.getState().setSelection({ type: 'conduit', id: 'cond-1' });
+    expect(useWallElevationStore.getState().selection).toEqual({ type: 'conduit', id: 'cond-1' });
+
+    // Actualizar traza en el proyecto
+    useProjectStore.getState().updateConduit('cond-1', {
+      elevationRoute: {
+        wallId: 'wall-101',
+        preset: 'top_bridge',
+        points: [
+          { u: 1, z: 0.3 },
+          { u: 1, z: 2.5 },
+          { u: 3, z: 2.5 },
+          { u: 3, z: 1.1 }
+        ]
+      }
+    });
+
+    const cond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-1');
+    expect(cond?.elevationRoute?.preset).toBe('top_bridge');
+    expect(cond?.elevationRoute?.points).toHaveLength(4);
+  });
 });

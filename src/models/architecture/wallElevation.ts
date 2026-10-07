@@ -21,6 +21,8 @@ import type {
   BoxCategory,
   Circuit,
   Conduit,
+  ConduitElevationRoute,
+  ConduitRoutingPlane,
   ElectricalElement,
   Panel,
   ProjectMaterialCatalog,
@@ -277,6 +279,10 @@ export interface ElevationConduit {
   widthM: number;
   diameterMM: number;
   segments: ElevationPoint[][];
+  routingPlane?: ConduitRoutingPlane;
+  elevationRoute?: ConduitElevationRoute;
+  fromElementId: string;
+  toElementId: string;
 }
 
 export interface ElevationLevelMark {
@@ -670,6 +676,7 @@ function buildConduitSegments(params: {
   wallHeightM: number;
   ceilingZ: number;
   H: number;
+  L: number;
   offsets: number[];
 }): ElevationPoint[][] {
   const {
@@ -685,9 +692,20 @@ function buildConduitSegments(params: {
     wallHeightM,
     ceilingZ,
     H,
+    L,
     offsets
   } = params;
   const plane = conduit.routingPlane ?? 'wall';
+
+  // Si el conducto posee una traza explícita modelada para este muro, se renderiza exactamente
+  if (conduit.elevationRoute && conduit.elevationRoute.wallId === wall.id && conduit.elevationRoute.points.length >= 2) {
+    const off = offsets[0] ?? 0;
+    const seg: ElevationPoint[] = conduit.elevationRoute.points.map((p) => ({
+      x: alongWallToScreenX(p.u, L, face),
+      y: toDrawingY(p.z, H) + off
+    }));
+    return [seg];
+  }
 
   // Caso 1: Ambas cajas están en este paramento
   if (fromBox && toBox && fromBox.id !== toBox.id) {
@@ -835,6 +853,7 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       wallHeightM,
       ceilingZ,
       H,
+      L,
       offsets: laneOffsets[idx] ?? [0]
     }).filter((seg) => !pointsAreDegenerate(seg));
     if (segments.length === 0) return;
@@ -844,7 +863,11 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       color: resolveConduitColor(circuitColor(c), String(c.material)),
       widthM: Math.max(c.diameterMM / WALL_ELEVATION_CONSTANTS.MM_PER_M, WALL_ELEVATION_CONSTANTS.MIN_CONDUIT_DRAW_WIDTH_M),
       diameterMM: c.diameterMM,
-      segments
+      segments,
+      routingPlane: c.routingPlane,
+      elevationRoute: c.elevationRoute,
+      fromElementId: c.fromElementId,
+      toElementId: c.toElementId
     });
   });
 

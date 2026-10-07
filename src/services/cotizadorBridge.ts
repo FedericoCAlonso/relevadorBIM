@@ -101,7 +101,8 @@ export function generarComputoCotizador(
       toElement: elTo,
       levelsMap,
       routingPlane: conduit.routingPlane,
-      waypoints: conduit.waypoints
+      waypoints: conduit.waypoints,
+      elevationRoute: conduit.elevationRoute
     });
 
     // Agrupar cañerías por diámetro

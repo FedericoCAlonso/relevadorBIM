@@ -14,6 +14,7 @@ import type { Opening } from '../models/architecture/Opening';
 import type { Wall } from '../models/architecture/Wall';
 import {
   alongWallToScreenX,
+  screenXToAlongWall,
   buildWallElevation,
   computeNodeMoveFromElevation,
   computeOpeningUpdateFromElevation,
@@ -22,13 +23,31 @@ import {
   placeElevationBox,
   snapElevationHeight,
   toDrawingY,
+  getWallAxisFrame,
   WALL_ELEVATION_CONSTANTS,
   type ElevationBox,
+  type ElevationConduit,
   type ElevationFace,
+  type ElevationPoint,
   type NodeElevationMove,
   type OpeningElevationPatch,
   type WallElevation
 } from '../models/architecture/wallElevation';
+import {
+  buildPresetElevationRoute,
+  elevationRouteToPlanWaypoints,
+  moveRoutePoint,
+  CONDUIT_ROUTE_PRESET_OPTIONS
+} from '../models/architecture/conduitElevationRoute';
+import {
+  getConduitLengthBreakdown,
+  type ConduitLengthBreakdown
+} from '../models/electrical/conduitMetrics';
+import type {
+  ConduitRoutePreset,
+  ConduitElevationPoint,
+  SpatialElectricalNode
+} from '../models/electrical/ElectricalModel';
 import {
   ELEVATION_VIEWPORT_CONSTANTS,
   fitViewBox,
@@ -41,7 +60,19 @@ import {
 } from '../models/architecture/elevationViewport';
 import { AEA_HEIGHT_PRESETS, type HeightPresetOption } from '../models/electrical/electricalStandards';
 
-export type ElevationSelection = { type: 'box'; id: string } | { type: 'opening'; id: string };
+export type ElevationSelection =
+  | { type: 'box'; id: string }
+  | { type: 'opening'; id: string }
+  | { type: 'conduit'; id: string };
+
+export interface ElevationRouteGrip {
+  index: number;
+  x: number;
+  y: number;
+  u: number;
+  z: number;
+  isEndpoint: boolean;
+}
 
 interface WallElevationStoreState {
   target: { wallId: string; face: ElevationFace } | null;
@@ -84,6 +115,14 @@ interface DragState {
   moved: boolean;
 }
 
+interface RouteGripDragState {
+  conduitId: string;
+  pointIndex: number;
+  points: ConduitElevationPoint[];
+  guideZ: number | null;
+  moved: boolean;
+}
+
 interface ViewportOverride {
   key: string;
   viewBox: ElevationViewBox;
@@ -99,6 +138,7 @@ export function useWallElevationViewModel() {
   const updateElectricalElement = useProjectStore((s) => s.updateElectricalElement);
   const updatePanel = useProjectStore((s) => s.updatePanel);
   const updateOpening = useProjectStore((s) => s.updateOpening);
+  const updateConduit = useProjectStore((s) => s.updateConduit);
   const setProjectSelection = useProjectStore((s) => s.setSelectedEntity);
 
   const target = useWallElevationStore((s) => s.target);
@@ -108,7 +148,16 @@ export function useWallElevationViewModel() {
   const setFace = useWallElevationStore((s) => s.setFace);
 
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [gripDrag, setGripDrag] = useState<RouteGripDragState | null>(null);
   const [viewport, setViewport] = useState<ViewportOverride | null>(null);
+
+  const levelsMap = useMemo(() => new Map(project.levels.map((l) => [l.id, l])), [project.levels]);
+  const nodesMap = useMemo(() => {
+    const map = new Map<string, SpatialElectricalNode>();
+    project.electricalElements.forEach((e) => map.set(e.id, e));
+    (project.panels || []).forEach((p) => map.set(p.id, p));
+    return map;
+  }, [project.electricalElements, project.panels]);
 
   const wall: Wall | null = useMemo(
     () => (target ? (project.walls.find((w) => w.id === target.wallId) ?? null) : null),
@@ -187,6 +236,15 @@ export function useWallElevationViewModel() {
       setProjectSelection({ type: 'opening', id });
     },
     [setSelection, setProjectSelection]
+  );
+  const selectConduit = useCallback(
+    (id: string) => {
+      const conduit = elevation?.conduits.find((c) => c.id === id);
+      if (!conduit) return;
+      setSelection({ type: 'conduit', id });
+      setProjectSelection({ type: 'conduit', id });
+    },
+    [elevation, setSelection, setProjectSelection]
   );
   const clearSelection = useCallback(() => setSelection(null), [setSelection]);
 
@@ -284,12 +342,190 @@ export function useWallElevationViewModel() {
     });
   }, [elevation, drag, target]);
 
-  const guideY = drag?.guideZ != null && elevation ? toDrawingY(drag.guideZ, elevation.drawingHeightM) : null;
+  // Conductos a dibujar: el que se arrastra se muestra en su posición provisoria.
+  const displayConduits: ElevationConduit[] = useMemo(() => {
+    if (!elevation || !target) return [];
+    if (!gripDrag) return elevation.conduits;
+    return elevation.conduits.map((c) => {
+      if (c.id !== gripDrag.conduitId) return c;
+      const seg: ElevationPoint[] = gripDrag.points.map((p) => ({
+        x: alongWallToScreenX(p.u, elevation.lengthM, target.face),
+        y: toDrawingY(p.z, elevation.drawingHeightM)
+      }));
+      return { ...c, segments: [seg] };
+    });
+  }, [elevation, target, gripDrag]);
 
-  // ─── Edición numérica del elemento seleccionado ───
+  const guideZ = drag?.guideZ ?? gripDrag?.guideZ ?? null;
+  const guideY = guideZ != null && elevation ? toDrawingY(guideZ, elevation.drawingHeightM) : null;
+
+  // ─── Edición numérica y selección ───
   const selectedBox = selection?.type === 'box' ? (displayBoxes.find((b) => b.id === selection.id) ?? null) : null;
   const selectedOpening =
     selection?.type === 'opening' ? (elevation?.openings.find((o) => o.id === selection.id) ?? null) : null;
+  const selectedConduit =
+    selection?.type === 'conduit' ? (displayConduits.find((c) => c.id === selection.id) ?? null) : null;
+
+  const selectedConduitMetric: ConduitLengthBreakdown | null = useMemo(() => {
+    if (!selectedConduit || !elevation) return null;
+    const cond = project.conduits.find((c) => c.id === selectedConduit.id);
+    if (!cond) return null;
+    const fromEl = nodesMap.get(cond.fromElementId);
+    const toEl = nodesMap.get(cond.toElementId);
+    if (!fromEl || !toEl) return null;
+    return getConduitLengthBreakdown({
+      fromElement: fromEl,
+      toElement: toEl,
+      levelsMap,
+      routingPlane: cond.routingPlane,
+      waypoints: cond.waypoints,
+      elevationRoute: cond.elevationRoute,
+      ceilingHeightM: elevation.ceilingZ
+    });
+  }, [selectedConduit, elevation, project.conduits, nodesMap, levelsMap]);
+
+  const routeGrips: ElevationRouteGrip[] = useMemo(() => {
+    if (!selectedConduit || !elevation || !target) return [];
+    const points =
+      gripDrag && gripDrag.conduitId === selectedConduit.id
+        ? gripDrag.points
+        : selectedConduit.elevationRoute?.points;
+    if (!points || points.length === 0) return [];
+
+    return points.map((p, idx) => ({
+      index: idx,
+      x: alongWallToScreenX(p.u, elevation.lengthM, target.face),
+      y: toDrawingY(p.z, elevation.drawingHeightM),
+      u: p.u,
+      z: p.z,
+      isEndpoint: idx === 0 || idx === points.length - 1
+    }));
+  }, [selectedConduit, elevation, target, gripDrag]);
+
+  const setConduitPreset = useCallback(
+    (id: string, preset: ConduitRoutePreset) => {
+      if (!wall || !elevation || !target) return;
+      const cond = project.conduits.find((c) => c.id === id);
+      if (!cond) return;
+      const fromBox = elevation.boxes.find((b) => b.id === cond.fromElementId);
+      const toBox = elevation.boxes.find((b) => b.id === cond.toElementId);
+      if (!fromBox && !toBox) return;
+
+      const b1 = fromBox ?? toBox!;
+      const b2 = toBox ?? fromBox!;
+      const fromU = screenXToAlongWall(b1.centerX, elevation.lengthM, target.face);
+      const toU = screenXToAlongWall(b2.centerX, elevation.lengthM, target.face);
+
+      const route = buildPresetElevationRoute({
+        wallId: wall.id,
+        fromU,
+        fromZ: b1.centerZ,
+        toU,
+        toZ: b2.centerZ,
+        preset,
+        ceilingZ: elevation.ceilingZ,
+        wallHeightM: elevation.wallHeightM
+      });
+
+      const frame = getWallAxisFrame(wall, verticesMap);
+      const planWaypoints = frame ? elevationRouteToPlanWaypoints(route.points, frame) : undefined;
+      const routingPlane =
+        preset === 'ceiling_exit' ? 'ceiling_slab' : preset === 'floor_exit' ? 'floor_slab' : 'wall';
+
+      updateConduit(id, {
+        elevationRoute: route,
+        routingPlane,
+        waypoints: planWaypoints
+      });
+    },
+    [wall, elevation, target, project.conduits, verticesMap, updateConduit]
+  );
+
+  const resetConduitRoute = useCallback(
+    (id: string) => {
+      updateConduit(id, {
+        elevationRoute: undefined,
+        waypoints: undefined
+      });
+    },
+    [updateConduit]
+  );
+
+  const beginRoutePointDrag = useCallback(
+    (conduitId: string, pointIndex: number) => {
+      if (!elevation || !target || !wall) return;
+      const cond = project.conduits.find((c) => c.id === conduitId);
+      if (!cond) return;
+
+      let points = cond.elevationRoute?.points;
+      if (!points || points.length === 0) {
+        const fromBox = elevation.boxes.find((b) => b.id === cond.fromElementId);
+        const toBox = elevation.boxes.find((b) => b.id === cond.toElementId);
+        if (!fromBox || !toBox) return;
+        const fromU = screenXToAlongWall(fromBox.centerX, elevation.lengthM, target.face);
+        const toU = screenXToAlongWall(toBox.centerX, elevation.lengthM, target.face);
+        const isAdj = Math.abs(fromBox.centerX - toBox.centerX) <= 0.30;
+        const initialPreset: ConduitRoutePreset = isAdj ? 'direct' : 'top_bridge';
+        const initialRoute = buildPresetElevationRoute({
+          wallId: wall.id,
+          fromU,
+          fromZ: fromBox.centerZ,
+          toU,
+          toZ: toBox.centerZ,
+          preset: initialPreset,
+          ceilingZ: elevation.ceilingZ,
+          wallHeightM: elevation.wallHeightM
+        });
+        points = initialRoute.points;
+      }
+
+      setGripDrag({
+        conduitId,
+        pointIndex,
+        points,
+        guideZ: null,
+        moved: false
+      });
+    },
+    [elevation, target, wall, project.conduits]
+  );
+
+  const moveRoutePointDrag = useCallback(
+    (point: ElevationPointerPoint) => {
+      if (!gripDrag || !elevation || !target || !wall) return;
+      const rawU = screenXToAlongWall(point.x, elevation.lengthM, target.face);
+      const rawZ = elevation.drawingHeightM - point.y;
+      const snapped = snapElevationHeight(rawZ, elevation.wallHeightM);
+      const newPoints = moveRoutePoint({
+        points: gripDrag.points,
+        index: gripDrag.pointIndex,
+        targetU: rawU,
+        targetZ: snapped.z,
+        wallLengthM: elevation.lengthM,
+        wallHeightM: elevation.wallHeightM
+      });
+      setGripDrag({ ...gripDrag, points: newPoints, guideZ: snapped.guideZ, moved: true });
+    },
+    [gripDrag, elevation, target, wall]
+  );
+
+  const endRoutePointDrag = useCallback(() => {
+    if (gripDrag?.moved && wall && elevation) {
+      const frame = getWallAxisFrame(wall, verticesMap);
+      const planWaypoints = frame ? elevationRouteToPlanWaypoints(gripDrag.points, frame) : undefined;
+      updateConduit(gripDrag.conduitId, {
+        elevationRoute: {
+          wallId: wall.id,
+          preset: 'custom',
+          points: gripDrag.points
+        },
+        waypoints: planWaypoints
+      });
+    }
+    setGripDrag(null);
+  }, [gripDrag, wall, elevation, verticesMap, updateConduit]);
+
+  const cancelRoutePointDrag = useCallback(() => setGripDrag(null), []);
 
   const setSelectedBoxX = useCallback(
     (xFromLeftM: number) => {
@@ -399,11 +635,17 @@ export function useWallElevationViewModel() {
     faceOptions,
     elevation,
     displayBoxes,
+    displayConduits,
     guideY,
     isDragging: drag !== null,
+    isGripDragging: gripDrag !== null,
     selection,
     selectedBox,
     selectedOpening,
+    selectedConduit,
+    selectedConduitMetric,
+    routeGrips,
+    conduitPresetOptions: CONDUIT_ROUTE_PRESET_OPTIONS,
     heightPresets,
     viewBox,
     viewBoxAttribute: viewBox ? viewBoxToAttribute(viewBox) : '',
@@ -411,11 +653,18 @@ export function useWallElevationViewModel() {
     setFace,
     selectBox,
     selectOpening,
+    selectConduit,
     clearSelection,
     beginBoxDrag,
     moveBoxDrag,
     endBoxDrag,
     cancelBoxDrag,
+    setConduitPreset,
+    resetConduitRoute,
+    beginRoutePointDrag,
+    moveRoutePointDrag,
+    endRoutePointDrag,
+    cancelRoutePointDrag,
     setSelectedBoxX,
     setSelectedBoxZ,
     nudgeSelectedBox,
