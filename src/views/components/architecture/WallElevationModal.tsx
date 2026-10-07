@@ -510,31 +510,35 @@ export const WallElevationModal: React.FC = () => {
             })}
 
             {/* 4. Canalizaciones (Cañerías Físicas a Escala 1:1) */}
-            {elevation.conduits.map((c) => {
-              const dStr = c.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-              return (
-                <g key={c.id} className="pointer-events-none">
-                  {/* Borde exterior */}
-                  <path
-                    d={dStr}
-                    fill="none"
-                    stroke={WALL_ELEVATION_STYLE.conduit.outline}
-                    strokeWidth={c.widthM + 0.004}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {/* Núcleo coloreado según tecnología o circuito */}
-                  <path
-                    d={dStr}
-                    fill="none"
-                    stroke={c.color}
-                    strokeWidth={c.widthM}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              );
-            })}
+            {elevation.conduits.map((c) => (
+              <g key={c.id} className="pointer-events-none">
+                {c.segments.map((seg, sIdx) => {
+                  const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                  return (
+                    <g key={sIdx}>
+                      {/* Borde exterior */}
+                      <path
+                        d={dStr}
+                        fill="none"
+                        stroke={WALL_ELEVATION_STYLE.conduit.outline}
+                        strokeWidth={c.widthM + 0.004}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      {/* Núcleo coloreado según tecnología o circuito */}
+                      <path
+                        d={dStr}
+                        fill="none"
+                        stroke={c.color}
+                        strokeWidth={c.widthM}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            ))}
 
             {/* 5. Cajas Eléctricas y Gabinetes a Escala 1:1 */}
             {displayBoxes.map((b) => {

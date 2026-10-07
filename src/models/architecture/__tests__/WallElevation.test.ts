@@ -15,6 +15,7 @@ import {
   resolveBoxGeometry,
   snapElevationHeight,
   formatElevationLevel,
+  CONDUIT_ELEVATION_LAYOUT,
   type BuildWallElevationParams
 } from '../wallElevation';
 import { fitViewBox, fitWallViewBox, panViewBox, zoomViewBox, ELEVATION_VIEWPORT_CONSTANTS } from '../elevationViewport';
@@ -225,9 +226,11 @@ describe('Canalizaciones en el alzado', () => {
 
   it('vía pared: recorrido ortogonal entre ambas cajas', () => {
     const c = buildWallElevation(params({ elements: [a, b], conduits: [baseConduit], face: 'left' }))!.conduits[0];
-    expect(c.points).toHaveLength(3);
-    expect(c.points[0].x).toBeCloseTo(c.points[1].x, 9);
-    expect(c.points[1].y).toBeCloseTo(c.points[2].y, 9);
+    expect(c.segments).toHaveLength(1);
+    const pts = c.segments[0];
+    expect(pts).toHaveLength(3);
+    expect(pts[0].x).toBeCloseTo(pts[1].x, 9);
+    expect(pts[1].y).toBeCloseTo(pts[2].y, 9);
     expect(c.widthM).toBeCloseTo(0.019, 9);
   });
 
@@ -235,21 +238,61 @@ describe('Canalizaciones en el alzado', () => {
     const elev = buildWallElevation(
       params({ elements: [a], conduits: [{ ...baseConduit, routingPlane: 'ceiling_slab' }], face: 'left' })
     )!;
-    const pts = elev.conduits[0].points;
+    const pts = elev.conduits[0].segments[0];
     expect(pts[1].y).toBeCloseTo(elev.ceilingY, 9);
     expect(pts[0].y).toBeGreaterThan(pts[1].y);
+  });
+
+  it('vía losa con ambas cajas en el paramento: dibuja un chicote por extremo', () => {
+    const elev = buildWallElevation(
+      params({ elements: [a, b], conduits: [{ ...baseConduit, routingPlane: 'ceiling_slab' }], face: 'left' })
+    )!;
+    const segs = elev.conduits[0].segments;
+    expect(segs).toHaveLength(2);
+    expect(segs[0][0].x).not.toBeCloseTo(segs[1][0].x, 3);
+    segs.forEach((s) => expect(s[1].y).toBeCloseTo(elev.ceilingY, 9));
   });
 
   it('vía contrapiso: baja hasta el piso', () => {
     const elev = buildWallElevation(
       params({ elements: [a], conduits: [{ ...baseConduit, routingPlane: 'floor_slab' }], face: 'left' })
     )!;
-    expect(elev.conduits[0].points[1].y).toBeCloseTo(elev.drawingHeightM, 9);
+    expect(elev.conduits[0].segments[0][1].y).toBeCloseTo(elev.drawingHeightM, 9);
   });
 
   it('omite tramos cuyos extremos no están en este paramento', () => {
     const elev = buildWallElevation(params({ elements: [a], conduits: [baseConduit], face: 'left' }))!;
     expect(elev.conduits).toHaveLength(0);
+  });
+
+  it('dos conductos entre las mismas cajas corren en paralelo sin superponerse', () => {
+    const second: Conduit = { ...baseConduit, id: 'c2', fromElementId: 'b', toElementId: 'a' };
+    const elev = buildWallElevation(params({ elements: [a, b], conduits: [baseConduit, second], face: 'left' }))!;
+    expect(elev.conduits).toHaveLength(2);
+    const [p1, p2] = elev.conduits.map((c) => c.segments[0]);
+    const gap = CONDUIT_ELEVATION_LAYOUT.PARALLEL_GAP_M;
+    expect(Math.abs(p1[1].y - p2[1].y)).toBeCloseTo(gap, 9);
+    p1.forEach((pt, i) => {
+      expect(pt.x === p2[i].x && pt.y === p2[i].y).toBe(false);
+    });
+  });
+
+  it('un conducto solo no se desplaza respecto del eje de las cajas', () => {
+    const elev = buildWallElevation(params({ elements: [a, b], conduits: [baseConduit], face: 'left' }))!;
+    const box = elev.boxes.find((x) => x.id === 'b')!;
+    expect(elev.conduits[0].segments[0][2].y).toBeCloseTo(box.rect.cy, 9);
+  });
+
+  it('cajas a la misma altura: tramo recto horizontal y paralelos separados en Y', () => {
+    const c1 = makeElement({ id: 'c1', x: 2, heightZ: 1.2, side: 'left' });
+    const c2 = makeElement({ id: 'c2', x: 2.5, heightZ: 1.2, side: 'left' });
+    const x1: Conduit = { ...baseConduit, id: 'x1', fromElementId: 'c1', toElementId: 'c2' };
+    const x2: Conduit = { ...baseConduit, id: 'x2', fromElementId: 'c1', toElementId: 'c2' };
+    const elev = buildWallElevation(params({ elements: [c1, c2], conduits: [x1, x2], face: 'left' }))!;
+    const [s1, s2] = elev.conduits.map((c) => c.segments[0]);
+    expect(s1).toHaveLength(2);
+    expect(s1[0].y).toBeCloseTo(s1[1].y, 9);
+    expect(Math.abs(s1[0].y - s2[0].y)).toBeCloseTo(CONDUIT_ELEVATION_LAYOUT.PARALLEL_GAP_M, 9);
   });
 
   it('colorea por circuito o, si no hay, por material', () => {

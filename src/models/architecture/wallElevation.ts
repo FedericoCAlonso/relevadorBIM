@@ -68,6 +68,11 @@ export const WALL_ELEVATION_CONSTANTS = {
   MARGIN_BOTTOM_M: 0.60
 } as const;
 
+export const CONDUIT_ELEVATION_LAYOUT = {
+  /** Separación entre ejes de conductos paralelos que comparten tramo o caja. */
+  PARALLEL_GAP_M: 0.035
+} as const;
+
 interface BoxElevationDefaults {
   readonly widthMM: number;
   readonly heightMM: number;
@@ -264,7 +269,7 @@ export interface ElevationConduit {
   color: string;
   widthM: number;
   diameterMM: number;
-  points: ElevationPoint[];
+  segments: ElevationPoint[][];
 }
 
 export interface ElevationLevelMark {
@@ -492,29 +497,73 @@ function pointsAreDegenerate(points: ElevationPoint[]): boolean {
   return points.every((p) => Math.abs(p.x - points[0].x) < eps && Math.abs(p.y - points[0].y) < eps);
 }
 
-function buildConduitPath(
+/** Cajas del paramento a las que llega el conducto, sin repetir la misma caja. */
+function conduitEndBoxes(fromBox: ElevationBox | undefined, toBox: ElevationBox | undefined): ElevationBox[] {
+  const ends = [fromBox, toBox].filter((b): b is ElevationBox => b !== undefined);
+  return ends.filter((b, i) => ends.findIndex((o) => o.id === b.id) === i);
+}
+
+/**
+ * Claves de "carril": los conductos que comparten clave corren en paralelo y se
+ * separan entre sí. Una clave por tramo (pared) o por cada caja alojada (losa/contrapiso).
+ */
+function conduitLaneKeys(conduit: Conduit, fromBox: ElevationBox | undefined, toBox: ElevationBox | undefined): string[] {
+  const plane = conduit.routingPlane ?? 'wall';
+  if (plane === 'ceiling_slab' || plane === 'floor_slab') {
+    return conduitEndBoxes(fromBox, toBox).map((b) => `${plane}:${b.id}`);
+  }
+  if (!fromBox || !toBox || fromBox.id === toBox.id) return [];
+  return [[fromBox.id, toBox.id].sort().join('|')];
+}
+
+/** Reparte cada grupo de conductos en carriles simétricos respecto del eje común. */
+function assignLaneOffsets(keysPerConduit: string[][]): number[][] {
+  const totals = new Map<string, number>();
+  for (const keys of keysPerConduit) for (const k of keys) totals.set(k, (totals.get(k) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return keysPerConduit.map((keys) =>
+    keys.map((k) => {
+      const index = seen.get(k) ?? 0;
+      seen.set(k, index + 1);
+      return (index - ((totals.get(k) ?? 1) - 1) / 2) * CONDUIT_ELEVATION_LAYOUT.PARALLEL_GAP_M;
+    })
+  );
+}
+
+function buildWallRunSegment(fromBox: ElevationBox, toBox: ElevationBox, offset: number): ElevationPoint[] {
+  const eps = WALL_ELEVATION_CONSTANTS.DEDUPE_EPSILON_M;
+  const [first, second] = fromBox.id <= toBox.id ? [fromBox, toBox] : [toBox, fromBox];
+  const { cx: fx, cy: fy } = first.rect;
+  const { cx: tx, cy: ty } = second.rect;
+  if (Math.abs(fy - ty) < eps) return [{ x: fx, y: fy + offset }, { x: tx, y: ty + offset }];
+  if (Math.abs(fx - tx) < eps) return [{ x: fx + offset, y: fy }, { x: tx + offset, y: ty }];
+  return [
+    { x: fx + offset, y: fy },
+    { x: fx + offset, y: ty + offset },
+    { x: tx, y: ty + offset }
+  ];
+}
+
+function buildConduitSegments(
   conduit: Conduit,
   fromBox: ElevationBox | undefined,
   toBox: ElevationBox | undefined,
   ceilingY: number,
-  floorY: number
-): ElevationPoint[] | null {
+  floorY: number,
+  offsets: number[]
+): ElevationPoint[][] {
   const plane = conduit.routingPlane ?? 'wall';
-  const ends = [fromBox, toBox].filter((b): b is ElevationBox => b !== undefined);
   if (plane === 'ceiling_slab' || plane === 'floor_slab') {
     // Cada extremo alojado en este paramento sube hasta la losa o baja hasta el contrapiso.
-    const box = ends[0];
-    if (!box) return null;
     const target = plane === 'ceiling_slab' ? ceilingY : floorY;
-    const from = plane === 'ceiling_slab' ? box.rect.y : box.rect.y + box.rect.height;
-    return [{ x: box.centerX, y: from }, { x: box.centerX, y: target }];
+    return conduitEndBoxes(fromBox, toBox).map((box, i) => {
+      const x = box.centerX + (offsets[i] ?? 0);
+      const from = plane === 'ceiling_slab' ? box.rect.y : box.rect.y + box.rect.height;
+      return [{ x, y: from }, { x, y: target }];
+    });
   }
-  if (!fromBox || !toBox || fromBox.id === toBox.id) return null;
-  return [
-    { x: fromBox.rect.cx, y: fromBox.rect.cy },
-    { x: fromBox.rect.cx, y: toBox.rect.cy },
-    { x: toBox.rect.cx, y: toBox.rect.cy }
-  ];
+  if (!fromBox || !toBox || fromBox.id === toBox.id) return [];
+  return [buildWallRunSegment(fromBox, toBox, offsets[0] ?? 0)];
 }
 
 export function buildWallElevation(params: BuildWallElevationParams): WallElevation | null {
@@ -599,19 +648,27 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
     const id = c.circuitId ?? c.circuitIds?.[0];
     return id ? circuits.find((ci) => ci.id === id)?.color : undefined;
   };
+  const routed = conduits.map((c) => ({
+    conduit: c,
+    fromBox: boxById.get(c.fromElementId),
+    toBox: boxById.get(c.toElementId)
+  }));
+  const laneOffsets = assignLaneOffsets(routed.map((r) => conduitLaneKeys(r.conduit, r.fromBox, r.toBox)));
   const elevConduits: ElevationConduit[] = [];
-  for (const c of conduits) {
-    const path = buildConduitPath(c, boxById.get(c.fromElementId), boxById.get(c.toElementId), ceilingY, floorY);
-    if (!path || pointsAreDegenerate(path)) continue;
+  routed.forEach(({ conduit: c, fromBox, toBox }, idx) => {
+    const segments = buildConduitSegments(c, fromBox, toBox, ceilingY, floorY, laneOffsets[idx]).filter(
+      (seg) => !pointsAreDegenerate(seg)
+    );
+    if (segments.length === 0) return;
     elevConduits.push({
       id: c.id,
       label: c.label,
       color: resolveConduitColor(circuitColor(c), String(c.material)),
       widthM: Math.max(c.diameterMM / WALL_ELEVATION_CONSTANTS.MM_PER_M, WALL_ELEVATION_CONSTANTS.MIN_CONDUIT_DRAW_WIDTH_M),
       diameterMM: c.diameterMM,
-      points: path
+      segments
     });
-  }
+  });
 
   const levelZs = dedupeSorted([
     0,
