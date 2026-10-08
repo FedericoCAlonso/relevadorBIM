@@ -190,7 +190,7 @@ export interface ConduitElevationPoint {
   z: number;
 }
 
-export type ConduitRoutePreset = 'direct' | 'top_bridge' | 'ceiling_exit' | 'floor_exit' | 'custom';
+export type ConduitRoutePreset = 'direct' | 'top_bridge' | 'bottom_bridge' | 'ceiling_exit' | 'floor_exit' | 'custom';
 
 export interface ConduitElevationRoute {
   wallId: string;

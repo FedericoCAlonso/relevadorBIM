@@ -33,6 +33,11 @@ export const CONDUIT_ROUTE_PRESET_OPTIONS: readonly ConduitPresetOption[] = [
     description: 'Sube hacia el dintel/cielorraso para evitar condensación'
   },
   {
+    id: 'bottom_bridge',
+    label: 'Puente inferior',
+    description: 'Baja hacia el contrapiso o zócalo'
+  },
+  {
     id: 'direct',
     label: 'Directo',
     description: 'Enlace recto u ortogonal directo entre cajas contiguas'
@@ -131,6 +136,15 @@ export function buildPresetElevationRoute(params: BuildPresetElevationRouteParam
     return { wallId, preset, points: [p0, p1, pTarget] };
   }
 
+  if (preset === 'bottom_bridge') {
+    const bridgeZ = round(Math.min(fromZ, toZ, 0.20));
+    const p0: ConduitElevationPoint = { u: round(fromU), z: round(fromZ) };
+    const p1: ConduitElevationPoint = { u: round(fromU), z: bridgeZ };
+    const p2: ConduitElevationPoint = { u: round(toU), z: bridgeZ };
+    const p3: ConduitElevationPoint = { u: round(toU), z: round(toZ) };
+    return { wallId, preset: 'bottom_bridge', points: [p0, p1, p2, p3] };
+  }
+
   // top_bridge por defecto
   const bridgeTargetZ = maxZ - CONDUIT_ROUTE_DEFAULTS.TOP_BRIDGE_CLEARANCE_M;
   const bridgeZ = round(Math.max(fromZ, toZ, bridgeTargetZ));
@@ -141,6 +155,28 @@ export function buildPresetElevationRoute(params: BuildPresetElevationRouteParam
   const p3: ConduitElevationPoint = { u: round(toU), z: round(toZ) };
 
   return { wallId, preset: 'top_bridge', points: [p0, p1, p2, p3] };
+}
+
+/**
+ * Sugiere el preset de trazado ortogonal más adecuado según la posición relativa de las bocas.
+ */
+export function suggestElevationRoutePreset(
+  fromU: number,
+  fromZ: number,
+  toU: number,
+  toZ: number
+): ConduitRoutePreset {
+  const distU = Math.abs(fromU - toU);
+  // Si están a corta distancia horizontal (adyacentes o contiguas <= 30cm) -> direct
+  if (distU <= CONDUIT_ROUTE_DEFAULTS.ADJACENT_MAX_GAP_M) {
+    return 'direct';
+  }
+  // Si ambas bocas están en zócalo (<= 0.40 m), sugerir puente inferior por contrapiso
+  if (fromZ <= 0.40 && toZ <= 0.40) {
+    return 'bottom_bridge';
+  }
+  // En cualquier otro caso, puente superior por losa/dintel
+  return 'top_bridge';
 }
 
 /**

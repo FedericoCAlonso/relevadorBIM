@@ -8,6 +8,7 @@ import {
   insertRoutePoint,
   removeRoutePoint,
   elevationRouteToPlanWaypoints,
+  suggestElevationRoutePreset,
   CONDUIT_ROUTE_DEFAULTS
 } from '../conduitElevationRoute';
 
@@ -170,5 +171,39 @@ describe('ConduitElevationRoute — Trazas en alzado de muro', () => {
       { x: 6, y: 10, heightZ: 0.3 },
       { x: 6, y: 10, heightZ: 2.5 }
     ]);
+  });
+
+  it('genera preset bottom_bridge correctamente con 4 puntos a nivel de piso/zócalo', () => {
+    const route = buildPresetElevationRoute({
+      wallId: 'w1',
+      fromU: 1.0,
+      fromZ: 0.3,
+      toU: 3.0,
+      toZ: 0.3,
+      preset: 'bottom_bridge',
+      ceilingZ: 2.7,
+      wallHeightM: 2.8
+    });
+
+    expect(route.preset).toBe('bottom_bridge');
+    expect(route.points).toHaveLength(4);
+    expect(route.points[0]).toEqual({ u: 1.0, z: 0.3 });
+    expect(route.points[1]).toEqual({ u: 1.0, z: 0.2 });
+    expect(route.points[2]).toEqual({ u: 3.0, z: 0.2 });
+    expect(route.points[3]).toEqual({ u: 3.0, z: 0.3 });
+  });
+
+  it('suggestElevationRoutePreset sugiere direct para cajas contiguas, bottom_bridge para zócalos y top_bridge por defecto', () => {
+    // Cajas muy próximas horizontalmente (<= 30cm) -> direct
+    expect(suggestElevationRoutePreset(1.0, 1.1, 1.25, 1.1)).toBe('direct');
+
+    // Cajas distantes a altura media -> top_bridge
+    expect(suggestElevationRoutePreset(1.0, 1.1, 2.5, 1.1)).toBe('top_bridge');
+
+    // Cajas distantes y ambas a cota zócalo (<= 0.40m) -> bottom_bridge
+    expect(suggestElevationRoutePreset(1.0, 0.3, 3.0, 0.35)).toBe('bottom_bridge');
+
+    // Cajas estándar separadas a alturas distintas -> top_bridge
+    expect(suggestElevationRoutePreset(1.0, 0.3, 3.0, 1.1)).toBe('top_bridge');
   });
 });

@@ -37,6 +37,7 @@ import {
   buildPresetElevationRoute,
   elevationRouteToPlanWaypoints,
   moveRoutePoint,
+  suggestElevationRoutePreset,
   CONDUIT_ROUTE_PRESET_OPTIONS
 } from '../models/architecture/conduitElevationRoute';
 import {
@@ -44,6 +45,9 @@ import {
   type ConduitLengthBreakdown
 } from '../models/electrical/conduitMetrics';
 import type {
+  Conduit,
+  ConductorLine,
+  ConduitRoutingPlane,
   ConduitRoutePreset,
   ConduitElevationPoint,
   ConduitMaterial,
@@ -119,6 +123,113 @@ export interface ElevationOpeningPlacementPreview {
   sill: number;
   name: string;
   type: OpeningType;
+}
+
+export interface ConnectWallElevationBoxesInput {
+  wallId: string;
+  face: ElevationFace;
+  fromBoxId: string;
+  toBoxId: string;
+  presetOverride?: ConduitRoutePreset;
+}
+
+/**
+ * Función desacoplada para conectar cajas en vista alzada directamente en los stores.
+ * Permite ejecución limpia tanto en hooks como en suites de test de Vitest.
+ */
+export function connectWallElevationBoxesInStore(
+  input: ConnectWallElevationBoxesInput,
+  projectStore: ReturnType<typeof useProjectStore.getState> = useProjectStore.getState(),
+  sequenceStore: ReturnType<typeof useElectricalSequenceStore.getState> = useElectricalSequenceStore.getState()
+): Conduit | null {
+  const { wallId, face, fromBoxId, toBoxId, presetOverride } = input;
+  if (fromBoxId === toBoxId) return null;
+
+  const project = projectStore.project;
+  const wall = project.walls.find((w) => w.id === wallId);
+  if (!wall) return null;
+
+  const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+  const elevation = buildWallElevation({
+    wall,
+    vertices: verticesMap,
+    face,
+    openings: project.openings,
+    elements: project.electricalElements,
+    panels: project.panels,
+    conduits: project.conduits,
+    circuits: project.circuits,
+    spaces: project.spaces,
+    catalog: project.materialCatalog
+  });
+  if (!elevation) return null;
+
+  const fromBox = elevation.boxes.find((b) => b.id === fromBoxId);
+  const toBox = elevation.boxes.find((b) => b.id === toBoxId);
+  if (!fromBox || !toBox) return null;
+
+  const fromEl =
+    project.electricalElements.find((e) => e.id === fromBox.id) ||
+    project.panels?.find((p) => p.id === fromBox.id);
+  const toEl =
+    project.electricalElements.find((e) => e.id === toBox.id) ||
+    project.panels?.find((p) => p.id === toBox.id);
+  if (!fromEl || !toEl) return null;
+
+  const fromU = screenXToAlongWall(fromBox.centerX, elevation.lengthM, face);
+  const toU = screenXToAlongWall(toBox.centerX, elevation.lengthM, face);
+  const preset =
+    presetOverride ?? suggestElevationRoutePreset(fromU, fromBox.centerZ, toU, toBox.centerZ);
+
+  const route = buildPresetElevationRoute({
+    wallId: wall.id,
+    fromU,
+    fromZ: fromBox.centerZ,
+    toU,
+    toZ: toBox.centerZ,
+    preset,
+    ceilingZ: elevation.ceilingZ,
+    wallHeightM: elevation.wallHeightM
+  });
+
+  const frame = getWallAxisFrame(wall, verticesMap);
+  const planWaypoints = frame ? elevationRouteToPlanWaypoints(route.points, frame) : undefined;
+  const routingPlane: ConduitRoutingPlane =
+    preset === 'ceiling_exit' ? 'ceiling_slab' : preset === 'floor_exit' ? 'floor_slab' : 'wall';
+
+  const fromCircuitId = 'circuitId' in fromEl ? fromEl.circuitId : null;
+  const toCircuitId = 'circuitId' in toEl ? toEl.circuitId : null;
+  const activeCircuitId = fromCircuitId || toCircuitId || null;
+  const circ = activeCircuitId ? project.circuits.find((c) => c.id === activeCircuitId) : null;
+  const section = circ?.wireSectionBaseMM2 || 2.5;
+
+  const conductors: ConductorLine[] = [
+    { role: 'fase', sectionMM2: section, color: '#991b1b', circuitId: activeCircuitId || undefined },
+    { role: 'neutro', sectionMM2: section, color: '#2563eb', circuitId: activeCircuitId || undefined },
+    { role: 'pe', sectionMM2: section, color: '#16a34a', circuitId: activeCircuitId || undefined }
+  ];
+
+  const conduitId = `cond-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const newConduit: Conduit = {
+    id: conduitId,
+    circuitId: activeCircuitId,
+    circuitIds: activeCircuitId ? [activeCircuitId] : [],
+    fromElementId: fromEl.id,
+    toElementId: toEl.id,
+    fromLevelId: fromEl.levelId,
+    toLevelId: toEl.levelId,
+    diameterMM: sequenceStore.sequenceConduitDiameterMM || 19,
+    material: sequenceStore.sequenceConduitMaterial || 'hierro_semipesado_rs',
+    isVerticalRiser: false,
+    conductors,
+    routingMode: 'orthogonal',
+    routingPlane,
+    elevationRoute: route,
+    waypoints: planWaypoints
+  };
+
+  projectStore.addConduit(newConduit);
+  return newConduit;
 }
 
 interface WallElevationStoreState {
@@ -201,6 +312,8 @@ export function useWallElevationViewModel() {
   const [placementPreview, setPlacementPreview] = useState<ElevationPlacementPreview | null>(null);
   const [openingPlacementTool, setOpeningPlacementTool] = useState<ElevationOpeningPlacementToolState | null>(null);
   const [openingPlacementPreview, setOpeningPlacementPreview] = useState<ElevationOpeningPlacementPreview | null>(null);
+  const [isConnectingConduit, setIsConnectingConduit] = useState(false);
+  const [conduitSourceBoxId, setConduitSourceBoxId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<ViewportOverride | null>(null);
 
   const autoConnectConduits = useElectricalSequenceStore((s) => s.autoConnectConduits);
@@ -428,6 +541,8 @@ export function useWallElevationViewModel() {
   const startPlacement = useCallback(
     (symbolId: string, circuitId?: string | null) => {
       setSelection(null);
+      setIsConnectingConduit(false);
+      setConduitSourceBoxId(null);
       setOpeningPlacementTool(null);
       setOpeningPlacementPreview(null);
       setPlacementTool({ symbolId, circuitId });
@@ -441,12 +556,16 @@ export function useWallElevationViewModel() {
     setPlacementPreview(null);
     setOpeningPlacementTool(null);
     setOpeningPlacementPreview(null);
+    setIsConnectingConduit(false);
+    setConduitSourceBoxId(null);
   }, []);
 
   // ─── Inserción interactiva de aberturas y carpinterías desde el alzado ───
   const startOpeningPlacement = useCallback(
     (presetId: string) => {
       setSelection(null);
+      setIsConnectingConduit(false);
+      setConduitSourceBoxId(null);
       setPlacementTool(null);
       setPlacementPreview(null);
       setOpeningPlacementTool({ presetId });
@@ -459,6 +578,57 @@ export function useWallElevationViewModel() {
     setOpeningPlacementTool(null);
     setOpeningPlacementPreview(null);
   }, []);
+
+  // ─── Trazado interactivo de conductos entre cajas en alzado ───
+  const startConduitConnection = useCallback(
+    (initialBoxId?: string) => {
+      setSelection(null);
+      setPlacementTool(null);
+      setPlacementPreview(null);
+      setOpeningPlacementTool(null);
+      setOpeningPlacementPreview(null);
+      setIsConnectingConduit(true);
+      setConduitSourceBoxId(initialBoxId ?? null);
+    },
+    [setSelection]
+  );
+
+  const cancelConduitConnection = useCallback(() => {
+    setIsConnectingConduit(false);
+    setConduitSourceBoxId(null);
+  }, []);
+
+  const commitNewConduit = useCallback(
+    (fromBoxId: string, toBoxId: string, presetOverride?: ConduitRoutePreset) => {
+      if (!wall || !target) return;
+      const created = connectWallElevationBoxesInStore({
+        wallId: wall.id,
+        face: target.face,
+        fromBoxId,
+        toBoxId,
+        presetOverride
+      });
+      if (created) {
+        setSelection({ type: 'conduit', id: created.id });
+        // Encadenar: la caja destino pasa a ser el origen para la siguiente conexión
+        setConduitSourceBoxId(toBoxId);
+      }
+    },
+    [wall, target, setSelection]
+  );
+
+  const handleBoxClickInConnectMode = useCallback(
+    (boxId: string) => {
+      if (!conduitSourceBoxId) {
+        setConduitSourceBoxId(boxId);
+      } else if (conduitSourceBoxId === boxId) {
+        setConduitSourceBoxId(null);
+      } else {
+        commitNewConduit(conduitSourceBoxId, boxId);
+      }
+    },
+    [conduitSourceBoxId, commitNewConduit]
+  );
 
   const updateOpeningPlacementPreview = useCallback(
     (point: ElevationPointerPoint) => {
@@ -1120,6 +1290,12 @@ export function useWallElevationViewModel() {
     autoConnectConduits,
     setAutoConnectConduits,
     resetSequence,
-    lastPlacedElementId
+    lastPlacedElementId,
+    isConnectingConduit,
+    conduitSourceBoxId,
+    startConduitConnection,
+    cancelConduitConnection,
+    handleBoxClickInConnectMode,
+    commitNewConduit
   };
 }

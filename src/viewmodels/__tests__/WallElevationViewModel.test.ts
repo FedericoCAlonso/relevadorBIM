@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useWallElevationStore } from '../useWallElevationViewModel';
+import { useWallElevationStore, connectWallElevationBoxesInStore } from '../useWallElevationViewModel';
 import { useProjectStore } from '../useProjectStore';
 import { computeNewNodeFromElevation } from '../../models/architecture/elevationPlacement';
 import { placeElectricalElementInStore, useElectricalSequenceStore } from '../useElectricalViewModel';
@@ -800,6 +800,134 @@ describe('useWallElevationStore', () => {
     expect(refreshed.elevationRoute?.points[2].z).toBe(2.50);
     expect(refreshed.elevationRoute?.points[0].z).toBe(0.30);
     expect(refreshed.elevationRoute?.points[3].z).toBe(1.10);
+  });
+
+  describe('connectWallElevationBoxesInStore — Trazado interactivo de conductos', () => {
+    it('conecta dos cajas en alzado de muro creando un conducto en el store', () => {
+      // Colocar dos cajas en el muro
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      const box2 = placeElectricalElementInStore({
+        worldX: 3.0,
+        worldY: 0,
+        symbolId: 'sym-planta-llave-un-punto',
+        snapInfo: { wallId: 'wall-101', wallOffset: 3.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 1.10,
+        autoConnectConduits: false
+      });
+
+      const conduit = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box2.id
+      });
+
+      expect(conduit).not.toBeNull();
+      expect(conduit?.fromElementId).toBe(box1.id);
+      expect(conduit?.toElementId).toBe(box2.id);
+      expect(conduit?.routingPlane).toBe('wall');
+      expect(conduit?.elevationRoute).toBeDefined();
+      expect(conduit?.elevationRoute?.wallId).toBe('wall-101');
+      expect(conduit?.elevationRoute?.preset).toBe('top_bridge');
+      expect(conduit?.waypoints).toBeDefined();
+      expect(conduit?.conductors).toHaveLength(3);
+
+      const inStore = useProjectStore.getState().project.conduits.find((c) => c.id === conduit!.id);
+      expect(inStore).toBeDefined();
+    });
+
+    it('sugiere preset bottom_bridge si ambas cajas están a nivel de zócalo', () => {
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      const box2 = placeElectricalElementInStore({
+        worldX: 3.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 3.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      const conduit = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box2.id
+      });
+
+      expect(conduit?.elevationRoute?.preset).toBe('bottom_bridge');
+    });
+
+    it('sugiere preset direct si las cajas son contiguas a poca distancia', () => {
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-llave-un-punto',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 1.10,
+        autoConnectConduits: false
+      });
+
+      const box2 = placeElectricalElementInStore({
+        worldX: 1.20,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.20, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 1.10,
+        autoConnectConduits: false
+      });
+
+      const conduit = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box2.id
+      });
+
+      expect(conduit?.elevationRoute?.preset).toBe('direct');
+    });
+
+    it('retorna null si se intenta conectar una caja consigo misma o elementos inexistentes', () => {
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      const sameBox = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box1.id
+      });
+      expect(sameBox).toBeNull();
+
+      const nonExistent = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: 'caja-fantasma'
+      });
+      expect(nonExistent).toBeNull();
+    });
   });
 });
 

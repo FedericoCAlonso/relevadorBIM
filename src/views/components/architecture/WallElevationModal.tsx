@@ -122,7 +122,12 @@ export const WallElevationModal: React.FC = () => {
     autoConnectConduits,
     setAutoConnectConduits,
     resetSequence,
-    lastPlacedElementId
+    lastPlacedElementId,
+    isConnectingConduit,
+    conduitSourceBoxId,
+    startConduitConnection,
+    cancelConduitConnection,
+    handleBoxClickInConnectMode
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -142,6 +147,7 @@ export const WallElevationModal: React.FC = () => {
   const [isOpeningPlacementMenuOpen, setIsOpeningPlacementMenuOpen] = useState(false);
   const [isConduitModalOpen, setIsConduitModalOpen] = useState(false);
   const [placementCircuitId, setPlacementCircuitId] = useState<string | null>(null);
+  const [pointerWorld, setPointerWorld] = useState<{ x: number; y: number } | null>(null);
   const [mobileSheetMode, setMobileSheetMode] = useState<'none' | 'add_box' | 'add_opening' | 'info'>('none');
   const [boxCategoryTab, setBoxCategoryTab] = useState<'tomas' | 'llaves' | 'tableros' | 'paso' | 'apliques'>('tomas');
   const [openingCategoryTab, setOpeningCategoryTab] = useState<'door' | 'window' | 'passage'>('door');
@@ -151,7 +157,10 @@ export const WallElevationModal: React.FC = () => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (placementTool) {
+        if (isConnectingConduit) {
+          cancelConduitConnection();
+          setPointerWorld(null);
+        } else if (placementTool) {
           cancelPlacement();
         } else if (openingPlacementTool) {
           cancelOpeningPlacement();
@@ -174,6 +183,8 @@ export const WallElevationModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isOpen,
+    isConnectingConduit,
+    cancelConduitConnection,
     placementTool,
     openingPlacementTool,
     isPlacementMenuOpen,
@@ -313,6 +324,11 @@ export const WallElevationModal: React.FC = () => {
         if (world) commitOpeningPlacement(world);
         return;
       }
+      if (isConnectingConduit) {
+        cancelConduitConnection();
+        setPointerWorld(null);
+        return;
+      }
       if (e.pointerType === 'touch') return;
       if (e.target !== svgRef.current && (e.target as Element).id !== 'elevation-backdrop') return;
       clearSelection();
@@ -320,11 +336,24 @@ export const WallElevationModal: React.FC = () => {
       panStartRef.current = { clientX: e.clientX, clientY: e.clientY };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [placementTool, openingPlacementTool, clientToWorld, commitPlacement, commitOpeningPlacement, clearSelection]
+    [
+      placementTool,
+      openingPlacementTool,
+      isConnectingConduit,
+      cancelConduitConnection,
+      clientToWorld,
+      commitPlacement,
+      commitOpeningPlacement,
+      clearSelection
+    ]
   );
 
   const handleSvgPointerMove = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (isConnectingConduit) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        if (world) setPointerWorld(world);
+      }
       if (placementTool) {
         const world = clientToWorld(e.clientX, e.clientY);
         if (world) updatePlacementPreview(world);
@@ -360,6 +389,7 @@ export const WallElevationModal: React.FC = () => {
       }
     },
     [
+      isConnectingConduit,
       placementTool,
       openingPlacementTool,
       isDragging,
@@ -505,8 +535,53 @@ export const WallElevationModal: React.FC = () => {
           </div>
         )}
 
+        {/* Indicador de Trazado de Conducto Activo en Cabecera */}
+        {isConnectingConduit && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/40 rounded-xl text-[11px] font-bold shrink-0 animate-in fade-in">
+            <Cable size={12} className="animate-pulse text-cyan-300" />
+            <span className="truncate max-w-[120px] sm:max-w-none">
+              {!conduitSourceBoxId ? 'Trazar cañería: 1. Elegí origen' : 'Trazar cañería: 2. Elegí destino'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                cancelConduitConnection();
+                setPointerWorld(null);
+              }}
+              className="p-1 hover:bg-blue-500/30 rounded-lg text-blue-200 transition-colors"
+              title="Cancelar trazado (Esc)"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
         {/* Botones de Colocación para Escritorio */}
         <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+          {/* Botón Desktop ☍ Conectar */}
+          {!placementTool && !openingPlacementTool && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isConnectingConduit) {
+                  cancelConduitConnection();
+                  setPointerWorld(null);
+                } else {
+                  startConduitConnection(selectedBox?.id);
+                }
+              }}
+              className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 ${
+                isConnectingConduit
+                  ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                  : 'bg-blue-600/80 hover:bg-blue-600 text-blue-100 hover:text-white border border-blue-500/30'
+              }`}
+              title="Trazar cañería entre dos cajas en este muro"
+            >
+              <Cable size={14} />
+              <span>☍ Conectar</span>
+            </button>
+          )}
+
           {/* Botón Desktop + Boca */}
           {!placementTool && !openingPlacementTool && (
             <div className="relative shrink-0">
@@ -1050,9 +1125,42 @@ export const WallElevationModal: React.FC = () => {
                 </g>
               ))}
 
+            {/* 4.5. Línea elástica / Rubberband durante trazado interactivo de conductos */}
+            {isConnectingConduit && conduitSourceBoxId && pointerWorld && (() => {
+              const src = displayBoxes.find((b) => b.id === conduitSourceBoxId);
+              if (!src) return null;
+              const srcCenterY = src.rect.y + src.rect.height / 2;
+              return (
+                <g className="pointer-events-none">
+                  <line
+                    x1={src.centerX}
+                    y1={srcCenterY}
+                    x2={pointerWorld.x}
+                    y2={pointerWorld.y}
+                    stroke="#38bdf8"
+                    strokeWidth={0.02}
+                    strokeOpacity={0.4}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={src.centerX}
+                    y1={srcCenterY}
+                    x2={pointerWorld.x}
+                    y2={pointerWorld.y}
+                    stroke="#0284c7"
+                    strokeWidth={0.01}
+                    strokeDasharray="0.04 0.02"
+                    strokeLinecap="round"
+                  />
+                </g>
+              );
+            })()}
+
             {/* 5. Cajas Eléctricas y Gabinetes a Escala 1:1 */}
             {displayBoxes.map((b) => {
               const isSelected = selection?.type === 'box' && selection.id === b.id;
+              const isSourceBox = isConnectingConduit && conduitSourceBoxId === b.id;
+              const isConnectTargetCandidate = isConnectingConduit && conduitSourceBoxId !== b.id;
               const paint =
                 b.shape === 'cabinet' ? WALL_ELEVATION_STYLE.box.cabinet : WALL_ELEVATION_STYLE.box.default;
 
@@ -1061,14 +1169,22 @@ export const WallElevationModal: React.FC = () => {
                   key={b.id}
                   onPointerDown={(e) => {
                     e.stopPropagation();
+                    if (isConnectingConduit) {
+                      handleBoxClickInConnectMode(b.id);
+                      return;
+                    }
                     const world = clientToWorld(e.clientX, e.clientY);
                     if (world) beginBoxDrag(b.id, world);
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (isConnectingConduit) {
+                      handleBoxClickInConnectMode(b.id);
+                      return;
+                    }
                     selectBox(b.id);
                   }}
-                  className="cursor-grab active:cursor-grabbing group"
+                  className={isConnectingConduit ? 'cursor-pointer group' : 'cursor-grab active:cursor-grabbing group'}
                 >
                   {/* Hitbox táctil invisible ampliada para toque cómodo con el dedo en celular */}
                   <rect
@@ -1081,8 +1197,41 @@ export const WallElevationModal: React.FC = () => {
                     className="cursor-pointer"
                   />
 
+                  {/* Halo de caja origen de conexión activa (pulsante cyan) */}
+                  {isSourceBox && (
+                    <rect
+                      x={b.rect.x - 0.03}
+                      y={b.rect.y - 0.03}
+                      width={b.rect.width + 0.06}
+                      height={b.rect.height + 0.06}
+                      fill="#0284c7"
+                      fillOpacity={0.25}
+                      stroke="#38bdf8"
+                      strokeWidth={0.016}
+                      strokeDasharray="0.03 0.015"
+                      className="animate-pulse"
+                      rx={0.015}
+                    />
+                  )}
+
+                  {/* Halo indicador de destino conectable */}
+                  {isConnectTargetCandidate && (
+                    <rect
+                      x={b.rect.x - 0.02}
+                      y={b.rect.y - 0.02}
+                      width={b.rect.width + 0.04}
+                      height={b.rect.height + 0.04}
+                      fill="none"
+                      stroke="#38bdf8"
+                      strokeWidth={0.01}
+                      strokeDasharray="0.02 0.02"
+                      opacity={0.7}
+                      rx={0.01}
+                    />
+                  )}
+
                   {/* Halo de selección */}
-                  {isSelected && (
+                  {!isConnectingConduit && isSelected && (
                     <rect
                       x={b.rect.x - 0.015}
                       y={b.rect.y - 0.015}
@@ -1371,7 +1520,36 @@ export const WallElevationModal: React.FC = () => {
 
         {/* ─── CAJÓN INFERIOR PARA CELULARES (COMPACTO Y ERGONÓMICO) ─── */}
         <div className="lg:hidden shrink-0 bg-slate-900 border-t border-slate-800 text-slate-200">
-          {placementTool ? (
+          {isConnectingConduit ? (
+            <div className="p-3 bg-blue-950/80 border-t border-blue-500/40 text-blue-200 flex items-center justify-between gap-2 animate-in slide-in-from-bottom duration-150">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 bg-blue-500/20 text-blue-300 rounded-lg shrink-0 animate-pulse">
+                  <Cable size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate">
+                    {!conduitSourceBoxId ? 'Trazar Cañería: Paso 1' : 'Trazar Cañería: Paso 2'}
+                  </div>
+                  <div className="text-[10px] text-blue-300 truncate">
+                    {!conduitSourceBoxId
+                      ? 'Tocá la caja de origen en la pared'
+                      : 'Tocá la caja de destino para unir con caño'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelConduitConnection();
+                  setPointerWorld(null);
+                }}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-700 shrink-0"
+              >
+                <X size={14} />
+                <span>Cancelar</span>
+              </button>
+            </div>
+          ) : placementTool ? (
             <div className="p-3 bg-emerald-950/70 border-t border-emerald-500/40 text-emerald-200 flex items-center justify-between gap-2 animate-in slide-in-from-bottom duration-150">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="p-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg shrink-0 animate-pulse">
@@ -1458,6 +1636,15 @@ export const WallElevationModal: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => startConduitConnection(selectedBox.id)}
+                    className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    title="Trazar cañería desde esta caja a otra"
+                  >
+                    <Cable size={13} />
+                    <span>Conectar</span>
+                  </button>
                   <button
                     type="button"
                     onClick={rotateSelectedBox}
@@ -1960,22 +2147,30 @@ export const WallElevationModal: React.FC = () => {
           ) : (
             /* Barra móvil cuando no hay nada seleccionado: botones ergonómicos para el pulgar */
             <div className="p-2 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
                   onClick={() => setMobileSheetMode('add_box')}
-                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md border border-emerald-500/40 transition-transform"
+                  className="w-full py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-md border border-emerald-500/40 transition-transform"
                 >
-                  <Plus size={15} />
-                  <span>+ Boca / Tablero</span>
+                  <Plus size={14} />
+                  <span>+ Boca</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startConduitConnection()}
+                  className="w-full py-2.5 px-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-md border border-blue-500/40 transition-transform"
+                >
+                  <Cable size={14} />
+                  <span>☍ Conectar</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileSheetMode('add_opening')}
-                  className="w-full py-2.5 px-3 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md border border-amber-500/40 transition-transform"
+                  className="w-full py-2.5 px-2 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-md border border-amber-500/40 transition-transform"
                 >
-                  <DoorOpen size={15} />
-                  <span>+ Abertura</span>
+                  <DoorOpen size={14} />
+                  <span>+ Vano</span>
                 </button>
               </div>
 
@@ -2331,6 +2526,17 @@ export const WallElevationModal: React.FC = () => {
                   Deseleccionar
                 </button>
               </div>
+
+              {/* Acción rápida: Trazar cañería desde esta caja */}
+              <button
+                type="button"
+                onClick={() => startConduitConnection(selectedBox.id)}
+                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform"
+                title="Trazar cañería desde esta caja a otra caja en el muro"
+              >
+                <Cable size={14} />
+                <span>☍ Trazar Cañería desde esta Caja</span>
+              </button>
 
               {/* Orientación y Rotación de Caja */}
               <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 text-xs space-y-2">
