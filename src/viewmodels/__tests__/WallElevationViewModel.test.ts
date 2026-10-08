@@ -600,5 +600,77 @@ describe('useWallElevationStore', () => {
     })!;
     expect(elevRight.openings[0].xLeft).toBeCloseTo(wallLengthM - 1.0 - openingWidth, 2);
   });
+
+  it('permite reajustar la altura de una canalización en el alzado con elevationRoute', () => {
+    useProjectStore.getState().addElectricalElement({
+      id: 'e-c1',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 1,
+      y: 0,
+      heightZ: 0.30,
+      placement: 'wall',
+      symbolId: 'sym-toma',
+      side: 'left'
+    });
+    useProjectStore.getState().addElectricalElement({
+      id: 'e-c2',
+      levelId: 'level-1',
+      spaceId: 's1',
+      wallId: 'wall-101',
+      x: 3,
+      y: 0,
+      heightZ: 1.10,
+      placement: 'wall',
+      symbolId: 'sym-toma',
+      side: 'left'
+    });
+    useProjectStore.getState().addConduit({
+      id: 'cond-nudge-1',
+      fromElementId: 'e-c1',
+      toElementId: 'e-c2',
+      fromLevelId: 'level-1',
+      toLevelId: 'level-1',
+      diameterMM: 22,
+      material: 'hierro_semipesado',
+      isVerticalRiser: false,
+      conductors: [],
+      routingPlane: 'wall',
+      elevationRoute: {
+        wallId: 'wall-101',
+        preset: 'top_bridge',
+        points: [
+          { u: 1, z: 0.30 },
+          { u: 1, z: 2.20 },
+          { u: 3, z: 2.20 },
+          { u: 3, z: 1.10 }
+        ]
+      }
+    });
+
+    // Ajustar altura de los puntos intermedios a 2.50m (+0.30m)
+    const cond = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-nudge-1')!;
+    expect(cond).toBeDefined();
+    const updatedPoints = cond.elevationRoute!.points.map((p, idx) => {
+      if (idx === 0 || idx === 3) return p;
+      return { ...p, z: 2.50 };
+    });
+
+    useProjectStore.getState().updateConduit('cond-nudge-1', {
+      elevationRoute: {
+        wallId: 'wall-101',
+        preset: 'custom',
+        points: updatedPoints
+      }
+    });
+
+    const refreshed = useProjectStore.getState().project.conduits.find((c) => c.id === 'cond-nudge-1')!;
+    expect(refreshed.elevationRoute?.preset).toBe('custom');
+    expect(refreshed.elevationRoute?.points[1].z).toBe(2.50);
+    expect(refreshed.elevationRoute?.points[2].z).toBe(2.50);
+    expect(refreshed.elevationRoute?.points[0].z).toBe(0.30);
+    expect(refreshed.elevationRoute?.points[3].z).toBe(1.10);
+  });
 });
 

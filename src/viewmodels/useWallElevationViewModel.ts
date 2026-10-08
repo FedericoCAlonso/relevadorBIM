@@ -678,6 +678,110 @@ export function useWallElevationViewModel() {
     [updateConduit]
   );
 
+  const nudgeSelectedConduitHeight = useCallback(
+    (dzM: number) => {
+      if (!selectedConduit || !wall || !elevation || !target) return;
+      const cond = project.conduits.find((c) => c.id === selectedConduit.id);
+      if (!cond) return;
+
+      let points = cond.elevationRoute?.points;
+      if (!points || points.length <= 2) {
+        const fromBox = elevation.boxes.find((b) => b.id === cond.fromElementId);
+        const toBox = elevation.boxes.find((b) => b.id === cond.toElementId);
+        if (!fromBox && !toBox) return;
+        const b1 = fromBox ?? toBox!;
+        const b2 = toBox ?? fromBox!;
+        const fromU = screenXToAlongWall(b1.centerX, elevation.lengthM, target.face);
+        const toU = screenXToAlongWall(b2.centerX, elevation.lengthM, target.face);
+        const initRoute = buildPresetElevationRoute({
+          wallId: wall.id,
+          fromU,
+          fromZ: b1.centerZ,
+          toU,
+          toZ: b2.centerZ,
+          preset: 'top_bridge',
+          ceilingZ: elevation.ceilingZ,
+          wallHeightM: elevation.wallHeightM
+        });
+        points = initRoute.points;
+      }
+
+      if (!points || points.length <= 2) return;
+
+      const maxZ = elevation.wallHeightM;
+      const newPoints = points.map((p, idx) => {
+        if (idx === 0 || idx === points.length - 1) return p;
+        const targetZ = Math.max(0, Math.min(maxZ, Math.round((p.z + dzM) * 100) / 100));
+        return { ...p, z: targetZ };
+      });
+
+      const frame = getWallAxisFrame(wall, verticesMap);
+      const planWaypoints = frame ? elevationRouteToPlanWaypoints(newPoints, frame) : undefined;
+
+      updateConduit(cond.id, {
+        elevationRoute: {
+          wallId: wall.id,
+          preset: 'custom',
+          points: newPoints
+        },
+        waypoints: planWaypoints
+      });
+    },
+    [selectedConduit, wall, elevation, target, project.conduits, verticesMap, updateConduit]
+  );
+
+  const setSelectedConduitHeight = useCallback(
+    (targetZ: number) => {
+      if (!selectedConduit || !wall || !elevation || !target) return;
+      const cond = project.conduits.find((c) => c.id === selectedConduit.id);
+      if (!cond) return;
+
+      let points = cond.elevationRoute?.points;
+      if (!points || points.length <= 2) {
+        const fromBox = elevation.boxes.find((b) => b.id === cond.fromElementId);
+        const toBox = elevation.boxes.find((b) => b.id === cond.toElementId);
+        if (!fromBox && !toBox) return;
+        const b1 = fromBox ?? toBox!;
+        const b2 = toBox ?? fromBox!;
+        const fromU = screenXToAlongWall(b1.centerX, elevation.lengthM, target.face);
+        const toU = screenXToAlongWall(b2.centerX, elevation.lengthM, target.face);
+        const initRoute = buildPresetElevationRoute({
+          wallId: wall.id,
+          fromU,
+          fromZ: b1.centerZ,
+          toU,
+          toZ: b2.centerZ,
+          preset: 'top_bridge',
+          ceilingZ: elevation.ceilingZ,
+          wallHeightM: elevation.wallHeightM
+        });
+        points = initRoute.points;
+      }
+
+      if (!points || points.length <= 2) return;
+
+      const maxZ = elevation.wallHeightM;
+      const zClamped = Math.max(0, Math.min(maxZ, Math.round(targetZ * 100) / 100));
+      const newPoints = points.map((p, idx) => {
+        if (idx === 0 || idx === points.length - 1) return p;
+        return { ...p, z: zClamped };
+      });
+
+      const frame = getWallAxisFrame(wall, verticesMap);
+      const planWaypoints = frame ? elevationRouteToPlanWaypoints(newPoints, frame) : undefined;
+
+      updateConduit(cond.id, {
+        elevationRoute: {
+          wallId: wall.id,
+          preset: 'custom',
+          points: newPoints
+        },
+        waypoints: planWaypoints
+      });
+    },
+    [selectedConduit, wall, elevation, target, project.conduits, verticesMap, updateConduit]
+  );
+
   const beginRoutePointDrag = useCallback(
     (conduitId: string, pointIndex: number) => {
       if (!elevation || !target || !wall) return;
@@ -978,6 +1082,8 @@ export function useWallElevationViewModel() {
     openingTypes: project.materialCatalog?.openingTypes || DEFAULT_OPENING_TYPES,
     setElementBoxType,
     applyOpeningPreset,
-    formatConduitSize
+    formatConduitSize,
+    nudgeSelectedConduitHeight,
+    setSelectedConduitHeight
   };
 }

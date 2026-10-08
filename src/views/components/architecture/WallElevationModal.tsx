@@ -111,7 +111,9 @@ export const WallElevationModal: React.FC = () => {
     openingTypes,
     setElementBoxType,
     applyOpeningPreset,
-    formatConduitSize
+    formatConduitSize,
+    nudgeSelectedConduitHeight,
+    setSelectedConduitHeight
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -219,7 +221,7 @@ export const WallElevationModal: React.FC = () => {
           startDist: dist,
           startCenter: worldCenter ?? undefined
         };
-      } else if (e.touches.length === 1) {
+      } else if (e.touches.length === 1 && !isDragging && !isGripDragging) {
         const t = e.touches[0];
         touchStateRef.current = {
           type: 'single',
@@ -228,11 +230,27 @@ export const WallElevationModal: React.FC = () => {
         };
       }
     },
-    [clientToWorld]
+    [clientToWorld, isDragging, isGripDragging]
   );
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent<SVGSVGElement>) => {
+      if (isGripDragging) {
+        if (e.touches.length === 1) {
+          const t = e.touches[0];
+          const world = clientToWorld(t.clientX, t.clientY);
+          if (world) moveRoutePointDrag(world);
+        }
+        return;
+      }
+      if (isDragging) {
+        if (e.touches.length === 1) {
+          const t = e.touches[0];
+          const world = clientToWorld(t.clientX, t.clientY);
+          if (world) moveBoxDrag(world);
+        }
+        return;
+      }
       if (!touchStateRef.current) return;
       if (e.touches.length === 2 && touchStateRef.current.type === 'pinch') {
         const t1 = e.touches[0];
@@ -244,7 +262,7 @@ export const WallElevationModal: React.FC = () => {
           zoomAt(factor, touchStateRef.current.startCenter);
           touchStateRef.current.startDist = currentDist;
         }
-      } else if (e.touches.length === 1 && touchStateRef.current.type === 'single' && !isDragging) {
+      } else if (e.touches.length === 1 && touchStateRef.current.type === 'single') {
         const t = e.touches[0];
         const dxPx = t.clientX - touchStateRef.current.startX;
         const dyPx = t.clientY - touchStateRef.current.startY;
@@ -259,12 +277,18 @@ export const WallElevationModal: React.FC = () => {
         panBy(dxM, dyM);
       }
     },
-    [isDragging, zoomAt, panBy]
+    [isGripDragging, isDragging, clientToWorld, moveRoutePointDrag, moveBoxDrag, zoomAt, panBy]
   );
 
   const handleTouchEnd = useCallback(() => {
     touchStateRef.current = null;
-  }, []);
+    if (isGripDragging) {
+      endRoutePointDrag();
+    }
+    if (isDragging) {
+      endBoxDrag();
+    }
+  }, [isGripDragging, isDragging, endRoutePointDrag, endBoxDrag]);
 
   // Paneo sobre el fondo del lienzo SVG (con Mouse / Pointer)
   const handleBackgroundPointerDown = useCallback(
@@ -689,7 +713,8 @@ export const WallElevationModal: React.FC = () => {
             ref={svgRef}
             viewBox={viewBoxAttribute}
             preserveAspectRatio="xMidYMid meet"
-            className={`w-full h-full ${
+            style={{ touchAction: 'none' }}
+            className={`w-full h-full touch-none ${
               placementTool ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
             } outline-none select-none`}
             onWheel={handleWheel}
@@ -886,31 +911,74 @@ export const WallElevationModal: React.FC = () => {
               routeGrips.map((grip) => (
                 <g
                   key={`grip-${grip.index}`}
-                  className={grip.isEndpoint ? 'pointer-events-none' : 'cursor-move'}
+                  className={grip.isEndpoint ? 'pointer-events-none' : 'cursor-move touch-none'}
                   onPointerDown={(e) => {
+                    if (grip.isEndpoint || !selectedConduit) return;
+                    e.stopPropagation();
+                    try {
+                      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                    } catch {
+                      // Ignorar si el navegador no soporta captura en SVG
+                    }
+                    beginRoutePointDrag(selectedConduit.id, grip.index);
+                  }}
+                  onTouchStart={(e) => {
                     if (grip.isEndpoint || !selectedConduit) return;
                     e.stopPropagation();
                     beginRoutePointDrag(selectedConduit.id, grip.index);
                   }}
                 >
-                  {/* Hitbox del grip */}
+                  {/* Hitbox ultra-generosa para operación con pulgar en celulares (r=0.22m) */}
                   <circle
                     cx={grip.x}
                     cy={grip.y}
-                    r={0.06}
+                    r={grip.isEndpoint ? 0.04 : 0.22}
                     fill="transparent"
                     pointerEvents={grip.isEndpoint ? 'none' : 'all'}
                   />
-                  {/* Visual del grip */}
+                  {/* Anillo halo exterior pulsante para nodos intermedios arrastrables */}
+                  {!grip.isEndpoint && (
+                    <circle
+                      cx={grip.x}
+                      cy={grip.y}
+                      r={isGripDragging ? 0.08 : 0.06}
+                      fill={isGripDragging ? '#f59e0b' : '#3b82f6'}
+                      fillOpacity={0.25}
+                      stroke={isGripDragging ? '#fbbf24' : '#60a5fa'}
+                      strokeWidth={0.006}
+                      strokeDasharray="0.02 0.015"
+                      className="pointer-events-none animate-pulse"
+                    />
+                  )}
+                  {/* Núcleo visual del grip */}
                   <circle
                     cx={grip.x}
                     cy={grip.y}
-                    r={grip.isEndpoint ? 0.012 : 0.022}
-                    fill={grip.isEndpoint ? '#64748b' : '#3b82f6'}
+                    r={grip.isEndpoint ? 0.014 : isGripDragging ? 0.042 : 0.032}
+                    fill={grip.isEndpoint ? '#64748b' : isGripDragging ? '#d97706' : '#2563eb'}
                     stroke="#ffffff"
-                    strokeWidth={0.005}
+                    strokeWidth={0.006}
                     className="pointer-events-none"
                   />
+                  {/* Etiqueta flotante de cota en tiempo real sobre el nodo */}
+                  {!grip.isEndpoint && (
+                    <text
+                      x={grip.x}
+                      y={grip.y - 0.065}
+                      textAnchor="middle"
+                      dominantBaseline="auto"
+                      fontSize={0.075}
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      fill={isGripDragging ? '#fbbf24' : '#60a5fa'}
+                      stroke="#0f172a"
+                      strokeWidth={0.02}
+                      paintOrder="stroke"
+                      className="pointer-events-none select-none"
+                    >
+                      {grip.z.toFixed(2)}m
+                    </text>
+                  )}
                 </g>
               ))}
 
@@ -1702,6 +1770,69 @@ export const WallElevationModal: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {/* Controles táctiles de ajuste fino de altura de cañería */}
+              {(() => {
+                const intermediatePoint = selectedConduit.elevationRoute?.points?.find(
+                  (_, idx, arr) => idx > 0 && idx < arr.length - 1
+                );
+                const conduitZ = intermediatePoint?.z;
+                return (
+                  <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-2 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+                      <span>ALTURA DE CAÑERÍA (Z):</span>
+                      <span className="font-mono text-cyan-300 font-bold">
+                        {conduitZ != null ? `${conduitZ.toFixed(2)} m` : 'En puente / auto'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => nudgeSelectedConduitHeight(-0.10)}
+                        className="py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 rounded-lg text-xs font-mono font-bold transition-transform text-center"
+                        title="Bajar tramo horizontal 10 cm"
+                      >
+                        ▼ -10 cm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudgeSelectedConduitHeight(0.10)}
+                        className="py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 rounded-lg text-xs font-mono font-bold transition-transform text-center"
+                        title="Subir tramo horizontal 10 cm"
+                      >
+                        ▲ +10 cm
+                      </button>
+                    </div>
+                    {/* Presets de altura AEA rápidos para caños */}
+                    <div className="flex gap-1 overflow-x-auto pt-0.5">
+                      {[
+                        { label: '0.30m Zócalo', z: 0.30 },
+                        { label: '1.10m Medio', z: 1.10 },
+                        { label: '2.20m Dintel', z: 2.20 },
+                        ...(elevation.ceilingZ
+                          ? [{ label: `${elevation.ceilingZ.toFixed(2)}m Losa`, z: elevation.ceilingZ }]
+                          : [])
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setSelectedConduitHeight(preset.z)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap transition-colors border ${
+                            conduitZ != null && Math.abs(conduitZ - preset.z) < 0.03
+                              ? 'bg-cyan-600 text-white border-cyan-400 font-bold'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      💡 Tocá y arrastrá los nodos azules en la pared o usá estos botones.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             /* Barra móvil cuando no hay nada seleccionado: botones ergonómicos para el pulgar */
@@ -2529,6 +2660,67 @@ export const WallElevationModal: React.FC = () => {
                   </button>
                 )}
               </div>
+
+              {/* Ajuste métrico de altura de cañería */}
+              {(() => {
+                const intermediatePoint = selectedConduit.elevationRoute?.points?.find(
+                  (_, idx, arr) => idx > 0 && idx < arr.length - 1
+                );
+                const conduitZ = intermediatePoint?.z;
+                return (
+                  <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 space-y-2 text-xs">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-slate-400 text-[11px] uppercase tracking-wider">
+                        Altura Tramo Horizontal (Z):
+                      </span>
+                      <span className="font-mono text-cyan-300 font-bold">
+                        {conduitZ != null ? `${conduitZ.toFixed(2)} m` : 'Variable'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => nudgeSelectedConduitHeight(-0.10)}
+                        className="py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 rounded-lg text-xs font-mono font-bold transition-all text-center"
+                        title="Bajar tramo horizontal 10 cm"
+                      >
+                        ▼ -10 cm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nudgeSelectedConduitHeight(0.10)}
+                        className="py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 rounded-lg text-xs font-mono font-bold transition-all text-center"
+                        title="Subir tramo horizontal 10 cm"
+                      >
+                        ▲ +10 cm
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 pt-1">
+                      {[
+                        { label: '0.30m Zócalo', z: 0.30 },
+                        { label: '1.10m Llaves', z: 1.10 },
+                        { label: '2.20m Dintel', z: 2.20 },
+                        ...(elevation.ceilingZ
+                          ? [{ label: `${elevation.ceilingZ.toFixed(2)}m Losa`, z: elevation.ceilingZ }]
+                          : [])
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setSelectedConduitHeight(preset.z)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors border text-center truncate ${
+                            conduitZ != null && Math.abs(conduitZ - preset.z) < 0.03
+                              ? 'bg-cyan-600 text-white border-cyan-400 font-bold'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 text-[11px] text-slate-400">
                 💡 Arrastrá los puntos azules sobre la cañería para desplazar la altura del puente o quiebres ortogonales.
