@@ -23,7 +23,10 @@ import {
   CIRCUIT_PRESETS,
   PANEL_PRESETS,
   INSTALLATION_STATE_OPTIONS,
-  STANDARD_CUSTOM_CONDUIT_SIZES
+  STANDARD_CUSTOM_CONDUIT_SIZES,
+  isConduitPipe,
+  NORMALIZED_PIPE_BEND_RADIUS_M,
+  getNormalizedPipeBendRadiusM
 } from '../electricalStandards';
 import {
   getConduitLengthBreakdown,
@@ -227,4 +230,30 @@ describe('Catálogos y Normas Eléctricas AEA (Model layer)', () => {
     expect(INSTALLATION_STATE_OPTIONS.length).toBe(3);
     expect(STANDARD_CUSTOM_CONDUIT_SIZES.length).toBe(5);
   });
+
+  it('debe identificar correctamente si una canalización es caño o bandeja', () => {
+    expect(isConduitPipe('hierro_semipesado_rs')).toBe(true);
+    expect(isConduitPipe('hierro_liviano_rl')).toBe(true);
+    expect(isConduitPipe('pvc_rigido_metrico')).toBe(true);
+    expect(isConduitPipe('corrugado_blanco_pvc')).toBe(true);
+    expect(isConduitPipe('bandeja_perforada_20')).toBe(false);
+    expect(isConduitPipe('bandeja')).toBe(false);
+    expect(isConduitPipe('custom_cable_tray')).toBe(false);
+  });
+
+  it('debe proveer radios de curvatura normalizados según AEA 90364-7-771 (R >= 6 * D)', () => {
+    expect(NORMALIZED_PIPE_BEND_RADIUS_M[19]).toBe(0.12);
+    expect(NORMALIZED_PIPE_BEND_RADIUS_M[25]).toBe(0.15);
+    // Ø16 mm -> 0.10 m (100 mm)
+    expect(getNormalizedPipeBendRadiusM(16)).toBe(0.10);
+    // Ø19 mm -> 0.12 m (120 mm)
+    expect(getNormalizedPipeBendRadiusM(19)).toBe(0.12);
+    // Ø25 mm -> 0.15 m (150 mm)
+    expect(getNormalizedPipeBendRadiusM(25)).toBe(0.15);
+    // Ø32 mm -> 0.19 m (190 mm)
+    expect(getNormalizedPipeBendRadiusM(32)).toBe(0.19);
+    // Diámetro arbitrario no tabulado: R = 6 * D >= 0.08 m
+    expect(getNormalizedPipeBendRadiusM(50)).toBe(0.30);
+  });
 });
+

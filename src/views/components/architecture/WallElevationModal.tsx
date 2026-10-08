@@ -38,8 +38,11 @@ import {
   Info,
   RotateCw,
   Focus,
-  Zap
+  Zap,
+  Cable,
+  Trash2
 } from 'lucide-react';
+import { ConduitModal } from '../electrical/ConduitModal';
 
 export const WallElevationModal: React.FC = () => {
   const {
@@ -113,7 +116,13 @@ export const WallElevationModal: React.FC = () => {
     applyOpeningPreset,
     formatConduitSize,
     nudgeSelectedConduitHeight,
-    setSelectedConduitHeight
+    setSelectedConduitHeight,
+    deleteConduit,
+    rawSelectedConduit,
+    autoConnectConduits,
+    setAutoConnectConduits,
+    resetSequence,
+    lastPlacedElementId
   } = useWallElevationViewModel();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -131,6 +140,7 @@ export const WallElevationModal: React.FC = () => {
 
   const [isPlacementMenuOpen, setIsPlacementMenuOpen] = useState(false);
   const [isOpeningPlacementMenuOpen, setIsOpeningPlacementMenuOpen] = useState(false);
+  const [isConduitModalOpen, setIsConduitModalOpen] = useState(false);
   const [placementCircuitId, setPlacementCircuitId] = useState<string | null>(null);
   const [mobileSheetMode, setMobileSheetMode] = useState<'none' | 'add_box' | 'add_opening' | 'info'>('none');
   const [boxCategoryTab, setBoxCategoryTab] = useState<'tomas' | 'llaves' | 'tableros' | 'paso' | 'apliques'>('tomas');
@@ -455,6 +465,35 @@ export const WallElevationModal: React.FC = () => {
             <span className="truncate max-w-[90px] sm:max-w-none">
               {placementTool ? 'Colocando boca...' : 'Colocando vano...'}
             </span>
+            {placementTool && (
+              <button
+                type="button"
+                onClick={() => setAutoConnectConduits(!autoConnectConduits)}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors border ${
+                  autoConnectConduits
+                    ? 'bg-blue-600 text-white border-blue-400'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                }`}
+                title={
+                  autoConnectConduits
+                    ? 'Conectar cajas consecutivas con cañería (activo)'
+                    : 'Colocar cajas aisladas sin cañería'
+                }
+              >
+                <Cable size={11} />
+                <span>{autoConnectConduits ? 'Cañería: Sí' : 'Cañería: No'}</span>
+              </button>
+            )}
+            {placementTool && autoConnectConduits && lastPlacedElementId && (
+              <button
+                type="button"
+                onClick={resetSequence}
+                className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-800 text-slate-400 hover:text-amber-300 border border-slate-700 hover:bg-slate-700 transition-colors"
+                title="Desvincular boca previa (inicia nueva secuencia limpia)"
+              >
+                Desvincular
+              </button>
+            )}
             <button
               type="button"
               onClick={cancelPlacement}
@@ -501,7 +540,7 @@ export const WallElevationModal: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="space-y-1">
+                    <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       Circuito asignado:
                     </label>
@@ -517,6 +556,31 @@ export const WallElevationModal: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/80 border border-slate-700 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Cable size={14} className={autoConnectConduits ? 'text-blue-400' : 'text-slate-500'} />
+                      <div>
+                        <span className="font-semibold text-slate-200 block text-[11px]">Conectar con cañería</span>
+                        <span className="text-[9px] text-slate-400 block">
+                          {autoConnectConduits ? 'Enlaza con boca previa' : 'Cajas independientes'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoConnectConduits(!autoConnectConduits)}
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        autoConnectConduits ? 'bg-blue-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                          autoConnectConduits ? 'translate-x-3' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
 
                   <div className="space-y-1.5">
@@ -847,7 +911,9 @@ export const WallElevationModal: React.FC = () => {
                 <g key={c.id}>
                   {/* Hitbox táctil invisible para toque fácil en celular y mouse */}
                   {c.segments.map((seg, sIdx) => {
-                    const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    const dStr =
+                      c.svgPaths?.[sIdx] ??
+                      seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                     return (
                       <path
                         key={`hit-${sIdx}`}
@@ -865,9 +931,11 @@ export const WallElevationModal: React.FC = () => {
                     );
                   })}
 
-                  {/* Renderizado visual de canalización */}
+                  {/* Renderizado visual de canalización (Curvas conformadas reglamentarias para caños) */}
                   {c.segments.map((seg, sIdx) => {
-                    const dStr = seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                    const dStr =
+                      c.svgPaths?.[sIdx] ??
+                      seg.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                     return (
                       <g key={sIdx} className="pointer-events-none">
                         {/* Halo de selección */}
@@ -1318,14 +1386,29 @@ export const WallElevationModal: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={cancelPlacement}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-700 shrink-0"
-              >
-                <X size={14} />
-                <span>Cancelar</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAutoConnectConduits(!autoConnectConduits)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 border transition-colors ${
+                    autoConnectConduits
+                      ? 'bg-blue-600 text-white border-blue-400'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                  }`}
+                  title={autoConnectConduits ? 'Conectar cañería: Sí' : 'Conectar cañería: No'}
+                >
+                  <Cable size={12} />
+                  <span>{autoConnectConduits ? 'Cañería: Sí' : 'Cañería: No'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelPlacement}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-700 shrink-0"
+                >
+                  <X size={14} />
+                  <span>Cancelar</span>
+                </button>
+              </div>
             </div>
           ) : openingPlacementTool ? (
             <div className="p-3 bg-amber-950/70 border-t border-amber-500/40 text-amber-200 flex items-center justify-between gap-2 animate-in slide-in-from-bottom duration-150">
@@ -1833,6 +1916,46 @@ export const WallElevationModal: React.FC = () => {
                   </div>
                 );
               })()}
+
+              {/* Resumen de conductores en la cañería */}
+              {rawSelectedConduit?.conductors && rawSelectedConduit.conductors.length > 0 && (
+                <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-2 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+                    <span>CONDUCTORES ({rawSelectedConduit.conductors.length}):</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {rawSelectedConduit.conductors.map((c, cIdx) => (
+                      <span
+                        key={cIdx}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 bg-slate-900 border border-slate-700 text-slate-200"
+                      >
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: c.color }} />
+                        {c.sectionMM2} mm² {c.role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Acciones principales de cañería: Configurar cables y Eliminar */}
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setIsConduitModalOpen(true)}
+                  className="py-2 px-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform"
+                >
+                  <Cable size={14} />
+                  <span>Configurar Cables</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteConduit(selectedConduit.id)}
+                  className="py-2 px-2.5 bg-rose-600/20 hover:bg-rose-600 active:scale-95 text-rose-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-rose-500/40 transition-colors"
+                >
+                  <Trash2 size={14} />
+                  <span>Eliminar Caño</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* Barra móvil cuando no hay nada seleccionado: botones ergonómicos para el pulgar */
@@ -1940,6 +2063,32 @@ export const WallElevationModal: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Toggle para auto-conectar cañería */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Cable size={16} className={autoConnectConduits ? 'text-blue-400' : 'text-slate-500'} />
+                      <div>
+                        <span className="font-semibold text-slate-200 block text-xs">Conectar con cañería</span>
+                        <span className="text-[10px] text-slate-400 block">
+                          {autoConnectConduits ? 'Enlaza con la boca previa' : 'Colocar cajas aisladas sin cañería'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoConnectConduits(!autoConnectConduits)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        autoConnectConduits ? 'bg-blue-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                          autoConnectConduits ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
 
                   {/* Pestañas de categorías de bocas */}
@@ -2725,6 +2874,60 @@ export const WallElevationModal: React.FC = () => {
               <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 text-[11px] text-slate-400">
                 💡 Arrastrá los puntos azules sobre la cañería para desplazar la altura del puente o quiebres ortogonales.
               </div>
+
+              {/* Conductores instalados en la cañería */}
+              <div className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between font-bold">
+                  <span className="text-slate-400 text-[11px] uppercase tracking-wider">
+                    Conductores ({rawSelectedConduit?.conductors?.length || 0}):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsConduitModalOpen(true)}
+                    className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 text-[11px] transition-colors"
+                  >
+                    <Cable size={13} />
+                    <span>Configurar</span>
+                  </button>
+                </div>
+                {rawSelectedConduit?.conductors && rawSelectedConduit.conductors.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {rawSelectedConduit.conductors.map((c, cIdx) => (
+                      <span
+                        key={cIdx}
+                        className="px-2 py-0.5 rounded text-[11px] font-mono font-bold flex items-center gap-1.5 bg-slate-900 border border-slate-700 text-slate-200"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: c.color }} />
+                        {c.sectionMM2} mm² {c.role}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Sin conductores asignados. Hacé clic en "Configurar" para agregar cables.
+                  </p>
+                )}
+              </div>
+
+              {/* Botones de acción principales */}
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsConduitModalOpen(true)}
+                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+                >
+                  <Cable size={15} />
+                  <span>Configurar Cables y Material...</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteConduit(selectedConduit.id)}
+                  className="w-full py-2 px-3 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-rose-500/40 transition-colors"
+                >
+                  <Trash2 size={15} />
+                  <span>Eliminar Tramo de Cañería</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* CASO D: Información General del Muro y Leyenda */
@@ -2787,6 +2990,13 @@ export const WallElevationModal: React.FC = () => {
           )}
         </aside>
       </div>
+
+      {/* Modal para configurar cables, secciones y tecnología de la canalización */}
+      <ConduitModal
+        conduit={rawSelectedConduit}
+        isOpen={isConduitModalOpen && Boolean(rawSelectedConduit)}
+        onClose={() => setIsConduitModalOpen(false)}
+      />
     </div>
   );
 };

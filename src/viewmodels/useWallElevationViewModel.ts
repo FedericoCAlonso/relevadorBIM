@@ -74,7 +74,10 @@ import {
   type OpeningTypeDefinition
 } from '../models/architecture/openingPresets';
 import { computeNewNodeFromElevation } from '../models/architecture/elevationPlacement';
-import { placeElectricalElementInStore } from './useElectricalViewModel';
+import {
+  placeElectricalElementInStore,
+  useElectricalSequenceStore
+} from './useElectricalViewModel';
 import { getPlantaSymbols, type ElectricalSymbolDefinition } from '../models/electrical/symbolsLib';
 
 export type { CabinetSizePreset, BoxTypeDefinition, OpeningTypeDefinition };
@@ -200,6 +203,11 @@ export function useWallElevationViewModel() {
   const [openingPlacementPreview, setOpeningPlacementPreview] = useState<ElevationOpeningPlacementPreview | null>(null);
   const [viewport, setViewport] = useState<ViewportOverride | null>(null);
 
+  const autoConnectConduits = useElectricalSequenceStore((s) => s.autoConnectConduits);
+  const setAutoConnectConduits = useElectricalSequenceStore((s) => s.setAutoConnectConduits);
+  const resetSequence = useElectricalSequenceStore((s) => s.resetSequence);
+  const lastPlacedElementId = useElectricalSequenceStore((s) => s.lastPlacedElementId);
+
   const levelsMap = useMemo(() => new Map(project.levels.map((l) => [l.id, l])), [project.levels]);
   const nodesMap = useMemo(() => {
     const map = new Map<string, SpatialElectricalNode>();
@@ -296,6 +304,14 @@ export function useWallElevationViewModel() {
     [elevation, setSelection, setProjectSelection]
   );
   const clearSelection = useCallback(() => setSelection(null), [setSelection]);
+
+  const deleteConduit = useCallback(
+    (id: string) => {
+      useProjectStore.getState().deleteConduit(id);
+      clearSelection();
+    },
+    [clearSelection]
+  );
 
   // ─── Escritura de cajas/tableros hacia la planta ───
   const nodeFor = useCallback(
@@ -564,7 +580,8 @@ export function useWallElevationViewModel() {
         },
         rotationDeg: placement.rotationDeg,
         overrideCircuitId: placementTool.circuitId,
-        overrideHeightZ: placement.heightZ
+        overrideHeightZ: placement.heightZ,
+        autoConnectConduits
       });
 
       setSelection({ type: 'box', id: placedNode.id });
@@ -572,7 +589,16 @@ export function useWallElevationViewModel() {
       setPlacementPreview(null);
       setPlacementTool(null);
     },
-    [placementTool, elevation, wall, target, verticesMap, setSelection, setProjectSelection]
+    [
+      placementTool,
+      elevation,
+      wall,
+      target,
+      verticesMap,
+      setSelection,
+      setProjectSelection,
+      autoConnectConduits
+    ]
   );
 
   const availablePlacementSymbols: ElectricalSymbolDefinition[] = useMemo(() => {
@@ -592,6 +618,10 @@ export function useWallElevationViewModel() {
     selection?.type === 'opening' ? (elevation?.openings.find((o) => o.id === selection.id) ?? null) : null;
   const selectedConduit =
     selection?.type === 'conduit' ? (displayConduits.find((c) => c.id === selection.id) ?? null) : null;
+  const rawSelectedConduit = useMemo(() => {
+    if (selection?.type !== 'conduit') return null;
+    return project.conduits.find((c) => c.id === selection.id) ?? null;
+  }, [selection, project.conduits]);
 
   const selectedConduitMetric: ConduitLengthBreakdown | null = useMemo(() => {
     if (!selectedConduit || !elevation) return null;
@@ -1084,6 +1114,12 @@ export function useWallElevationViewModel() {
     applyOpeningPreset,
     formatConduitSize,
     nudgeSelectedConduitHeight,
-    setSelectedConduitHeight
+    setSelectedConduitHeight,
+    deleteConduit,
+    rawSelectedConduit,
+    autoConnectConduits,
+    setAutoConnectConduits,
+    resetSequence,
+    lastPlacedElementId
   };
 }

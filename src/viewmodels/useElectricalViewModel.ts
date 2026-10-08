@@ -134,6 +134,7 @@ export interface PlaceElectricalElementInput {
   overridePrefix?: string;
   overrideCircuitId?: string | null;
   overrideHeightZ?: number;
+  autoConnectConduits?: boolean;
 }
 
 /**
@@ -153,8 +154,12 @@ export function placeElectricalElementInStore(
     rotationDeg = 0,
     overridePrefix,
     overrideCircuitId,
-    overrideHeightZ
+    overrideHeightZ,
+    autoConnectConduits
   } = params;
+
+  const shouldAutoConnect =
+    autoConnectConduits !== undefined ? autoConnectConduits : sequenceStore.autoConnectConduits;
 
   const { project, addElectricalElement, addConduit, addPanel, updatePanel } = projectStore;
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
@@ -267,7 +272,7 @@ export function placeElectricalElementInStore(
       addPanel(placedPanel);
     }
 
-    if (sequenceStore.autoConnectConduits && sequenceStore.lastPlacedElementId) {
+    if (shouldAutoConnect && sequenceStore.lastPlacedElementId) {
       const prevElement =
         project.electricalElements.find((e) => e.id === sequenceStore.lastPlacedElementId) ||
         project.panels.find((p) => p.id === sequenceStore.lastPlacedElementId);
@@ -337,7 +342,7 @@ export function placeElectricalElementInStore(
 
   addElectricalElement(newElement);
 
-  if (sequenceStore.autoConnectConduits && sequenceStore.lastPlacedElementId) {
+  if (shouldAutoConnect && sequenceStore.lastPlacedElementId) {
     const prevElement =
       project.electricalElements.find((e) => e.id === sequenceStore.lastPlacedElementId) ||
       project.panels.find((p) => p.id === sequenceStore.lastPlacedElementId);

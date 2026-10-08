@@ -109,3 +109,76 @@ export function computeOrthogonalConduitPoints(
 
   return result;
 }
+
+/**
+ * Convierte una secuencia de puntos ortogonales en metros [P0, P1, ..., Pn] en una cadena SVG de trazado `d`
+ * con curvas conformadas tangentes respetando el radio de curvatura técnico normalizado (en metros).
+ * Si radiusM <= 0, genera un trazado ortogonal estricto en escuadra (codos vivos).
+ */
+export function generateMetersPolylineSvgPath(
+  points: Array<{ x: number; y: number }>,
+  radiusM: number = 0,
+  precision: number = 3
+): string {
+  if (!points || points.length === 0) return '';
+  const fmt = (n: number) => n.toFixed(precision);
+  if (points.length === 1) return `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+  if (points.length === 2 || radiusM <= 0.001) {
+    return points
+      .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${fmt(p.x)} ${fmt(p.y)}`)
+      .join(' ');
+  }
+
+  let d = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    const v1x = prev.x - curr.x;
+    const v1y = prev.y - curr.y;
+    const d1 = Math.hypot(v1x, v1y);
+
+    const v2x = next.x - curr.x;
+    const v2y = next.y - curr.y;
+    const d2 = Math.hypot(v2x, v2y);
+
+    // Segmentos degenerados o minúsculos (< 1 mm en escala métrica)
+    if (d1 < 0.001 || d2 < 0.001) {
+      d += ` L ${fmt(curr.x)} ${fmt(curr.y)}`;
+      continue;
+    }
+
+    const u1x = v1x / d1;
+    const u1y = v1y / d1;
+    const u2x = v2x / d2;
+    const u2y = v2y / d2;
+
+    // Verificar si son casi colineales (recta continua sin quiebre)
+    const dot = u1x * u2x + u1y * u2y;
+    if (dot < -0.999) {
+      d += ` L ${fmt(curr.x)} ${fmt(curr.y)}`;
+      continue;
+    }
+
+    // Radio efectivo adaptativo al espacio disponible para evitar auto-cruces
+    const effectiveRadius = Math.min(radiusM, d1 / 2, d2 / 2);
+    if (effectiveRadius < 0.005) {
+      d += ` L ${fmt(curr.x)} ${fmt(curr.y)}`;
+      continue;
+    }
+
+    const tinX = curr.x + u1x * effectiveRadius;
+    const tinY = curr.y + u1y * effectiveRadius;
+    const toutX = curr.x + u2x * effectiveRadius;
+    const toutY = curr.y + u2y * effectiveRadius;
+
+    d += ` L ${fmt(tinX)} ${fmt(tinY)} Q ${fmt(curr.x)} ${fmt(curr.y)} ${fmt(toutX)} ${fmt(toutY)}`;
+  }
+
+  const last = points[points.length - 1];
+  d += ` L ${fmt(last.x)} ${fmt(last.y)}`;
+
+  return d;
+}

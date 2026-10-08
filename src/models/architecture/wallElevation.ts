@@ -29,7 +29,12 @@ import type {
   ProjectMaterialCatalog,
   SpatialElectricalNode
 } from '../electrical/ElectricalModel';
-import { AEA_HEIGHT_PRESETS } from '../electrical/electricalStandards';
+import {
+  AEA_HEIGHT_PRESETS,
+  isConduitPipe,
+  getNormalizedPipeBendRadiusM
+} from '../electrical/electricalStandards';
+import { generateMetersPolylineSvgPath } from '../electrical/cadGeometry';
 import { getSymbolById } from '../electrical/symbolsLib';
 import { resolveConduitColor } from './wallElevationStyle';
 import type { ElevationViewBox } from './elevationViewport';
@@ -292,6 +297,7 @@ export interface ElevationConduit {
   diameterMM: number;
   material?: ConduitMaterial;
   segments: ElevationPoint[][];
+  svgPaths?: string[];
   routingPlane?: ConduitRoutingPlane;
   elevationRoute?: ConduitElevationRoute;
   fromElementId: string;
@@ -922,6 +928,10 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       offsets: laneOffsets[idx] ?? [0]
     }).filter((seg) => !pointsAreDegenerate(seg));
     if (segments.length === 0) return;
+    const isPipe = isConduitPipe(c.material);
+    const bendRadiusM = isPipe ? getNormalizedPipeBendRadiusM(c.diameterMM) : 0;
+    const svgPaths = segments.map((seg) => generateMetersPolylineSvgPath(seg, bendRadiusM));
+
     elevConduits.push({
       id: c.id,
       label: c.label,
@@ -930,6 +940,7 @@ export function buildWallElevation(params: BuildWallElevationParams): WallElevat
       diameterMM: c.diameterMM,
       material: c.material,
       segments,
+      svgPaths,
       routingPlane: c.routingPlane,
       elevationRoute: c.elevationRoute,
       fromElementId: c.fromElementId,

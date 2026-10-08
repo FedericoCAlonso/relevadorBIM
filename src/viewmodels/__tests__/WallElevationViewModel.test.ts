@@ -17,6 +17,7 @@ describe('useWallElevationStore', () => {
     useProjectStore.setState({
       project: {
         ...projectStore.project,
+        activeLevelId: 'level-1',
         vertices: [
           { id: 'v1', x: 0, y: 0 },
           { id: 'v2', x: 4, y: 0 }
@@ -253,6 +254,134 @@ describe('useWallElevationStore', () => {
     expect(conduits).toHaveLength(initialConduits + 1);
     const addedConduit = conduits.find((c) => c.fromElementId === node1.id && c.toElementId === node2.id);
     expect(addedConduit).toBeDefined();
+  });
+
+  it('NO conecta cajas con conducto si autoConnectConduits es false', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    useElectricalSequenceStore.getState().resetAllSequenceState();
+    useElectricalSequenceStore.getState().setAutoConnectConduits(false);
+
+    const initialConduits = useProjectStore.getState().project.conduits.length;
+
+    const place1 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 1.0,
+      targetZ: 0.30
+    })!;
+
+    const node1 = placeElectricalElementInStore({
+      worldX: place1.x,
+      worldY: place1.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: {
+        wallId: wall.id,
+        wallOffset: place1.wallOffset,
+        side: place1.side,
+        rotationDeg: place1.rotationDeg
+      },
+      overrideHeightZ: place1.heightZ,
+      autoConnectConduits: false
+    });
+
+    const place2 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 2.0,
+      targetZ: 0.30
+    })!;
+
+    const node2 = placeElectricalElementInStore({
+      worldX: place2.x,
+      worldY: place2.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: {
+        wallId: wall.id,
+        wallOffset: place2.wallOffset,
+        side: place2.side,
+        rotationDeg: place2.rotationDeg
+      },
+      overrideHeightZ: place2.heightZ,
+      autoConnectConduits: false
+    });
+
+    expect(node1.id).toBeDefined();
+    expect(node2.id).toBeDefined();
+    // No debe haberse creado cañería
+    expect(useProjectStore.getState().project.conduits).toHaveLength(initialConduits);
+  });
+
+  it('permite eliminar un conducto y genera trazado curvo para caños en alzado', () => {
+    const wall = useProjectStore.getState().project.walls.find((w) => w.id === 'wall-101')!;
+    const verticesMap = new Map(useProjectStore.getState().project.vertices.map((v) => [v.id, v]));
+
+    useElectricalSequenceStore.getState().resetAllSequenceState();
+    useElectricalSequenceStore.getState().setAutoConnectConduits(true);
+
+    const place1 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 1.0,
+      targetZ: 0.30
+    })!;
+
+    const place2 = computeNewNodeFromElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      targetX: 3.0,
+      targetZ: 1.10
+    })!;
+
+    const node1 = placeElectricalElementInStore({
+      worldX: place1.x,
+      worldY: place1.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: { wallId: wall.id, wallOffset: place1.wallOffset, side: place1.side, rotationDeg: place1.rotationDeg },
+      overrideHeightZ: place1.heightZ
+    });
+
+    const node2 = placeElectricalElementInStore({
+      worldX: place2.x,
+      worldY: place2.y,
+      symbolId: 'sym-planta-toma',
+      snapInfo: { wallId: wall.id, wallOffset: place2.wallOffset, side: place2.side, rotationDeg: place2.rotationDeg },
+      overrideHeightZ: place2.heightZ
+    });
+
+    const conduits = useProjectStore.getState().project.conduits;
+    const conduit = conduits.find((c) => c.fromElementId === node1.id && c.toElementId === node2.id);
+    expect(conduit).toBeDefined();
+
+    // Verificamos que buildWallElevation produce svgPaths con curva para caño
+    const elev = buildWallElevation({
+      wall,
+      vertices: verticesMap,
+      face: 'left',
+      openings: [],
+      elements: useProjectStore.getState().project.electricalElements,
+      panels: [],
+      conduits: [conduit!],
+      circuits: [],
+      spaces: [],
+      catalog: useProjectStore.getState().project.materialCatalog
+    });
+
+    expect(elev).not.toBeNull();
+    expect(elev!.conduits).toHaveLength(1);
+    const elevConduit = elev!.conduits[0];
+    expect(elevConduit.svgPaths).toBeDefined();
+    // Al ser caño con quiebre, el trazado SVG debe contener arcos Bézier tangentes (Q)
+    expect(elevConduit.svgPaths?.[0]).toContain('Q');
+
+    // Ahora eliminamos el conducto
+    useProjectStore.getState().deleteConduit(conduit!.id);
+    expect(useProjectStore.getState().project.conduits.find((c) => c.id === conduit!.id)).toBeUndefined();
   });
 
   it('permite insertar un tablero principal desde el alzado', () => {

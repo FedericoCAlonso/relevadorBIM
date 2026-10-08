@@ -467,6 +467,51 @@ export function getDefaultSizeForConduitMaterial(material: ConduitMaterial): num
   }
 }
 
+/**
+ * Determina si el tipo/material de canalización es un caño/tubo
+ * (a diferencia de bandejas portacables que son de sección rectangular abierta/cerrada).
+ */
+export function isConduitPipe(material?: ConduitMaterial | string): boolean {
+  if (!material) return true;
+  const lower = String(material).toLowerCase();
+  if (lower.includes('bandeja') || lower.includes('tray')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Radios de curvatura normalizados estándar según AEA 90364-7-771 / IRAM 2005 / IRAM 62386.
+ * En cañería para instalaciones eléctricas embutidas o a la vista, las curvas de caño
+ * deben respetar un radio de curvatura reglamentario R >= 6 * D_ext.
+ * Expresado en metros (medido al eje del caño).
+ */
+export const NORMALIZED_PIPE_BEND_RADIUS_M: Record<number, number> = {
+  16: 0.100, // 100 mm (IRAM 16 mm / 5/8")
+  19: 0.120, // 120 mm (IRAM 19 mm / 3/4")
+  20: 0.120, // 120 mm (IRAM 20 mm métrico)
+  22: 0.135, // 135 mm (IRAM 22 mm / 7/8")
+  25: 0.150, // 150 mm (IRAM 25 mm / 1")
+  32: 0.190, // 190 mm (IRAM 32 mm / 1 1/4")
+  38: 0.230, // 230 mm (IRAM 38 mm / 1 1/2")
+  40: 0.240, // 240 mm (IRAM 40 mm)
+  50: 0.300, // 300 mm (IRAM 50 mm)
+  51: 0.300, // 300 mm (IRAM 51 mm / 2")
+  63: 0.380  // 380 mm (IRAM 63 mm)
+};
+
+/**
+ * Retorna el radio de curvatura normalizado reglamentario en metros para un caño.
+ * Según AEA 90364-7-771.12.3: R >= 6 * D_ext.
+ */
+export function getNormalizedPipeBendRadiusM(diameterMM: number): number {
+  if (NORMALIZED_PIPE_BEND_RADIUS_M[diameterMM]) {
+    return NORMALIZED_PIPE_BEND_RADIUS_M[diameterMM];
+  }
+  const calcM = (6 * diameterMM) / 1000;
+  return Number(Math.max(0.08, calcM).toFixed(3));
+}
+
 /** Normas de Cables y Conductores */
 export interface CableStandardOption {
   readonly id: CableStandard;

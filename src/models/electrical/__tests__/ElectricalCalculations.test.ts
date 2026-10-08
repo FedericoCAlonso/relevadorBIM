@@ -16,6 +16,7 @@ import {
   getConduitVerticalTransitions,
   getConduitLengthBreakdown
 } from '../calculations';
+import { generateMetersPolylineSvgPath } from '../cadGeometry';
 
 describe('generateNextUniqueLabel (Unicidad determinista)', () => {
   it('genera etiqueta inicial cuando no existen bocas', () => {
@@ -99,6 +100,32 @@ describe('generateRoundedPolylineSvgPath (Curvatura a 90° con radio técnico)',
     const path = generateRoundedPolylineSvgPath(points, 15);
     expect(path).not.toContain('Q');
     expect(path).toBe('M 0.0 0.0 L 50.0 0.0 L 100.0 0.0');
+  });
+});
+
+describe('generateMetersPolylineSvgPath (Curvatura normalizada de caño en metros reales)', () => {
+  it('retorna trazo en escuadra si radiusM <= 0 o para bandejas', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }];
+    const path = generateMetersPolylineSvgPath(pts, 0);
+    expect(path).toBe('M 0.000 0.000 L 2.000 0.000 L 2.000 2.000');
+  });
+
+  it('genera curva conformada suave con radio normalizado en metros', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }];
+    // Caño 3/4" -> radio normalizado 0.12 m
+    const path = generateMetersPolylineSvgPath(pts, 0.12);
+    // El punto de entrada a la curva es 2 - 0.12 = 1.88 m
+    expect(path).toContain('L 1.880 0.000');
+    expect(path).toContain('Q 2.000 0.000 2.000 0.120');
+    expect(path).toContain('L 2.000 2.000');
+  });
+
+  it('adapta el radio si el tramo entre cajas es menor que el radio solicitado', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 0.10, y: 0 }, { x: 0.10, y: 0.10 }];
+    // Tramo de 10 cm, radio solicitado 0.15 m -> radio efectivo = 0.05 m
+    const path = generateMetersPolylineSvgPath(pts, 0.15);
+    expect(path).toContain('L 0.050 0.000');
+    expect(path).toContain('Q 0.100 0.000 0.100 0.050');
   });
 });
 
