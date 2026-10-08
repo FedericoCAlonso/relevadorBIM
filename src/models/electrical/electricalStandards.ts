@@ -24,6 +24,15 @@ import type {
   ConduitRoutingPlane
 } from './ElectricalModel';
 import { DEFAULT_OPENING_TYPES } from '../architecture/openingPresets';
+import type { Space, SpaceCoverType } from '../architecture/Space';
+import {
+  isSpaceVoid,
+  isSpaceOpenAir,
+  isSpaceSemiCovered,
+  computeCeilingProjection,
+  resolveSpacePolygon,
+  calculatePolygonArea
+} from '../architecture/Space';
 
 export type {
   ConduitSizeOption,
@@ -1068,4 +1077,125 @@ export const CABINET_SIZE_PRESETS: readonly CabinetSizePreset[] = [
   { id: 'medidor-mono', label: 'Medidor Mono', dinModules: 0, widthMM: 220, heightMM: 350, depthMM: 160, description: 'Caja medidor monofásico normalizado' },
   { id: 'medidor-tri', label: 'Medidor Trifásico', dinModules: 0, widthMM: 280, heightMM: 450, depthMM: 190, description: 'Caja medidor trifásico normalizado' }
 ];
+
+// ─── REGLAMENTACIÓN AEA 90364-7-771: GRADOS DE ELECTRIFICACIÓN Y SUPERFICIE LÍMITE ─
+
+export type ElectrificationDegreeId = 'minimo' | 'medio' | 'elevado' | 'superior';
+
+export interface ElectrificationDegreeInfo {
+  readonly id: ElectrificationDegreeId;
+  readonly label: string;
+  readonly minLimitSurfaceM2: number;
+  readonly maxLimitSurfaceM2: number;
+  readonly minCircuits: number;
+  readonly suggestedVariants: string;
+  readonly description: string;
+}
+
+export const AEA_ELECTRIFICATION_DEGREES: readonly ElectrificationDegreeInfo[] = [
+  {
+    id: 'minimo',
+    label: 'Mínimo',
+    minLimitSurfaceM2: 0,
+    maxLimitSurfaceM2: 60,
+    minCircuits: 2,
+    suggestedVariants: '1 IUG + 1 TUG',
+    description: 'Hasta 60 m² de superficie límite'
+  },
+  {
+    id: 'medio',
+    label: 'Medio',
+    minLimitSurfaceM2: 60,
+    maxLimitSurfaceM2: 130,
+    minCircuits: 3,
+    suggestedVariants: '1 IUG + 1 TUG + 1 libre (IUG/TUG/TUE)',
+    description: 'Más de 60 m² hasta 130 m²'
+  },
+  {
+    id: 'elevado',
+    label: 'Elevado',
+    minLimitSurfaceM2: 130,
+    maxLimitSurfaceM2: 200,
+    minCircuits: 5,
+    suggestedVariants: '2 IUG + 2 TUG + 1 TUE',
+    description: 'Más de 130 m² hasta 200 m²'
+  },
+  {
+    id: 'superior',
+    label: 'Superior',
+    minLimitSurfaceM2: 200,
+    maxLimitSurfaceM2: Infinity,
+    minCircuits: 6,
+    suggestedVariants: '2 IUG + 2 TUG + 1 TUE + 1 libre',
+    description: 'Más de 200 m² de superficie límite'
+  }
+];
+
+export function getElectrificationDegree(limitSurfaceM2: number): ElectrificationDegreeInfo {
+  const s = Math.max(0, limitSurfaceM2);
+  if (s <= 60) return AEA_ELECTRIFICATION_DEGREES[0];
+  if (s <= 130) return AEA_ELECTRIFICATION_DEGREES[1];
+  if (s <= 200) return AEA_ELECTRIFICATION_DEGREES[2];
+  return AEA_ELECTRIFICATION_DEGREES[3];
+}
+
+export function getRecommendedIPForCover(coverType?: SpaceCoverType): 'IP20' | 'IP44' | 'IP65' {
+  if (coverType === 'descubierto') return 'IP65';
+  if (coverType === 'semicubierto') return 'IP44';
+  return 'IP20';
+}
+
+export interface ProjectLimitSurfaceBreakdown {
+  totalLimitAreaM2: number; // S_limite = S_cub + 0.5 * S_semicub
+  coveredAreaM2: number;
+  semiCoveredAreaM2: number;
+  openAreaM2: number;
+  voidAreaM2: number;
+  electrificationDegree: ElectrificationDegreeInfo;
+}
+
+export function calculateProjectLimitSurface(
+  spaces: Space[],
+  verticesMap: Map<string, { x: number; y: number }>,
+  wallsMap?: Map<string, { id: string; startVertexId: string; endVertexId: string }>
+): ProjectLimitSurfaceBreakdown {
+  let coveredAreaM2 = 0;
+  let semiCoveredAreaM2 = 0;
+  let openAreaM2 = 0;
+  let voidAreaM2 = 0;
+
+  for (const space of spaces) {
+    const poly = resolveSpacePolygon(space, verticesMap as any);
+    const netArea = calculatePolygonArea(poly);
+
+    if (isSpaceVoid(space)) {
+      voidAreaM2 += netArea;
+      continue;
+    }
+    if (isSpaceOpenAir(space)) {
+      openAreaM2 += netArea;
+      continue;
+    }
+    if (isSpaceSemiCovered(space)) {
+      const { coveredAreaM2: effectiveSemi } = computeCeilingProjection(space, verticesMap, wallsMap);
+      semiCoveredAreaM2 += effectiveSemi;
+      continue;
+    }
+
+    coveredAreaM2 += netArea;
+  }
+
+  const totalLimitAreaM2 = Number((coveredAreaM2 + 0.5 * semiCoveredAreaM2).toFixed(2));
+  const electrificationDegree = getElectrificationDegree(totalLimitAreaM2);
+
+  return {
+    totalLimitAreaM2,
+    coveredAreaM2: Number(coveredAreaM2.toFixed(2)),
+    semiCoveredAreaM2: Number(semiCoveredAreaM2.toFixed(2)),
+    openAreaM2: Number(openAreaM2.toFixed(2)),
+    voidAreaM2: Number(voidAreaM2.toFixed(2)),
+    electrificationDegree
+  };
+}
+
 

@@ -26,6 +26,15 @@ export type SpaceCategory =
 
 export type SpaceCoverType = 'cubierto' | 'semicubierto' | 'descubierto' | 'vacio';
 
+export type CeilingProjectionMode = 'total' | 'alero';
+
+export interface CeilingProjection {
+  mode: CeilingProjectionMode;
+  overhangDepth?: number;   // Profundidad de alero en metros (default: 1.50)
+  ceilingHeight?: number;   // Altura libre piso-techo del alero (si difiere de space.ceilingHeight)
+  referenceWallId?: string; // ID del muro de fachada / apoyo desde donde proyecta el alero
+}
+
 export interface Space {
   id: string;
   name: string;                // Ej: "Living Comedor", "Patio de Aire y Luz", "Pleno Técnico"
@@ -36,6 +45,7 @@ export interface Space {
   boundaryVertexIds: string[]; // Vértices ordenados que forman el perímetro interior
   wallIds: string[];           // IDs de los muros que lo rodean
   coverType?: SpaceCoverType;  // Tipo de cubierta: cubierto, semicubierto (balcón), descubierto o vacío
+  ceilingProjection?: CeilingProjection; // Proyección de techo / alero para ambientes semicubiertos
   color?: string;              // Color tenue de relleno para identificación
 }
 
@@ -49,17 +59,99 @@ export const ROOM_NAME_SUGGESTIONS: readonly string[] = [
   'Pasillo',
   'Balcón',
   'Quincho',
+  'Galería',
   'Patio Aire y Luz',
-  'Pleno Técnico'
+  'Pleno Técnico',
+  'Terraza',
+  'Cochera'
 ];
 
 export const STANDARD_CEILING_HEIGHT_PRESETS: readonly number[] = [2.40, 2.60, 2.70, 2.80, 3.00];
+
+export const STANDARD_OVERHANG_DEPTH_PRESETS: readonly number[] = [1.00, 1.50, 2.00, 2.50];
+
+export interface SpaceCoverTypeOption {
+  readonly id: SpaceCoverType;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly defaultCategory: SpaceCategory;
+  readonly defaultIP: 'IP20' | 'IP44' | 'IP65';
+  readonly aeaAreaFactor: number;
+  readonly description: string;
+}
+
+export const SPACE_COVER_TYPE_OPTIONS: readonly SpaceCoverTypeOption[] = [
+  {
+    id: 'cubierto',
+    label: 'Cubierto (Interior / Habitable)',
+    shortLabel: 'Cubierto',
+    defaultCategory: 'living',
+    defaultIP: 'IP20',
+    aeaAreaFactor: 1.0,
+    description: 'Losa o techo completo. 100% computable para superficie límite AEA 771.'
+  },
+  {
+    id: 'semicubierto',
+    label: 'Semicubierto (Galería / Balcón / Alero)',
+    shortLabel: 'Semicubierto',
+    defaultCategory: 'balcon',
+    defaultIP: 'IP44',
+    aeaAreaFactor: 0.5,
+    description: 'Techo o alero abierto al exterior. 50% computable para superficie límite AEA 771.'
+  },
+  {
+    id: 'descubierto',
+    label: 'Descubierto (Patio / Terraza / Jardín)',
+    shortLabel: 'Descubierto',
+    defaultCategory: 'exterior',
+    defaultIP: 'IP65',
+    aeaAreaFactor: 0.0,
+    description: 'A cielo abierto sin cubierta. 0% computable para superficie límite AEA 771.'
+  },
+  {
+    id: 'vacio',
+    label: 'Vacío / Aire y Luz / Pleno',
+    shortLabel: 'Vacío',
+    defaultCategory: 'aire_luz',
+    defaultIP: 'IP20',
+    aeaAreaFactor: 0.0,
+    description: 'Hueco de losa o patio de aire y luz. 0% computable.'
+  }
+];
+
+export function getSpaceCoverOption(coverType?: SpaceCoverType): SpaceCoverTypeOption {
+  const match = SPACE_COVER_TYPE_OPTIONS.find((opt) => opt.id === coverType);
+  return match || SPACE_COVER_TYPE_OPTIONS[0];
+}
 
 /**
  * Retorna true si el espacio representa un vacío arquitectónico (patio de aire y luz o hueco de losa).
  */
 export function isSpaceVoid(space: Space): boolean {
-  return space.category === 'aire_luz' || space.coverType === 'vacio';
+  if (space.coverType) {
+    return space.coverType === 'vacio';
+  }
+  return space.category === 'aire_luz';
+}
+
+/**
+ * Retorna true si el espacio está a cielo abierto (patio descubierto, terraza descubierta).
+ */
+export function isSpaceOpenAir(space: Space): boolean {
+  if (space.coverType) {
+    return space.coverType === 'descubierto';
+  }
+  return space.category === 'exterior';
+}
+
+/**
+ * Retorna true si el espacio es semicubierto (galería, balcón con alero o porche).
+ */
+export function isSpaceSemiCovered(space: Space): boolean {
+  if (space.coverType) {
+    return space.coverType === 'semicubierto';
+  }
+  return space.category === 'balcon';
 }
 
 /**
@@ -73,6 +165,7 @@ export interface SpaceMetrics {
   areaM2: number;
   perimeterM: number;
   volumeM3: number;
+  limitAreaM2?: number; // Superficie computable AEA 771 (m²)
 }
 
 // ─── CÁLCULOS GEOMÉTRICOS DE SUPERFICIES Y CENTROIDES ───────────────────────
@@ -183,18 +276,149 @@ export function resolveSpacePolygon(
   return points;
 }
 
+export interface CeilingProjectionResult {
+  coveredAreaM2: number;
+  projectionLine?: [Vector2D, Vector2D]; // Línea del límite del alero en coordenadas métricas
+  isPartial: boolean;
+}
+
 /**
- * Calcula las métricas BIM del ambiente (superficie útil, perímetro y volumen interior).
+ * Calcula la proyección geométrica del techo o alero para un recinto arquitectónico.
+ * Si es semicubierto con alero paramétrico, determina la línea de proyección normalizada (-- - --)
+ * y la superficie cubierta efectiva.
+ */
+export function computeCeilingProjection(
+  space: Space,
+  verticesMap: Map<string, { x: number; y: number }>,
+  wallsMap?: Map<string, { id: string; startVertexId: string; endVertexId: string }>
+): CeilingProjectionResult {
+  const poly = resolveSpacePolygon(space, verticesMap as any);
+  const totalArea = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
+
+  if (isSpaceVoid(space) || isSpaceOpenAir(space)) {
+    return { coveredAreaM2: 0, isPartial: false };
+  }
+
+  if (!isSpaceSemiCovered(space)) {
+    // Cubierto u otro tipo cerrado completo
+    return { coveredAreaM2: totalArea, isPartial: false };
+  }
+
+  // Recinto semicubierto
+  const proj = space.ceilingProjection;
+  if (!proj || proj.mode === 'total') {
+    return { coveredAreaM2: totalArea, isPartial: false };
+  }
+
+  // proj.mode === 'alero'
+  const depth = Math.max(0.1, proj.overhangDepth ?? 1.50);
+
+  // Buscar el muro de referencia desde donde se proyecta el alero
+  let refWall: { id: string; startVertexId: string; endVertexId: string } | undefined;
+  if (proj.referenceWallId && wallsMap) {
+    refWall = wallsMap.get(proj.referenceWallId);
+  }
+  if (!refWall && wallsMap && space.wallIds && space.wallIds.length > 0) {
+    // Si no se especificó, buscar el muro más largo del ambiente como apoyo principal
+    let maxLen = -1;
+    for (const wId of space.wallIds) {
+      const w = wallsMap.get(wId);
+      if (w) {
+        const v1 = verticesMap.get(w.startVertexId);
+        const v2 = verticesMap.get(w.endVertexId);
+        if (v1 && v2) {
+          const l = Math.hypot(v2.x - v1.x, v2.y - v1.y);
+          if (l > maxLen) {
+            maxLen = l;
+            refWall = w;
+          }
+        }
+      }
+    }
+  }
+
+  if (!refWall || !verticesMap.has(refWall.startVertexId) || !verticesMap.has(refWall.endVertexId)) {
+    const covered = Math.min(totalArea, totalArea * 0.5);
+    return { coveredAreaM2: Number(covered.toFixed(2)), isPartial: true };
+  }
+
+  const v1 = verticesMap.get(refWall.startVertexId)!;
+  const v2 = verticesMap.get(refWall.endVertexId)!;
+  const dx = v2.x - v1.x;
+  const dy = v2.y - v1.y;
+  const wallLen = Math.hypot(dx, dy);
+  if (wallLen < 1e-4) {
+    return { coveredAreaM2: totalArea, isPartial: false };
+  }
+
+  // Vector unitario en dirección del muro
+  const ux = dx / wallLen;
+  const uy = dy / wallLen;
+
+  // Normal candidato
+  let nx = -uy;
+  let ny = ux;
+
+  // Orientar el normal hacia el interior del ambiente (hacia su centroide)
+  const centroid = calculatePolygonCentroid(poly);
+  const midX = (v1.x + v2.x) / 2;
+  const midY = (v1.y + v2.y) / 2;
+  const toCentroidX = centroid.x - midX;
+  const toCentroidY = centroid.y - midY;
+  if (nx * toCentroidX + ny * toCentroidY < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  // Línea del alero paralela al muro, desplazada 'depth' metros hacia el interior
+  const p1: Vector2D = {
+    x: Number((v1.x + nx * depth).toFixed(3)),
+    y: Number((v1.y + ny * depth).toFixed(3))
+  };
+  const p2: Vector2D = {
+    x: Number((v2.x + nx * depth).toFixed(3)),
+    y: Number((v2.y + ny * depth).toFixed(3))
+  };
+
+  const approxCovered = Math.min(totalArea, wallLen * depth);
+
+  return {
+    coveredAreaM2: Number(approxCovered.toFixed(2)),
+    projectionLine: [p1, p2],
+    isPartial: true
+  };
+}
+
+/**
+ * Calcula las métricas BIM del ambiente (superficie útil, perímetro, volumen interior y superficie límite AEA).
  */
 export function calculateSpaceMetrics(
   space: Space,
-  verticesMap: Map<string, WallVertex>
+  verticesMap: Map<string, WallVertex>,
+  wallsMap?: Map<string, { id: string; startVertexId: string; endVertexId: string }>
 ): SpaceMetrics {
   const poly = resolveSpacePolygon(space, verticesMap);
   const areaM2 = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
   const perimeterM = poly.length >= 2 ? calculatePolygonPerimeter(poly) : 0;
-  const volumeM3 = Number((areaM2 * (space.ceilingHeight || 2.70)).toFixed(2));
-  return { areaM2, perimeterM, volumeM3 };
+
+  const isVoid = isSpaceVoid(space);
+  const isOpenAir = isSpaceOpenAir(space);
+  const volumeM3 = (isVoid || isOpenAir) ? 0 : Number((areaM2 * (space.ceilingHeight || 2.70)).toFixed(2));
+
+  let limitAreaM2 = areaM2;
+  if (isVoid || isOpenAir) {
+    limitAreaM2 = 0;
+  } else if (isSpaceSemiCovered(space)) {
+    const { coveredAreaM2 } = computeCeilingProjection(space, verticesMap, wallsMap);
+    limitAreaM2 = Number((coveredAreaM2 * 0.50).toFixed(2));
+  }
+
+  return {
+    areaM2,
+    perimeterM,
+    volumeM3,
+    limitAreaM2: Number(limitAreaM2.toFixed(2))
+  };
 }
 
 

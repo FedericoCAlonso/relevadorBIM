@@ -17,7 +17,12 @@ import {
   COLUMN_DIMENSION_PRESETS,
   BEAM_DIMENSION_PRESETS
 } from '../../../models/architecture/StructuralElement';
-import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
+import {
+  isSpaceOpenAir,
+  isSpaceSemiCovered,
+  calculateSpaceMetrics
+} from '../../../models/architecture/Space';
+import { calculateProjectLimitSurface } from '../../../models/electrical/electricalStandards';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
 import { CircuitColorPicker } from '../electrical/CircuitColorPicker';
@@ -1583,130 +1588,178 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         )}
 
         {/* ════════════ PESTAÑA 2: AMBIENTES Y ALTURAS DE TECHO ════════════ */}
-        {activeTab === 'spaces' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-bold text-slate-800">Ambientes del Nivel</span>
-                <span className="text-[10px] text-slate-500 block">Identificación y alturas de techo</span>
+        {activeTab === 'spaces' && (() => {
+          const activeLevelSpaces = project.spaces.filter((s) => s.levelId === project.activeLevelId);
+          const limitSurfaceBreakdown = calculateProjectLimitSurface(activeLevelSpaces, verticesMap, wallsMap);
+
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800">Ambientes del Nivel</span>
+                  <span className="text-[10px] text-slate-500 block">Identificación y clasificación AEA 771</span>
+                </div>
+                <button
+                  onClick={autoDetectSpaces}
+                  className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+                >
+                  Actualizar
+                </button>
               </div>
-              <button
-                onClick={autoDetectSpaces}
-                className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[11px] font-semibold transition-colors"
-              >
-                Actualizar
-              </button>
-            </div>
 
-            {project.spaces.filter((s) => s.levelId === project.activeLevelId).length === 0 ? (
-              <div className="p-5 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center text-slate-400 space-y-1">
-                <Building2 size={24} className="mx-auto text-slate-300 mb-1" />
-                <p className="font-medium text-xs text-slate-600">No hay ambientes detectados en este nivel</p>
-                <p className="text-[11px]">Cerrá un circuito de 3 o más paredes para generar un ambiente automáticamente.</p>
-              </div>
-            ) : (
-              project.spaces
-                .filter((s) => s.levelId === project.activeLevelId)
-                .map((space, idx) => {
-                const poly = resolveSpacePolygon(space, verticesMap);
-                const area = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
-                const volume = area * space.ceilingHeight;
-                const isSelected = selectedEntity?.type === 'space' && selectedEntity.id === space.id;
+              {/* Resumen Normativo AEA 771 del Nivel */}
+              {activeLevelSpaces.length > 0 && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-3 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-blue-900 uppercase tracking-wider">
+                      Superficie Límite AEA 771
+                    </span>
+                    <span className="text-xs font-bold font-mono text-blue-700 bg-white px-2 py-0.5 rounded-lg border border-blue-100 shadow-2xs">
+                      {limitSurfaceBreakdown.totalLimitAreaM2.toFixed(2)} m²
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-600 font-medium">Grado Electrificación:</span>
+                    <span className="font-bold text-indigo-700">
+                      {limitSurfaceBreakdown.electrificationDegree.label} (mín. {limitSurfaceBreakdown.electrificationDegree.minCircuits} ctos)
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1 border-t border-blue-200/50">
+                    <span>Cub: {limitSurfaceBreakdown.coveredAreaM2} m²</span>
+                    <span>Semicub: {limitSurfaceBreakdown.semiCoveredAreaM2} m² (50%)</span>
+                    <span>Descub: {limitSurfaceBreakdown.openAreaM2} m²</span>
+                  </div>
+                </div>
+              )}
 
-                const roomSuggestions = ['Living', 'Comedor', 'Cocina', 'Dormitorio 1', 'Dormitorio 2', 'Baño', 'Pasillo', 'Lavadero', 'Balcón'];
-                const heightPresets = [2.60, 2.70, 2.80, 3.00];
+              {activeLevelSpaces.length === 0 ? (
+                <div className="p-5 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center text-slate-400 space-y-1">
+                  <Building2 size={24} className="mx-auto text-slate-300 mb-1" />
+                  <p className="font-medium text-xs text-slate-600">No hay ambientes detectados en este nivel</p>
+                  <p className="text-[11px]">Cerrá un circuito de 3 o más paredes para generar un ambiente automáticamente.</p>
+                </div>
+              ) : (
+                activeLevelSpaces.map((space, idx) => {
+                  const metrics = calculateSpaceMetrics(space, verticesMap, wallsMap);
+                  const isSelected = selectedEntity?.type === 'space' && selectedEntity.id === space.id;
+                  const isOpenAir = isSpaceOpenAir(space);
+                  const isSemi = isSpaceSemiCovered(space);
 
-                return (
-                  <div
-                    key={space.id}
-                    className={`rounded-2xl p-3 space-y-2.5 transition-all ${
-                      isSelected
-                        ? 'bg-blue-50/80 border-2 border-blue-500 shadow-sm'
-                        : 'bg-slate-50 border border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    {/* Cabecera del Ambiente */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-bold">
-                        Ambiente {idx + 1}
-                      </span>
-                      <div className="text-[11px] font-mono font-bold text-slate-700">
-                        {area.toFixed(2)} m² · {volume.toFixed(2)} m³
-                      </div>
-                    </div>
+                  const roomSuggestions = ['Living', 'Comedor', 'Cocina', 'Dormitorio 1', 'Dormitorio 2', 'Baño', 'Pasillo', 'Lavadero', 'Balcón', 'Galería', 'Patio'];
+                  const heightPresets = [2.60, 2.70, 2.80, 3.00];
 
-                    {/* Input de Nombre */}
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">NOMBRE DEL AMBIENTE</label>
-                      <input
-                        type="text"
-                        value={space.name}
-                        onChange={(e) => updateSpace(space.id, { name: e.target.value })}
-                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ej: Living Comedor"
-                      />
-                    </div>
-
-                    {/* Pastillas de nombres sugeridos */}
-                    <div className="flex flex-wrap gap-1">
-                      {roomSuggestions.map((sug) => (
-                        <button
-                          key={sug}
-                          type="button"
-                          onClick={() => updateSpace(space.id, { name: sug })}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                            space.name === sug
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {sug}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Altura de Cielorraso / Techo */}
-                    <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                  return (
+                    <div
+                      key={space.id}
+                      className={`rounded-2xl p-3 space-y-2.5 transition-all ${
+                        isSelected
+                          ? 'bg-blue-50/80 border-2 border-blue-500 shadow-sm'
+                          : 'bg-slate-50 border border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {/* Cabecera del Ambiente */}
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-600">Altura de Techo (h):</span>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            step="0.05"
-                            value={space.ceilingHeight}
-                            onChange={(e) =>
-                              updateSpace(space.id, { ceilingHeight: parseFloat(e.target.value) || 2.70 })
-                            }
-                            className="w-16 px-1.5 py-1 bg-white border border-slate-300 rounded-lg font-mono font-bold text-center text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="font-mono text-xs text-slate-400">m</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-bold">
+                            Ambiente {idx + 1}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
+                            isOpenAir
+                              ? 'bg-amber-100 text-amber-800'
+                              : isSemi
+                              ? 'bg-cyan-100 text-cyan-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {isOpenAir ? 'Descubierto' : isSemi ? 'Semicubierto' : 'Cubierto'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono font-bold text-slate-700">
+                          {metrics.areaM2.toFixed(2)} m² {isOpenAir ? '' : `· ${metrics.volumeM3.toFixed(2)} m³`}
                         </div>
                       </div>
 
-                      {/* Pastillas de Alturas Predefinidas */}
-                      <div className="flex gap-1 justify-end">
-                        {heightPresets.map((hp) => (
+                      {/* Input de Nombre */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">NOMBRE DEL AMBIENTE</label>
+                        <input
+                          type="text"
+                          value={space.name}
+                          onChange={(e) => updateSpace(space.id, { name: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ej: Living Comedor"
+                        />
+                      </div>
+
+                      {/* Pastillas de nombres sugeridos */}
+                      <div className="flex flex-wrap gap-1">
+                        {roomSuggestions.map((sug) => (
                           <button
-                            key={hp}
+                            key={sug}
                             type="button"
-                            onClick={() => updateSpace(space.id, { ceilingHeight: hp })}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
-                              Math.abs(space.ceilingHeight - hp) < 0.01
-                                ? 'bg-slate-800 text-white border-slate-800'
+                            onClick={() => updateSpace(space.id, { name: sug })}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
+                              space.name === sug
+                                ? 'bg-blue-600 text-white border-blue-600'
                                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                             }`}
                           >
-                            {hp.toFixed(2)}m
+                            {sug}
                           </button>
                         ))}
                       </div>
+
+                      {/* Altura de Cielorraso o Aviso de Descubierto */}
+                      {isOpenAir ? (
+                        <div className="pt-2 border-t border-slate-200/80 text-[11px] text-amber-800 bg-amber-50/60 p-2 rounded-xl flex items-center justify-between">
+                          <span>A cielo abierto (sin cielorraso)</span>
+                          <span className="font-bold font-mono">0% AEA</span>
+                        </div>
+                      ) : (
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-600">
+                              {isSemi ? 'Altura Alero / Techo (h):' : 'Altura de Techo (h):'}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                step="0.05"
+                                value={space.ceilingHeight}
+                                onChange={(e) =>
+                                  updateSpace(space.id, { ceilingHeight: parseFloat(e.target.value) || 2.70 })
+                                }
+                                className="w-16 px-1.5 py-1 bg-white border border-slate-300 rounded-lg font-mono font-bold text-center text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              <span className="font-mono text-xs text-slate-400">m</span>
+                            </div>
+                          </div>
+
+                          {/* Pastillas de Alturas Predefinidas */}
+                          <div className="flex gap-1 justify-end">
+                            {heightPresets.map((hp) => (
+                              <button
+                                key={hp}
+                                type="button"
+                                onClick={() => updateSpace(space.id, { ceilingHeight: hp })}
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors cursor-pointer ${
+                                  Math.abs(space.ceilingHeight - hp) < 0.01
+                                    ? 'bg-slate-800 text-white border-slate-800'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {hp.toFixed(2)}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
+                  );
+                })
+              )}
+            </div>
+          );
+        })()}
 
         {/* ════════════ PESTAÑA 3: RED ELÉCTRICA AEA (INSPIRADO EN TRAZA) ════════════ */}
         {activeTab === 'electrical' && (

@@ -46,7 +46,13 @@ export const ComputoModal: React.FC<ComputoModalProps> = ({ isOpen, onClose }) =
             <div>
               <h3 className="text-base font-bold text-slate-800">Cómputo Métrico de Materiales</h3>
               <p className="text-xs text-slate-500">
-                Superficie Total Relevada: <strong>{computo.superficieTotalM2} m²</strong>
+                Sup. Neta: <strong>{computo.superficieTotalM2} m²</strong> · S. Límite AEA:{' '}
+                <strong>{computo.superficieLimiteM2 ?? computo.superficieTotalM2} m²</strong>
+                {computo.gradoElectrificacion && (
+                  <span className="ml-1.5 px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">
+                    Grado {computo.gradoElectrificacion}
+                  </span>
+                )}
               </p>
             </div>
           </div>

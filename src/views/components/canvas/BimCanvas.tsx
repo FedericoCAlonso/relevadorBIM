@@ -18,7 +18,10 @@ import {
   calculatePolygonArea,
   calculatePolygonCentroid,
   isSpaceVoid,
-  isSpaceShaft
+  isSpaceShaft,
+  isSpaceOpenAir,
+  isSpaceSemiCovered,
+  computeCeilingProjection
 } from '../../../models/architecture/Space';
 import { getColumnPolygon, getBeamPolygon } from '../../../models/architecture/StructuralElement';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
@@ -986,6 +989,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
         const isVoid = isSpaceVoid(space);
         const isShaft = isSpaceShaft(space);
+        const isOpenAir = isSpaceOpenAir(space);
+        const isSemi = isSpaceSemiCovered(space);
+
+        let ceilingProjResult: ReturnType<typeof computeCeilingProjection> | null = null;
+        if (isSemi && space.ceilingProjection?.mode === 'alero') {
+          ceilingProjResult = computeCeilingProjection(space, verticesMap, wallsMap);
+        }
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         if (isVoid) {
@@ -1018,11 +1028,15 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   ? 'rgba(255, 255, 255, 0.4)'
                   : isShaft
                   ? 'rgba(203, 213, 225, 0.45)'
+                  : isOpenAir
+                  ? space.color || 'rgba(254, 249, 195, 0.25)'
+                  : isSemi
+                  ? space.color || 'rgba(240, 249, 255, 0.55)'
                   : space.color || 'rgba(241, 245, 249, 0.75)'
               }
-              stroke={isVoid ? '#94a3b8' : isShaft ? '#64748b' : 'none'}
-              strokeWidth={isVoid || isShaft ? 1 : 0}
-              strokeDasharray={isVoid ? '4 3' : undefined}
+              stroke={isVoid ? '#94a3b8' : isShaft ? '#64748b' : isOpenAir ? '#d97706' : isSemi ? '#0284c7' : 'none'}
+              strokeWidth={isVoid || isShaft || isOpenAir || isSemi ? 1 : 0}
+              strokeDasharray={isVoid ? '4 3' : isOpenAir ? '6 4' : isSemi ? '8 3 2 3' : undefined}
             />
 
             {/* Cruz diagonal reglamentaria para vacíos de losa / patio de aire y luz */}
@@ -1047,6 +1061,32 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               </g>
             )}
 
+            {/* Línea de proyección técnica de alero / voladizo (-- - -- - --) */}
+            {ceilingProjResult?.projectionLine && (
+              <g className="pointer-events-none select-none">
+                <line
+                  x1={ceilingProjResult.projectionLine[0].x * zoom}
+                  y1={ceilingProjResult.projectionLine[0].y * zoom}
+                  x2={ceilingProjResult.projectionLine[1].x * zoom}
+                  y2={ceilingProjResult.projectionLine[1].y * zoom}
+                  stroke="#0284c7"
+                  strokeWidth={1.5}
+                  strokeDasharray="8 3 2 3"
+                />
+                <text
+                  x={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom}
+                  y={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom - 4}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill="#0284c7"
+                  fontWeight="bold"
+                  className="font-mono select-none"
+                >
+                  Proy. Alero ({space.ceilingProjection?.overhangDepth ?? 1.5}m)
+                </text>
+              </g>
+            )}
+
             <text
               x={centroid.x * zoom}
               y={centroid.y * zoom - 6}
@@ -1067,9 +1107,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 ? `${area.toFixed(2)} m² · VACÍO / AIRE Y LUZ`
                 : isShaft
                 ? `${area.toFixed(2)} m² · PLENO TÉCNICO`
-                : `${area.toFixed(2)} m² · h: ${space.ceilingHeight.toFixed(2)}m${
-                    space.coverType === 'semicubierto' ? ' (Semicub.)' : ''
-                  }`}
+                : isOpenAir
+                ? `${area.toFixed(2)} m² · DESCUBIERTO (A cielo abierto)`
+                : isSemi
+                ? `${area.toFixed(2)} m² · SEMICUBIERTO · h: ${space.ceilingHeight.toFixed(2)}m (50% AEA: ${(area * 0.5).toFixed(2)} m²)`
+                : `${area.toFixed(2)} m² · h: ${space.ceilingHeight.toFixed(2)}m`}
             </text>
           </g>
         );
@@ -1078,6 +1120,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     project.spaces,
     project.activeLevelId,
     verticesMap,
+    wallsMap,
     zoom,
     selectedSymbolId,
     isConnectingConduit,

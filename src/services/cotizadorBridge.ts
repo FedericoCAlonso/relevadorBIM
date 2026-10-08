@@ -11,7 +11,7 @@ import { calculateConduitRealLength } from '../models/electrical/calculations';
 import { calculatePolygonArea, resolveSpacePolygon } from '../models/architecture/Space';
 import type { SpatialElectricalNode } from '../models/electrical/ElectricalModel';
 import { conductorBelongsToCircuit } from '../models/electrical/electricalConductorDerivation';
-import { getConductorColorLabel } from '../models/electrical/electricalStandards';
+import { getConductorColorLabel, calculateProjectLimitSurface } from '../models/electrical/electricalStandards';
 
 export interface ConductoresDetallados {
   tierraPePorSeccionM: Record<string, number>;
@@ -25,6 +25,8 @@ export interface ComputoMetricoExport {
   proyectoId: string;
   proyectoNombre: string;
   superficieTotalM2: number;
+  superficieLimiteM2?: number;
+  gradoElectrificacion?: string;
   cañeriasPorDiametro: Record<string, number>; // Ej: { "19mm (3/4\")": 45.2, "25mm (1\")": 18.0 }
   bocasPorTipo: Record<string, number>;        // Ej: { "IUG": 12, "TUG": 18, "TUE": 2 }
   tablerosPorTipo?: Record<string, number>;    // Ej: { "Tablero Principal (TP)": 1 }
@@ -179,10 +181,15 @@ export function generarComputoCotizador(
     }
   }
 
+  const wallsMap = new Map(project.walls.map(w => [w.id, w]));
+  const limitSurfaceBreakdown = calculateProjectLimitSurface(project.spaces, verticesMap, wallsMap);
+
   return {
     proyectoId: project.meta.id,
     proyectoNombre: project.meta.name,
     superficieTotalM2: Number(superficieTotalM2.toFixed(2)),
+    superficieLimiteM2: limitSurfaceBreakdown.totalLimitAreaM2,
+    gradoElectrificacion: limitSurfaceBreakdown.electrificationDegree.label,
     cañeriasPorDiametro,
     bocasPorTipo,
     tablerosPorTipo,
