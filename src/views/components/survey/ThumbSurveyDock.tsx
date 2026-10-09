@@ -9,7 +9,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
@@ -148,9 +148,11 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   const [showCustomAngleInput, setShowCustomAngleInput] = useState(false);
 
   // Distanciómetro Bluetooth
-  const { status, connect, disconnect } = useLaserViewModel((distM) => {
+  const handleLaserMeasurement = useCallback((distM: number) => {
     onChangeDistance(distM.toFixed(3));
-  });
+  }, [onChangeDistance]);
+
+  const { status, connect, disconnect } = useLaserViewModel(handleLaserMeasurement);
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
 

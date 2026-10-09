@@ -5,25 +5,23 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { laserBluetoothService } from '../services/laserBluetoothService';
 import type { LaserDeviceStatus } from '../services/laserBluetoothService';
 
 export function useLaserViewModel(onMeasurementReceived?: (distanceM: number) => void) {
-  const [status, setStatus] = useState<LaserDeviceStatus>({
-    isConnected: false,
-    deviceName: null,
-    batteryPercent: null,
-    lastMeasurementM: null,
-    error: null
-  });
+  const [status, setStatus] = useState<LaserDeviceStatus>(() => laserBluetoothService.getStatus());
+
+  const onMeasurementRef = useRef(onMeasurementReceived);
+
+  useEffect(() => {
+    onMeasurementRef.current = onMeasurementReceived;
+  }, [onMeasurementReceived]);
 
   useEffect(() => {
     const unsubscribe = laserBluetoothService.subscribe(
       (dist) => {
-        if (onMeasurementReceived) {
-          onMeasurementReceived(dist);
-        }
+        onMeasurementRef.current?.(dist);
       },
       (newStatus) => {
         setStatus(newStatus);
@@ -31,7 +29,7 @@ export function useLaserViewModel(onMeasurementReceived?: (distanceM: number) =>
     );
 
     return () => unsubscribe();
-  }, [onMeasurementReceived]);
+  }, []);
 
   const connect = useCallback(async () => {
     await laserBluetoothService.connect();

@@ -32,6 +32,13 @@ class LaserBluetoothService {
   };
 
   /**
+   * Retorna una copia del estado actual del distanciómetro.
+   */
+  public getStatus(): LaserDeviceStatus {
+    return { ...this.status };
+  }
+
+  /**
    * Suscribe oyentes de mediciones y cambios de estado.
    */
   public subscribe(onMeasurement: MeasurementCallback, onStatusChange: StatusCallback): () => void {
