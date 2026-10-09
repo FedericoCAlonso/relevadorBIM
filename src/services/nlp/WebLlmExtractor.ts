@@ -37,10 +37,11 @@ Tu única tarea es extraer la intención del usuario a partir del texto en espa�
 
 Reglas obligatorias:
 1. Si el usuario pide crear un ambiente (living, cocina, dormitorio), usa action: "create_space".
-2. Si pide colocar una boca, toma, llave, centro de luz o tablero, usa action: "place_element".
-3. Si pide conectar caños o conductos, usa action: "connect_conduit".
-4. Si menciona mediciones de PAT, jabalina o tensión, usa action: "record_measurement".
-5. No agregues explicaciones, markdown ni texto fuera del JSON.`;
+2. Si pide colocar una puerta, ventana, vano o abertura en un muro, usa action: "place_opening".
+3. Si pide colocar una boca, toma, llave, centro de luz o tablero, usa action: "place_element".
+4. Si pide conectar caños o conductos, usa action: "connect_conduit".
+5. Si menciona mediciones de PAT, jabalina o tensión, usa action: "record_measurement".
+6. No agregues explicaciones, markdown ni texto fuera del JSON.`;
 
 // JSON Schema derivado para XGrammar
 const INTENT_JSON_SCHEMA = {
@@ -48,8 +49,18 @@ const INTENT_JSON_SCHEMA = {
   properties: {
     action: {
       type: 'string',
-      enum: ['create_space', 'place_element', 'connect_conduit', 'record_measurement']
+      enum: ['create_space', 'place_opening', 'place_element', 'connect_conduit', 'record_measurement']
     },
+    openingType: {
+      type: 'string',
+      enum: ['door', 'window', 'passage']
+    },
+    referenceCornerWall: {
+      type: 'string',
+      enum: ['norte', 'sur', 'este', 'oeste', 'derecha', 'izquierda', 'frente', 'fondo']
+    },
+    distanceM: { type: 'number' },
+    centered: { type: 'boolean' },
     name: { type: 'string' },
     dimensions: {
       type: 'object',

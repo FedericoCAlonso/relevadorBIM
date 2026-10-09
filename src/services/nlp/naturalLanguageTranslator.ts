@@ -19,6 +19,7 @@ import {
 import {
   type NaturalLanguageIntent,
   type CreateSpaceIntent,
+  type PlaceOpeningIntent,
   type PlaceElementIntent,
   type ConnectConduitIntent,
   type RecordMeasurementIntent,
@@ -28,12 +29,13 @@ import {
 export interface NaturalLanguageExecutionResult {
   success: boolean;
   message: string;
-  createdType?: 'space' | 'element' | 'conduit' | 'measurement';
+  createdType?: 'space' | 'element' | 'conduit' | 'measurement' | 'opening';
   affectedEntityIds?: {
     spaceId?: string;
     wallIds?: string[];
     elementId?: string;
     conduitId?: string;
+    openingId?: string;
   };
 }
 
@@ -54,6 +56,8 @@ export function executeNaturalLanguageIntent(
   switch (intent.action) {
     case 'create_space':
       return executeCreateSpace(intent, store, context.activeSpaceId);
+    case 'place_opening':
+      return executePlaceOpening(intent, store, context.activeSpaceId);
     case 'place_element':
       return executePlaceElement(intent, store, context.activeSpaceId);
     case 'connect_conduit':
@@ -164,6 +168,16 @@ function executeCreateSpace(
       let dist = op.distanceFromCornerM ?? 0.50;
       if (op.centered) {
         dist = Math.max(0.10, (wallLen - opWidth) / 2);
+      } else if (op.referenceCornerWall) {
+        const verticesMap = new Map(store.project.vertices.map((v) => [v.id, v]));
+        const vStart = verticesMap.get(targetWall.startVertexId);
+        const vEnd = verticesMap.get(targetWall.endVertexId);
+        if (vStart && vEnd) {
+          const isStartCorner = isVertexAtOrientation(vStart, vEnd, op.referenceCornerWall);
+          const offset = op.distanceFromCornerM ?? 0.20;
+          dist = isStartCorner ? offset : wallLen - offset - opWidth;
+          dist = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, dist));
+        }
       }
       store.addOpeningDirect({
         wallId: targetWall.id,
@@ -310,6 +324,132 @@ function createAttachedSpace(params: {
     createdType: 'space',
     affectedEntityIds: { spaceId: newSpace?.id, wallIds: [w1.wall.id, w2.wall.id, w3.wall.id] }
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1B. EMPLAZAMIENTO DE ABERTURAS (PUERTAS, VENTANAS, VANOS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function executePlaceOpening(
+  intent: PlaceOpeningIntent,
+  store: ReturnType<typeof useProjectStore.getState>,
+  activeSpaceId?: string | null
+): NaturalLanguageExecutionResult {
+  const project = store.project;
+  const { openingType, wallReference, referenceCornerWall, distanceM, centered, widthM, heightM, sillM, targetSpaceName } = intent;
+
+  // 1. Identificar espacio destino si existe
+  let targetSpace: Space | undefined = undefined;
+  if (targetSpaceName) {
+    targetSpace = project.spaces.find((s) => s.name.toLowerCase().includes(targetSpaceName.toLowerCase()));
+  } else if (activeSpaceId) {
+    targetSpace = project.spaces.find((s) => s.id === activeSpaceId);
+  } else if (project.spaces.length > 0) {
+    targetSpace = project.spaces[project.spaces.length - 1];
+  }
+
+  // 2. Determinar muros candidatos
+  let candidateWalls = project.walls;
+  if (targetSpace) {
+    const spaceWallIds = new Set(targetSpace.wallIds);
+    candidateWalls = project.walls.filter((w) => spaceWallIds.has(w.id));
+    if (candidateWalls.length === 0) {
+      candidateWalls = project.walls;
+    }
+  }
+
+  if (candidateWalls.length === 0) {
+    return { success: false, message: 'No hay muros en el proyecto para colocar la abertura.' };
+  }
+
+  // 3. Resolver muro anfitrión por orientación
+  const hostWall = resolveWallForOrientation(candidateWalls, wallReference, store);
+  if (!hostWall) {
+    const label = openingType === 'door' ? 'la puerta' : openingType === 'window' ? 'la ventana' : 'la abertura';
+    return { success: false, message: `No se encontró la pared ${wallReference} para colocar ${label}.` };
+  }
+
+  const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+  const vStart = verticesMap.get(hostWall.startVertexId);
+  const vEnd = verticesMap.get(hostWall.endVertexId);
+  if (!vStart || !vEnd) {
+    return { success: false, message: 'Vértices del muro anfitrión no encontrados.' };
+  }
+
+  const wallLen = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
+  const defaultWidth = openingType === 'door' ? 0.80 : openingType === 'window' ? 1.20 : 0.90;
+  const opWidth = widthM ?? defaultWidth;
+  const opHeight = heightM ?? (openingType === 'window' ? 1.10 : 2.05);
+  const opSill = sillM ?? (openingType === 'window' ? 0.90 : 0);
+
+  // 4. Calcular distancia a lo largo del muro
+  let dist = 0.50;
+  if (centered) {
+    dist = Math.max(0.10, (wallLen - opWidth) / 2);
+  } else if (referenceCornerWall) {
+    const isStartCorner = isVertexAtOrientation(vStart, vEnd, referenceCornerWall);
+    const offset = distanceM ?? 0.20;
+    dist = isStartCorner ? offset : wallLen - offset - opWidth;
+    dist = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, dist));
+  } else if (distanceM !== undefined) {
+    dist = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, distanceM));
+  } else {
+    dist = Math.max(0.10, (wallLen - opWidth) / 2);
+  }
+
+  const newOpening = store.addOpeningDirect({
+    wallId: hostWall.id,
+    type: openingType,
+    width: opWidth,
+    height: opHeight,
+    sill: opSill,
+    distanceAlongWall: Number(dist.toFixed(3))
+  });
+
+  if (!newOpening) {
+    const label = openingType === 'door' ? 'la puerta' : openingType === 'window' ? 'la ventana' : 'la abertura';
+    return { success: false, message: `No se pudo insertar ${label} en el muro.` };
+  }
+
+  const typeLabel = openingType === 'door' ? 'Puerta' : openingType === 'window' ? 'Ventana' : 'Abertura';
+  const spaceLabel = targetSpace ? ` en "${targetSpace.name}"` : '';
+  const refLabel = referenceCornerWall
+    ? ` a ${distanceM ?? 0.20}m de pared ${referenceCornerWall}`
+    : centered
+    ? ' centrada'
+    : ` a ${dist.toFixed(2)}m`;
+
+  return {
+    success: true,
+    message: `${typeLabel}${spaceLabel} colocada en pared ${wallReference}${refLabel}.`,
+    createdType: 'opening',
+    affectedEntityIds: {
+      spaceId: targetSpace?.id,
+      wallIds: [hostWall.id],
+      openingId: newOpening.id
+    }
+  };
+}
+
+function isVertexAtOrientation(
+  vTarget: { x: number; y: number },
+  vOther: { x: number; y: number },
+  orientation: RelativeOrientation
+): boolean {
+  switch (orientation) {
+    case 'este':
+    case 'derecha':
+      return vTarget.x >= vOther.x;
+    case 'oeste':
+    case 'izquierda':
+      return vTarget.x <= vOther.x;
+    case 'norte':
+    case 'frente':
+      return vTarget.y >= vOther.y;
+    case 'sur':
+    case 'fondo':
+      return vTarget.y <= vOther.y;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

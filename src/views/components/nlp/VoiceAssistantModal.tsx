@@ -29,6 +29,7 @@ interface VoiceAssistantModalProps {
 
 const QUICK_SUGGESTIONS = [
   'Living comedor de 4 por 6',
+  'Puerta en pared norte a 0.2m de pared este',
   'Dormitorio de 3.5x4 pegado a pared este',
   'Poné un toma doble a 1.20 en pared derecha',
   'Boca de techo centrada con circuito 1',

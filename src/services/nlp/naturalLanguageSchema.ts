@@ -38,11 +38,26 @@ export type NlpOpeningType = z.infer<typeof OpeningTypeNlpSchema>;
 export const SpaceOpeningSpecSchema = z.object({
   type: OpeningTypeNlpSchema,
   wall: RelativeOrientationSchema,
+  referenceCornerWall: RelativeOrientationSchema.optional(),
   distanceFromCornerM: z.number().positive().optional(),
   centered: z.boolean().optional(),
   widthM: z.number().positive().optional()
 });
 export type SpaceOpeningSpec = z.infer<typeof SpaceOpeningSpecSchema>;
+
+export const PlaceOpeningIntentSchema = z.object({
+  action: z.literal('place_opening'),
+  openingType: OpeningTypeNlpSchema,
+  wallReference: RelativeOrientationSchema,
+  referenceCornerWall: RelativeOrientationSchema.optional(),
+  distanceM: z.number().nonnegative().optional(),
+  centered: z.boolean().optional(),
+  widthM: z.number().positive().optional(),
+  heightM: z.number().positive().optional(),
+  sillM: z.number().nonnegative().optional(),
+  targetSpaceName: z.string().optional()
+});
+export type PlaceOpeningIntent = z.infer<typeof PlaceOpeningIntentSchema>;
 
 export const CreateSpaceIntentSchema = z.object({
   action: z.literal('create_space'),
@@ -119,6 +134,7 @@ export type RecordMeasurementIntent = z.infer<typeof RecordMeasurementIntentSche
 
 export const NaturalLanguageIntentSchema = z.discriminatedUnion('action', [
   CreateSpaceIntentSchema,
+  PlaceOpeningIntentSchema,
   PlaceElementIntentSchema,
   ConnectConduitIntentSchema,
   RecordMeasurementIntentSchema

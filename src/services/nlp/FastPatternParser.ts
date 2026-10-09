@@ -12,6 +12,7 @@
 import type {
   NaturalLanguageIntent,
   CreateSpaceIntent,
+  PlaceOpeningIntent,
   PlaceElementIntent,
   ConnectConduitIntent,
   RecordMeasurementIntent,
@@ -22,12 +23,17 @@ import type {
 
 /**
  * Normaliza un texto eliminando tildes, signos de puntuación no numéricos y espacios redundantes.
+ * Preserva comas decimales convirtiéndolas a punto (ej: "0,2" -> "0.2").
  */
 export function normalizeNlpText(raw: string): string {
   return raw
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Quitar tildes
+    .replace(/(\d+),(\d+)/g, '$1.$2') // Coma decimal: "0,2" -> "0.2"
+    .replace(/\*+/g, ' x ') // Dictado que transcribe * por multiplicación
+    .replace(/[¡!¿?]/g, ' ')
+    .replace(/(?<!\d)\.|\.(?!\d)/g, ' ') // Puntos que no sean separador decimal
     .replace(/[,;:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -35,13 +41,20 @@ export function normalizeNlpText(raw: string): string {
 
 /**
  * Convierte expresiones numéricas comunes en español hablado a números flotantes.
- * Ejemplos: "cuatro" -> 4, "tres y medio" -> 3.5, "un metro veinte" -> 1.20
+ * Ejemplos: "cuatro" -> 4, "tres y medio" -> 3.5, "un metro veinte" -> 1.20, "20cm" -> 0.20
  */
 export function parseSpanishNumber(raw: string): number | null {
   const text = normalizeNlpText(raw);
 
+  // Expresiones de centímetros: "20cm", "20 cm", "20 centimetros", "80cm"
+  const cmMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:cm|centimetros?)\b/);
+  if (cmMatch) {
+    const val = parseFloat(cmMatch[1]);
+    if (!isNaN(val)) return val / 100;
+  }
+
   // Expresiones mixtas tipo "uno veinte", "un metro veinte", "1 metro 20"
-  const meterMatch = text.match(/^(?:un|1)?\s*(?:metro|m)?\s*(?:con)?\s*(\d+(?:[.,]\d+)?)$/);
+  const meterMatch = text.match(/^(?:un|1)?\s*(?:metro|m|mts?)?\s*(?:con)?\s*(\d+(?:[.,]\d+)?)(?:\s*(?:metros?|m|mts?))?$/);
   if (meterMatch) {
     const val = parseFloat(meterMatch[1].replace(',', '.'));
     if (!isNaN(val)) return val > 10 ? val / 100 : val;
@@ -80,7 +93,7 @@ export function parseSpanishNumber(raw: string): number | null {
     cincuenta: 50
   };
 
-  const meterWordsMatch = text.match(/^(?:un|1)\s*(?:metro|m)?\s*(?:con\s+)?([a-z]+)$/);
+  const meterWordsMatch = text.match(/^(?:un|1)\s*(?:metro|m|mts?)?\s*(?:con\s+)?([a-z]+)$/);
   if (meterWordsMatch) {
     const sub = meterWordsMatch[1];
     const subVal = wordToNum[sub];
@@ -95,9 +108,12 @@ export function parseSpanishNumber(raw: string): number | null {
     if (!isNaN(baseVal)) return baseVal + 0.5;
   }
 
+  // Limpiar unidad final si existe: "4 metros" -> "4", "cuatro metros" -> "cuatro"
+  const cleanUnit = text.replace(/\s*(?:metros?|mts?|m)\b/g, '').trim();
+  if (wordToNum[cleanUnit] !== undefined) return wordToNum[cleanUnit];
   if (wordToNum[text] !== undefined) return wordToNum[text];
 
-  const parsed = parseFloat(text.replace(',', '.'));
+  const parsed = parseFloat(cleanUnit.replace(',', '.'));
   return isNaN(parsed) ? null : parsed;
 }
 
@@ -112,18 +128,21 @@ export function parseNaturalLanguageFast(rawText: string): NaturalLanguageIntent
   const spaceIntent = tryParseCreateSpace(text);
   if (spaceIntent) return spaceIntent;
 
-  // 2. Intentar registro de mediciones de instrumental (muy específico)
+  // 2. Intentar colocación de aberturas (puertas, ventanas, vanos)
+  const openingIntent = tryParsePlaceOpening(text);
+  if (openingIntent) return openingIntent;
+
+  // 3. Intentar registro de mediciones de instrumental (muy específico)
   const measureIntent = tryParseRecordMeasurement(text);
   if (measureIntent) return measureIntent;
 
-  // 3. Intentar conexión de cañerías (frases con conectar/unir)
+  // 4. Intentar conexión de cañerías (frases con conectar/unir)
   const conduitIntent = tryParseConnectConduit(text);
   if (conduitIntent) return conduitIntent;
 
-  // 4. Intentar colocación de bocas / tomas / llaves
+  // 5. Intentar colocación de bocas / tomas / llaves
   const elementIntent = tryParsePlaceElement(text);
   if (elementIntent) return elementIntent;
-  if (measureIntent) return measureIntent;
 
   return null;
 }
@@ -137,19 +156,25 @@ export function parseNaturalLanguageFast(rawText: string): NaturalLanguageIntent
  * - "living comedor de 4 por 6 con puerta en pared norte y ventana en pared sur"
  * - "dormitorio de 3.5x4 pegado a la pared este del living"
  * - "cocina de 2 por 3"
+ * - "living de 4 metros por 6 metros"
+ * - "living 4x6"
  */
 function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
-  // Patrón base: [crear/haz/agregar] [nombre_ambiente] de [num] por [num] / [num]x[num]
-  const pattern = /(?:crear|haz|hace|hacer|pone|poner|agregar)?\s*(?:un|una)?\s*([a-z0-9\s]+?)\s+de\s+([a-z0-9.,]+|\d+(?:\.\d+)?)\s*(?:por|x)\s*([a-z0-9.,]+|\d+(?:\.\d+)?)(?:\s+(?:metros?|m))?(.*)/i;
-  const match = text.match(pattern);
+  // Limpiar verbos introductorios comunes
+  let clean = text.replace(/^(?:crear|hacer|hace|haz|poner|pone|agregar|dibujar|armar)\s+/i, '');
+  clean = clean.replace(/^(?:un|una)\s+/i, '');
+
+  // Patrón base: [nombre_ambiente] [de]? [dim1] [por|x|*] [dim2] [resto]
+  const pattern = /^([a-z0-9\s]+?)\s+(?:de\s+)?([a-z0-9.,]+(?:\s*(?:metros?|mts?|m))?)\s*(?:por|x|\*)\s*([a-z0-9.,]+(?:\s*(?:metros?|mts?|m))?)(?:\s*(?:metros?|mts?|m))?(.*)$/i;
+  const match = clean.match(pattern);
   if (!match) return null;
 
   const rawName = match[1].trim();
   const rawDim1 = match[2].trim();
   const rawDim2 = match[3].trim();
-  const rest = match[4].trim();
+  const rest = match[4]?.trim() || '';
 
-  // Descartar si el nombre es una palabra de comando eléctrico (ej: "toma de 20A")
+  // Descartar si el nombre es una palabra de comando eléctrico o abertura
   if (
     rawName.includes('toma') ||
     rawName.includes('enchufe') ||
@@ -157,7 +182,9 @@ function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
     rawName.includes('cable') ||
     rawName.includes('cano') ||
     rawName.includes('caño') ||
-    rawName.includes('circuito')
+    rawName.includes('circuito') ||
+    rawName.includes('puerta') ||
+    rawName.includes('ventana')
   ) {
     return null;
   }
@@ -176,12 +203,19 @@ function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
   };
 
   // Detectar categoría sugerida
-  if (rawName.includes('living') || rawName.includes('comedor')) intent.category = 'living_comedor';
-  else if (rawName.includes('dormitorio') || rawName.includes('pieza') || rawName.includes('habitacion')) intent.category = 'dormitorio';
-  else if (rawName.includes('cocina')) intent.category = 'cocina';
-  else if (rawName.includes('bano') || rawName.includes('baño') || rawName.includes('toilette')) intent.category = 'bano';
-  else if (rawName.includes('pasillo') || rawName.includes('circulacion') || rawName.includes('hall')) intent.category = 'circulacion';
-  else if (rawName.includes('balcon') || rawName.includes('terraza')) intent.category = 'balcon';
+  if (rawName.includes('living') || rawName.includes('comedor') || rawName.includes('estar') || rawName.includes('sala')) {
+    intent.category = 'living_comedor';
+  } else if (rawName.includes('dormitorio') || rawName.includes('pieza') || rawName.includes('habitacion')) {
+    intent.category = 'dormitorio';
+  } else if (rawName.includes('cocina')) {
+    intent.category = 'cocina';
+  } else if (rawName.includes('bano') || rawName.includes('baño') || rawName.includes('toilette')) {
+    intent.category = 'bano';
+  } else if (rawName.includes('pasillo') || rawName.includes('circulacion') || rawName.includes('hall')) {
+    intent.category = 'circulacion';
+  } else if (rawName.includes('balcon') || rawName.includes('terraza')) {
+    intent.category = 'balcon';
+  }
 
   // Detectar adosado a otro ambiente (muro compartido)
   const attachedMatch = rest.match(/(?:pegado|adosado|compartiendo|al lado)\s+(?:a|de|al)?\s*(?:la\s+pared\s+([a-z]+))?\s*(?:de|del)?\s*([a-z0-9\s]+)?/);
@@ -200,6 +234,77 @@ function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
   }
 
   return intent;
+}
+
+/**
+ * Ejemplos soportados:
+ * - "puerta en pared norte a 0.2m de pared este"
+ * - "puerta en pared norte a 0,2m de pared este"
+ * - "puerta en pared norte a 20cm de pared este"
+ * - "puerta centrada en pared norte"
+ * - "ventana en pared sur de 1.20 a 0.50 de pared oeste"
+ * - "ventana centrada en pared este"
+ * - "puerta en pared norte"
+ */
+function tryParsePlaceOpening(text: string): PlaceOpeningIntent | null {
+  const isDoor = /\b(?:puerta|porton|ingreso|acceso)\b/i.test(text);
+  const isWindow = /\b(?:ventana|ventanal)\b/i.test(text);
+  const isPassage = /\b(?:paso|vano|abertura)\b/i.test(text);
+
+  if (!isDoor && !isWindow && !isPassage) return null;
+
+  const openingType: NlpOpeningType = isDoor ? 'door' : isWindow ? 'window' : 'passage';
+
+  // Referencia de muro anfitrión: "en pared [orientacion]" o "al [orientacion]" o "pared [orientacion]"
+  const wallMatch = text.match(/(?:en\s+(?:la\s+)?pared|pared|al|sobre\s+(?:la\s+)?pared)\s+([a-z]+)/i);
+  if (!wallMatch) return null;
+  const wallReference = parseOrientation(wallMatch[1]);
+
+  // Centrado en el muro
+  const isCentered = /\b(?:centrada|centrado|al centro|en el centro|al medio)\b/i.test(text);
+
+  // Distancia a esquina / muro perpendicular:
+  // Ej: "a 0.2m de pared este", "a 20cm de pared este", "a 0.2 de la pared este", "a 0.2 de la esquina este"
+  let distanceM: number | undefined = undefined;
+  let referenceCornerWall: RelativeOrientation | undefined = undefined;
+
+  const distCornerMatch = text.match(/a\s+([0-9.,]+(?:\s*(?:cm|centimetros?|metros?|mts?|m))?|[a-z\s]+?)\s+(?:de\s+(?:la\s+)?(?:pared|muro|esquina(?: con)?|el)?|del)?\s*([a-z]+)$/i);
+  if (distCornerMatch) {
+    const rawDist = distCornerMatch[1];
+    const rawCorner = distCornerMatch[2];
+    const parsedDist = parseSpanishNumber(rawDist);
+    if (parsedDist !== null) {
+      distanceM = parsedDist;
+      referenceCornerWall = parseOrientation(rawCorner);
+    }
+  } else {
+    // Distancia sin esquina especificada: "a 0.50m", "a 1 metro", "a 50cm"
+    const distOnlyMatch = text.match(/a\s+([0-9.,]+(?:\s*(?:cm|centimetros?|metros?|mts?|m))?|un\s+metro|[a-z]+)(?:\s*(?:del?\s+borde|del?\s+inicio|de\s+la\s+esquina))?/i);
+    if (distOnlyMatch) {
+      const parsedDist = parseSpanishNumber(distOnlyMatch[1]);
+      if (parsedDist !== null && parsedDist < 15) {
+        distanceM = parsedDist;
+      }
+    }
+  }
+
+  // Ancho explícito: ej: "de 80cm", "de 0.80", "de 1.20"
+  let widthM: number | undefined = undefined;
+  const widthMatch = text.match(/(?:de|ancho)\s+([0-9.,]+(?:\s*(?:cm|centimetros?|metros?|mts?|m))?)/i);
+  if (widthMatch) {
+    const pw = parseSpanishNumber(widthMatch[1]);
+    if (pw && pw > 0 && pw < 10) widthM = pw;
+  }
+
+  return {
+    action: 'place_opening',
+    openingType,
+    wallReference,
+    referenceCornerWall,
+    distanceM,
+    centered: isCentered,
+    widthM
+  };
 }
 
 /**
@@ -360,10 +465,10 @@ function tryParseRecordMeasurement(text: string): RecordMeasurementIntent | null
 
 function parseOrientation(word: string): RelativeOrientation {
   const clean = normalizeNlpText(word);
+  if (clean.includes('oeste')) return 'oeste';
+  if (clean.includes('este')) return 'este';
   if (clean.includes('norte')) return 'norte';
   if (clean.includes('sur')) return 'sur';
-  if (clean.includes('este')) return 'este';
-  if (clean.includes('oeste')) return 'oeste';
   if (clean.includes('derecha')) return 'derecha';
   if (clean.includes('izquierda')) return 'izquierda';
   if (clean.includes('frente')) return 'frente';
@@ -374,38 +479,60 @@ function parseOrientation(word: string): RelativeOrientation {
 function extractOpeningsFromText(text: string): Array<{
   type: NlpOpeningType;
   wall: RelativeOrientation;
+  referenceCornerWall?: RelativeOrientation;
   centered?: boolean;
   distanceFromCornerM?: number;
 }> {
   const openings: Array<{
     type: NlpOpeningType;
     wall: RelativeOrientation;
+    referenceCornerWall?: RelativeOrientation;
     centered?: boolean;
     distanceFromCornerM?: number;
   }> = [];
 
-  // Buscar puertas
-  const doorMatches = text.matchAll(/(?:puerta|ingreso|acceso)\s+(?:en\s+(?:la\s+)?pared\s+([a-z]+)|al\s+([a-z]+))/g);
+  // Buscar puertas: captura puerta [en pared norte | al norte] [detalles...]
+  const doorMatches = text.matchAll(/(?:puerta|porton|ingreso|acceso)\s+(?:en\s+(?:la\s+)?pared\s+([a-z]+)|al\s+([a-z]+))(.*?)(?=(?:puerta|ventana|porton|ingreso|acceso|$))/g);
   for (const m of doorMatches) {
     const wallWord = m[1] || m[2];
+    const details = m[3] || '';
     if (wallWord) {
+      let dist: number | undefined = undefined;
+      let corner: RelativeOrientation | undefined = undefined;
+      const cornerMatch = details.match(/a\s+([0-9.,]+(?:\s*(?:cm|centimetros?|metros?|mts?|m))?)\s+(?:de\s+(?:la\s+)?(?:pared|muro|esquina(?: con)?|el)?|del)?\s*([a-z]+)/i);
+      if (cornerMatch) {
+        dist = parseSpanishNumber(cornerMatch[1]) ?? undefined;
+        corner = parseOrientation(cornerMatch[2]);
+      }
       openings.push({
         type: 'door',
         wall: parseOrientation(wallWord),
-        centered: text.includes('centrada') || text.includes('al centro')
+        referenceCornerWall: corner,
+        distanceFromCornerM: dist,
+        centered: details.includes('centrada') || details.includes('al centro') || details.includes('al medio')
       });
     }
   }
 
   // Buscar ventanas
-  const winMatches = text.matchAll(/(?:ventana)\s+(?:en\s+(?:la\s+)?pared\s+([a-z]+)|al\s+([a-z]+))/g);
+  const winMatches = text.matchAll(/(?:ventana|ventanal)\s+(?:en\s+(?:la\s+)?pared\s+([a-z]+)|al\s+([a-z]+))(.*?)(?=(?:puerta|ventana|porton|ingreso|acceso|$))/g);
   for (const m of winMatches) {
     const wallWord = m[1] || m[2];
+    const details = m[3] || '';
     if (wallWord) {
+      let dist: number | undefined = undefined;
+      let corner: RelativeOrientation | undefined = undefined;
+      const cornerMatch = details.match(/a\s+([0-9.,]+(?:\s*(?:cm|centimetros?|metros?|mts?|m))?)\s+(?:de\s+(?:la\s+)?(?:pared|muro|esquina(?: con)?|el)?|del)?\s*([a-z]+)/i);
+      if (cornerMatch) {
+        dist = parseSpanishNumber(cornerMatch[1]) ?? undefined;
+        corner = parseOrientation(cornerMatch[2]);
+      }
       openings.push({
         type: 'window',
         wall: parseOrientation(wallWord),
-        centered: text.includes('centrada') || text.includes('al centro')
+        referenceCornerWall: corner,
+        distanceFromCornerM: dist,
+        centered: details.includes('centrada') || details.includes('al centro') || details.includes('al medio')
       });
     }
   }

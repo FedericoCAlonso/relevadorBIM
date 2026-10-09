@@ -4,6 +4,7 @@ import { executeNaturalLanguageIntent } from '../naturalLanguageTranslator';
 import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
 import type {
   CreateSpaceIntent,
+  PlaceOpeningIntent,
   PlaceElementIntent,
   ConnectConduitIntent,
   RecordMeasurementIntent
@@ -229,5 +230,52 @@ describe('naturalLanguageTranslator — Traductor Determinístico CAD/BIM', () =
     useProjectStore.getState().undo();
 
     expect(useProjectStore.getState().project.walls).toHaveLength(0);
+  });
+
+  it('8. Inserta una abertura individual en un muro existente con cota relativa a esquina', () => {
+    // 1. Crear recinto Living de 4x6
+    const livingIntent: CreateSpaceIntent = {
+      action: 'create_space',
+      name: 'Living',
+      dimensions: { widthM: 4.0, lengthM: 6.0 }
+    };
+    executeNaturalLanguageIntent(livingIntent);
+
+    // 2. Colocar puerta en pared norte a 0.20m de pared este
+    const doorIntent: PlaceOpeningIntent = {
+      action: 'place_opening',
+      openingType: 'door',
+      wallReference: 'norte',
+      referenceCornerWall: 'este',
+      distanceM: 0.20,
+      widthM: 0.80
+    };
+
+    const res = executeNaturalLanguageIntent(doorIntent);
+    expect(res.success).toBe(true);
+    expect(res.createdType).toBe('opening');
+
+    const project = useProjectStore.getState().project;
+    expect(project.openings).toHaveLength(1);
+
+    const door = project.openings[0];
+    expect(door.type).toBe('door');
+    expect(door.width).toBe(0.80);
+
+    // Verificar que la distancia métrica respete la esquina este:
+    // El muro norte tiene ancho 4m (X de 0 a 4 o de 4 a 0 en Y=6).
+    // Con corner = 'este', la puerta está a 0.20m del extremo este (x=4).
+    const hostWall = project.walls.find((w) => w.id === door.wallId)!;
+    const vStart = project.vertices.find((v) => v.id === hostWall.startVertexId)!;
+    const vEnd = project.vertices.find((v) => v.id === hostWall.endVertexId)!;
+
+    // Calcular la posición real en X de los bordes de la puerta
+    const wallLen = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
+    const ux = (vEnd.x - vStart.x) / wallLen;
+    const xJamb1 = vStart.x + ux * door.distanceAlongWall;
+    const xJamb2 = vStart.x + ux * (door.distanceAlongWall + door.width);
+    const closestToEast = Math.max(xJamb1, xJamb2);
+    // Extremo este está en X=4.0
+    expect(closestToEast).toBeCloseTo(3.80, 2); // 4.0 - 0.20 = 3.80
   });
 });
