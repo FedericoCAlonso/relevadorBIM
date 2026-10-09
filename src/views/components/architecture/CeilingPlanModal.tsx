@@ -127,37 +127,38 @@ export const CeilingPlanModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-100 select-none animate-in fade-in duration-200">
       {/* ── BARRA SUPERIOR (TOOLBAR MINIMALISTA) ── */}
-      <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-20">
+      <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between shrink-0 z-20">
         {/* Identificación del Ambiente */}
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl">
-            <Building2 size={18} />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="p-1.5 sm:p-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl shrink-0">
+            <Building2 size={16} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-bold text-sm text-slate-100">{space.name}</h2>
-              <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">
-                RCP · Cielorraso
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-bold text-xs sm:text-sm text-slate-100 truncate">{space.name}</h2>
+              <span className="text-[9px] sm:text-[10px] font-mono font-bold bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full border border-slate-700 shrink-0">
+                RCP
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-mono">
+            <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono truncate">
               {ceilingPlanData.areaM2.toFixed(2)} m² · h: {space.ceilingHeight.toFixed(2)}m
             </p>
           </div>
         </div>
 
         {/* Acciones de Cabecera */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Selector de Materialidad */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setMaterialDropdownOpen(!materialDropdownOpen)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-slate-200 flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-2 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Layers size={14} className="text-blue-400" />
-              <span>{currentMaterial.shortLabel}</span>
-              <ChevronDown size={14} className="text-slate-400" />
+              <Layers size={13} className="text-blue-400 shrink-0" />
+              <span className="hidden sm:inline">{currentMaterial.shortLabel}</span>
+              <span className="sm:hidden text-[11px] max-w-[80px] truncate">{currentMaterial.shortLabel}</span>
+              <ChevronDown size={12} className="text-slate-400 shrink-0" />
             </button>
 
             {materialDropdownOpen && (
@@ -461,36 +462,36 @@ export const CeilingPlanModal: React.FC = () => {
         </svg>
 
         {/* ── CONTROLES DE ZOOM / PAN FLOTANTES ── */}
-        <div className="absolute right-4 bottom-4 flex flex-col gap-1.5 bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl shadow-xl z-20">
+        <div className="absolute right-3 top-3 sm:top-auto sm:bottom-4 flex flex-col gap-1.5 bg-slate-900/90 border border-slate-800 p-1 sm:p-1.5 rounded-2xl shadow-xl z-20">
           <button
             type="button"
             onClick={() => setZoom(zoom * 1.25)}
-            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             title="Acercar (Zoom +)"
           >
-            <ZoomIn size={18} />
+            <ZoomIn size={16} />
           </button>
           <button
             type="button"
             onClick={() => setZoom(zoom * 0.8)}
-            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             title="Alejar (Zoom -)"
           >
-            <ZoomOut size={18} />
+            <ZoomOut size={16} />
           </button>
           <button
             type="button"
             onClick={resetViewport}
-            className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             title="Restablecer Encuadre"
           >
-            <RotateCcw size={18} />
+            <RotateCcw size={16} />
           </button>
         </div>
 
         {/* ── INSPECTOR DE BOCA CENITAL SELECCIONADA ── */}
         {selectedBox && (
-          <aside className="absolute left-4 bottom-4 max-w-sm w-full bg-slate-900/95 border border-slate-800 p-4 rounded-3xl shadow-2xl backdrop-blur-md space-y-3 z-20 animate-in slide-in-from-bottom-4 duration-200">
+          <aside className="absolute inset-x-3 bottom-3 sm:inset-x-auto sm:left-4 sm:bottom-4 sm:max-w-sm sm:w-full bg-slate-900/95 border border-slate-800 p-3.5 sm:p-4 rounded-3xl shadow-2xl backdrop-blur-md space-y-2.5 sm:space-y-3 z-20 animate-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl">

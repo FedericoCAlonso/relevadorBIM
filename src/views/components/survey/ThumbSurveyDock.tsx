@@ -14,6 +14,7 @@ import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { OpeningSwing } from '../../../models/architecture/Opening';
+import { type DimensionLine, calculateDimensionDistance } from '../../../models/architecture/DimensionLine';
 import type { ConduitRoutingMode, ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
 import { getWallLength } from '../../../models/architecture/Wall';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
@@ -123,7 +124,9 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     activeAnchorVertexId,
     project,
     selectedEntity,
+    selectedEntities,
     setSelectedEntity,
+    clearSelection,
     undoLastWall,
     deleteWall,
     updateOpening,
@@ -132,6 +135,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     deleteElectricalElement,
     updateConduit,
     deleteConduit,
+    deleteDimensionLine,
     deleteColumn,
     deleteBeam,
     updateColumn
@@ -164,6 +168,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     selectedEntity?.type === 'column' ? (project.columns || []).find((c) => c.id === selectedEntity.id) : null;
   const selectedBeam =
     selectedEntity?.type === 'beam' ? (project.beams || []).find((b) => b.id === selectedEntity.id) : null;
+  const selectedDimension =
+    selectedEntity?.type === 'dimension'
+      ? (project.dimensions || []).find((d: DimensionLine) => d.id === selectedEntity.id)
+      : null;
 
   const anchorVertex = activeAnchorVertexId ? verticesMap.get(activeAnchorVertexId) : null;
   const anchorLabel = anchorVertex
@@ -354,10 +362,11 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             <button
               type="button"
               onClick={onClosePlacingSymbol}
-              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer shrink-0 ml-1"
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 ml-1 transition-transform"
               title="Finalizar colocación (Esc)"
             >
-              <X size={16} />
+              <X size={13} />
+              <span>Finalizar</span>
             </button>
           )}
         </div>
@@ -422,9 +431,70 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  // CASO 1: INSPECTOR CONTEXTUAL (Elemento Seleccionado en el Plano)
+  // CASO 1A: INSPECTOR DE SELECCIÓN POR LOTE (Múltiples elementos)
   // ═════════════════════════════════════════════════════════════════════════
-  if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit || selectedColumn || selectedBeam) {
+  if (selectedEntities.length > 1) {
+    return (
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-indigo-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation text-white animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+          <div className="flex items-center gap-1.5 font-bold text-indigo-300 truncate min-w-0">
+            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping shrink-0" />
+            <span className="truncate">📦 Lote: {selectedEntities.length} elementos seleccionados</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="p-1 text-slate-400 hover:text-white rounded-lg shrink-0 ml-1 cursor-pointer"
+            title="Deseleccionar todos"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 py-0.5 w-full min-w-0">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-bulk-edit-modal'))}
+            className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer truncate"
+          >
+            <SlidersHorizontal size={14} className="shrink-0" />
+            <span className="truncate">Editar en Lote</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`¿Eliminar los ${selectedEntities.length} elementos seleccionados?`)) {
+                selectedEntities.forEach((entity) => {
+                  if (entity.type === 'wall') deleteWall(entity.id);
+                  else if (entity.type === 'opening') deleteOpening(entity.id);
+                  else if (entity.type === 'electrical_element') deleteElectricalElement(entity.id);
+                  else if (entity.type === 'conduit') deleteConduit(entity.id);
+                  else if (entity.type === 'dimension') deleteDimensionLine(entity.id);
+                  else if (entity.type === 'column') deleteColumn(entity.id);
+                  else if (entity.type === 'beam') deleteBeam(entity.id);
+                });
+                clearSelection();
+              }
+            }}
+            className="py-2 px-3 bg-red-600/20 hover:bg-red-600 active:scale-95 text-red-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-red-500/40 transition-all cursor-pointer shrink-0"
+            title="Eliminar todos los elementos seleccionados"
+          >
+            <Trash2 size={14} className="shrink-0" />
+            <span>Eliminar Lote</span>
+          </button>
+        </div>
+      </footer>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CASO 1B: INSPECTOR CONTEXTUAL (Elemento Único Seleccionado en el Plano)
+  // ═════════════════════════════════════════════════════════════════════════
+  if (selectedWall || selectedOpening || selectedElectricalElement || selectedConduit || selectedColumn || selectedBeam || selectedDimension) {
     return (
       <footer
         className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
@@ -1014,6 +1084,52 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             </div>
           </>
         )}
+
+        {/* ── Inspector de Línea de Cota Métrica ── */}
+        {selectedDimension && (() => {
+          const dimDistance = calculateDimensionDistance(selectedDimension.p1, selectedDimension.p2);
+          return (
+            <>
+              <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
+                <div className="flex items-center gap-1.5 font-medium text-slate-800 truncate min-w-0">
+                  <Ruler size={14} className="text-blue-600 shrink-0" />
+                  <span className="font-bold shrink-0">Cota Métrica:</span>
+                  <span className="font-mono font-bold text-blue-950 truncate">
+                    {dimDistance.toFixed(2)}m
+                  </span>
+                  <span className="text-slate-400 text-[11px] truncate">
+                    (Nivel: {project.levels.find((l) => l.id === selectedDimension.levelId)?.name || 'Activo'})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEntity(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1 cursor-pointer"
+                  title="Cerrar selección"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">
+                <span className="text-[11px] text-slate-500 font-mono px-2 py-1 bg-slate-100 rounded-lg truncate">
+                  ({selectedDimension.p1.x.toFixed(2)}, {selectedDimension.p1.y.toFixed(2)}) ➔ ({selectedDimension.p2.x.toFixed(2)}, {selectedDimension.p2.y.toFixed(2)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteDimensionLine(selectedDimension.id);
+                    setSelectedEntity(null);
+                  }}
+                  className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors ml-auto flex-shrink-0 cursor-pointer"
+                  title="Eliminar cota métrica"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </>
+          );
+        })()}
       </footer>
     );
   }

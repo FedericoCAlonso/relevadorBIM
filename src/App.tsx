@@ -310,12 +310,14 @@ export function App() {
     const handleOpenElement = () => setShowElementModal(true);
     const handleOpenConduit = () => setShowConduitModal(true);
     const handleOpenBranch = () => setShowBranchModal(true);
+    const handleOpenBulkEdit = () => setShowBulkEditModal(true);
 
     window.addEventListener('open-tee-modal', handleOpenTee);
     window.addEventListener('open-opening-modal', handleOpenOpening);
     window.addEventListener('open-element-edit-modal', handleOpenElement);
     window.addEventListener('open-conduit-edit-modal', handleOpenConduit);
     window.addEventListener('open-branch-edit-modal', handleOpenBranch);
+    window.addEventListener('open-bulk-edit-modal', handleOpenBulkEdit);
 
     return () => {
       window.removeEventListener('open-tee-modal', handleOpenTee);
@@ -323,6 +325,7 @@ export function App() {
       window.removeEventListener('open-element-edit-modal', handleOpenElement);
       window.removeEventListener('open-conduit-edit-modal', handleOpenConduit);
       window.removeEventListener('open-branch-edit-modal', handleOpenBranch);
+      window.removeEventListener('open-bulk-edit-modal', handleOpenBulkEdit);
     };
   }, []);
 
@@ -725,8 +728,8 @@ export function App() {
 
           {/* Barra interactiva de control cuando hay muestras o patrones activos */}
           {positiveExemplars.length > 0 && (
-            <div className={`absolute left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center justify-center gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto max-w-[95vw] ${
-              isDesktop ? 'bottom-6' : 'bottom-48'
+            <div className={`absolute left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-md text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl shadow-2xl border border-cyan-500/50 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs animate-in fade-in slide-in-from-bottom-3 pointer-events-auto max-w-[95vw] ${
+              isDesktop ? 'bottom-6' : 'bottom-40'
             }`}>
               {/* Badge de cantidad detectada y ejemplares */}
               <div className="flex items-center gap-2">
