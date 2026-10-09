@@ -18,6 +18,17 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
     expect(parseSpanishNumber('20cm')).toBe(0.20);
     expect(parseSpanishNumber('80 centimetros')).toBe(0.80);
     expect(parseSpanishNumber('4 metros')).toBe(4);
+    expect(parseSpanishNumber('10.3')).toBe(10.3);
+    expect(parseSpanishNumber('10')).toBe(10);
+    expect(parseSpanishNumber('12')).toBe(12);
+    expect(parseSpanishNumber('15')).toBe(15);
+    expect(parseSpanishNumber('10.3 metros')).toBe(10.3);
+    expect(parseSpanishNumber('10 con 3')).toBe(10.3);
+    expect(parseSpanishNumber('10 coma 3')).toBe(10.3);
+    expect(parseSpanishNumber('1 metro 20')).toBe(1.20);
+    expect(parseSpanishNumber('2 metros 50')).toBe(2.50);
+    expect(parseSpanishNumber('un metro y medio')).toBe(1.50);
+    expect(parseSpanishNumber('treinta y cinco')).toBe(35);
   });
 
   describe('Creación de Recintos', () => {
@@ -61,6 +72,19 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
       expect(i4?.action).toBe('create_space');
       if (i4?.action === 'create_space') {
         expect(i4.dimensions).toEqual({ widthM: 4.5, lengthM: 6.2 });
+      }
+
+      const i5 = parseNaturalLanguageFast('living de 4 por 10.3');
+      expect(i5?.action).toBe('create_space');
+      if (i5?.action === 'create_space') {
+        expect(i5.name).toBe('Living');
+        expect(i5.dimensions).toEqual({ widthM: 4, lengthM: 10.3 });
+      }
+
+      const i6 = parseNaturalLanguageFast('living de 4 por 10 con 3');
+      expect(i6?.action).toBe('create_space');
+      if (i6?.action === 'create_space') {
+        expect(i6.dimensions).toEqual({ widthM: 4, lengthM: 10.3 });
       }
     });
 

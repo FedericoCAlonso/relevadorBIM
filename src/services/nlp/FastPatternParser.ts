@@ -30,6 +30,8 @@ export function normalizeNlpText(raw: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Quitar tildes
+    .replace(/(\d+)\s+(?:coma|punto)\s+(\d+)/g, '$1.$2') // "10 coma 3", "10 punto 3" -> "10.3"
+    .replace(/(\d+)\s+con\s+(\d+)/g, '$1.$2') // "10 con 3" -> "10.3", "1 con 20" -> "1.20"
     .replace(/(\d+),(\d+)/g, '$1.$2') // Coma decimal: "0,2" -> "0.2"
     .replace(/\*+/g, ' x ') // Dictado que transcribe * por multiplicación
     .replace(/[¡!¿?]/g, ' ')
@@ -41,31 +43,45 @@ export function normalizeNlpText(raw: string): string {
 
 /**
  * Convierte expresiones numéricas comunes en español hablado a números flotantes.
- * Ejemplos: "cuatro" -> 4, "tres y medio" -> 3.5, "un metro veinte" -> 1.20, "20cm" -> 0.20
+ * Ejemplos: "cuatro" -> 4, "tres y medio" -> 3.5, "un metro veinte" -> 1.20, "20cm" -> 0.20, "10.3" -> 10.3
  */
 export function parseSpanishNumber(raw: string): number | null {
   const text = normalizeNlpText(raw);
+  if (!text) return null;
 
-  // Expresiones de centímetros: "20cm", "20 cm", "20 centimetros", "80cm"
+  // 1. Expresiones explícitas de centímetros: "20cm", "20 cm", "20 centimetros", "80cm"
   const cmMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:cm|centimetros?)\b/);
   if (cmMatch) {
     const val = parseFloat(cmMatch[1]);
     if (!isNaN(val)) return val / 100;
   }
 
-  // Expresiones mixtas tipo "uno veinte", "un metro veinte", "1 metro 20"
-  const meterMatch = text.match(/^(?:un|1)?\s*(?:metro|m|mts?)?\s*(?:con)?\s*(\d+(?:[.,]\d+)?)(?:\s*(?:metros?|m|mts?))?$/);
-  if (meterMatch) {
-    const val = parseFloat(meterMatch[1].replace(',', '.'));
-    if (!isNaN(val)) return val > 10 ? val / 100 : val;
+  // 2. Número directo numérico (entero o decimal, con unidad opcional de metros):
+  // Ejemplos: "4", "10.3", "0.20", "15", "4 metros", "10.3m", "10.3 mts"
+  const directMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:metros?|mts?|m)?$/);
+  if (directMatch) {
+    const val = parseFloat(directMatch[1]);
+    if (!isNaN(val)) return val;
   }
 
-  const compoundMatch = text.match(/^(?:un|1)\s+(?:metro\s+)?(\d{2})$/);
-  if (compoundMatch) {
-    return 1 + parseInt(compoundMatch[1], 10) / 100;
+  // 3. Expresiones compuestas de metros + centímetros en dígitos:
+  // "1 metro 20", "un metro 20", "2 metros 50", "1 m 20"
+  const compoundMeterMatch = text.match(/^(un|uno|\d+)\s*(?:metros?|m|mts?)\s*(?:con\s+)?(\d{1,2})$/);
+  if (compoundMeterMatch) {
+    const basePart = compoundMeterMatch[1];
+    const base = (basePart === 'un' || basePart === 'uno') ? 1 : parseInt(basePart, 10);
+    const cmStr = compoundMeterMatch[2];
+    const cmVal = parseInt(cmStr, 10) / (cmStr.length === 1 ? 10 : 100);
+    return base + cmVal;
   }
 
-  // Palabras directas
+  // 4. Par de dígitos coloquiales: "1 20" -> 1.20, "2 50" -> 2.50
+  const pairDigitsMatch = text.match(/^([1-9])\s+(\d{2})$/);
+  if (pairDigitsMatch) {
+    return parseInt(pairDigitsMatch[1], 10) + parseInt(pairDigitsMatch[2], 10) / 100;
+  }
+
+  // 5. Catálogo de palabras numéricas en español
   const wordToNum: Record<string, number> = {
     cero: 0,
     medio: 0.5,
@@ -83,32 +99,68 @@ export function parseSpanishNumber(raw: string): number | null {
     diez: 10,
     once: 11,
     doce: 12,
+    trece: 13,
+    catorce: 14,
     quince: 15,
+    dieciseis: 16,
+    diecisiete: 17,
+    dieciocho: 18,
     diecinueve: 19,
     veinte: 20,
+    veintiuno: 21,
     veintidos: 22,
+    veintitres: 23,
+    veinticuatro: 24,
     veinticinco: 25,
+    veintiseis: 26,
+    veintisiete: 27,
+    veintiocho: 28,
+    veintinueve: 29,
     treinta: 30,
     cuarenta: 40,
-    cincuenta: 50
+    cincuenta: 50,
+    sesenta: 60,
+    setenta: 70,
+    ochenta: 80,
+    noventa: 90,
+    cien: 100
   };
 
-  const meterWordsMatch = text.match(/^(?:un|1)\s*(?:metro|m|mts?)?\s*(?:con\s+)?([a-z]+)$/);
+  // 6. Palabras de metros + palabras de centímetros: "un metro veinte", "dos metros cincuenta"
+  const meterWordsMatch = text.match(/^(un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s*(?:metros?|m|mts?)\s*(?:con\s+)?([a-z]+)$/);
   if (meterWordsMatch) {
-    const sub = meterWordsMatch[1];
-    const subVal = wordToNum[sub];
-    if (subVal !== undefined) {
-      return 1 + subVal / 100;
+    const baseWord = meterWordsMatch[1];
+    const subWord = meterWordsMatch[2];
+    const baseVal = wordToNum[baseWord] ?? parseInt(baseWord, 10);
+    const subVal = wordToNum[subWord];
+    if (baseVal !== undefined && !isNaN(baseVal) && subVal !== undefined) {
+      return baseVal + (subVal >= 10 ? subVal / 100 : subVal / 10);
     }
   }
 
+  // 7. Modificadores de fracción: "tres y medio", "un metro y medio", "dos y cuarto"
   if (text.includes(' y medio')) {
-    const base = text.replace(' y medio', '').trim();
+    const base = text.replace(' y medio', '').replace(/\s*(?:metros?|mts?|m)\b/g, '').trim();
     const baseVal = wordToNum[base] ?? parseFloat(base);
     if (!isNaN(baseVal)) return baseVal + 0.5;
   }
+  if (text.includes(' y cuarto')) {
+    const base = text.replace(' y cuarto', '').replace(/\s*(?:metros?|mts?|m)\b/g, '').trim();
+    const baseVal = wordToNum[base] ?? parseFloat(base);
+    if (!isNaN(baseVal)) return baseVal + 0.25;
+  }
 
-  // Limpiar unidad final si existe: "4 metros" -> "4", "cuatro metros" -> "cuatro"
+  // 8. Decenas compuestas en palabras: "treinta y cinco", "cuarenta y dos"
+  const tensMatch = text.match(/^(treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)\s+y\s+(un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)$/);
+  if (tensMatch) {
+    const tens = wordToNum[tensMatch[1]];
+    const units = wordToNum[tensMatch[2]];
+    if (tens !== undefined && units !== undefined) {
+      return tens + units;
+    }
+  }
+
+  // 9. Limpiar unidad final si existe: "4 metros" -> "4", "cuatro metros" -> "cuatro"
   const cleanUnit = text.replace(/\s*(?:metros?|mts?|m)\b/g, '').trim();
   if (wordToNum[cleanUnit] !== undefined) return wordToNum[cleanUnit];
   if (wordToNum[text] !== undefined) return wordToNum[text];
