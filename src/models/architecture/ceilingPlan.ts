@@ -75,6 +75,124 @@ export function getCeilingMaterialOption(type?: CeilingMaterialType): CeilingMat
   return CEILING_MATERIAL_OPTIONS.find((opt) => opt.id === type) || CEILING_MATERIAL_OPTIONS[0];
 }
 
+export type CeilingDistributionPresetType =
+  | '1_center'
+  | '2_linear'
+  | '3_linear'
+  | '4_grid'
+  | '6_grid';
+
+export interface CeilingDistributionPresetOption {
+  readonly id: CeilingDistributionPresetType;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly count: number;
+  readonly cols: (isWide: boolean) => number;
+  readonly rows: (isWide: boolean) => number;
+  readonly description: string;
+}
+
+export const CEILING_DISTRIBUTION_PRESETS: readonly CeilingDistributionPresetOption[] = [
+  {
+    id: '1_center',
+    label: '1 Boca (Centro)',
+    shortLabel: '1 Centro',
+    count: 1,
+    cols: () => 1,
+    rows: () => 1,
+    description: 'Boca única en el baricentro de la habitación.'
+  },
+  {
+    id: '2_linear',
+    label: '2 Bocas (En Línea)',
+    shortLabel: '2 en Línea',
+    count: 2,
+    cols: (isWide) => (isWide ? 2 : 1),
+    rows: (isWide) => (isWide ? 1 : 2),
+    description: 'Distribuidas a 1/4 y 3/4 a lo largo del eje principal.'
+  },
+  {
+    id: '3_linear',
+    label: '3 Bocas (En Línea)',
+    shortLabel: '3 en Línea',
+    count: 3,
+    cols: (isWide) => (isWide ? 3 : 1),
+    rows: (isWide) => (isWide ? 1 : 3),
+    description: '3 bocas equidistantes a lo largo del eje principal.'
+  },
+  {
+    id: '4_grid',
+    label: '4 Bocas (Matriz 2×2)',
+    shortLabel: '4 (2×2)',
+    count: 4,
+    cols: () => 2,
+    rows: () => 2,
+    description: 'Cuadrícula simétrica de 2 columnas por 2 filas.'
+  },
+  {
+    id: '6_grid',
+    label: '6 Bocas (Matriz 3×2)',
+    shortLabel: '6 (3×2)',
+    count: 6,
+    cols: (isWide) => (isWide ? 3 : 2),
+    rows: (isWide) => (isWide ? 2 : 3),
+    description: 'Distribución uniforme de 6 luminarias en matriz 3×2.'
+  }
+];
+
+export interface CeilingBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Calcula una cuadrícula ortogonal simétrica de bocas dentro de los límites del cielorraso.
+ * Aplica la regla estándar de distribución luminotécnica:
+ * distancia al muro perimetral = mitad de la separación entre bocas (d = S / 2).
+ */
+export function computeCeilingGridDistribution(params: {
+  bounds: CeilingBounds;
+  cols: number;
+  rows: number;
+}): Vector2D[] {
+  const { bounds, cols, rows } = params;
+  if (cols <= 0 || rows <= 0) return [];
+  const points: Vector2D[] = [];
+  const colStep = bounds.width / cols;
+  const rowStep = bounds.height / rows;
+
+  for (let r = 0; r < rows; r++) {
+    const y = bounds.minY + (r + 0.5) * rowStep;
+    for (let c = 0; c < cols; c++) {
+      const x = bounds.minX + (c + 0.5) * colStep;
+      points.push({
+        x: Number(x.toFixed(3)),
+        y: Number(y.toFixed(3))
+      });
+    }
+  }
+  return points;
+}
+
+/**
+ * Calcula las coordenadas de replanteo para un preset predefinido de distribución.
+ */
+export function calculatePresetDistribution(
+  presetId: CeilingDistributionPresetType,
+  bounds: CeilingBounds
+): Vector2D[] {
+  const preset = CEILING_DISTRIBUTION_PRESETS.find((p) => p.id === presetId);
+  if (!preset) return [];
+  const isWide = bounds.width >= bounds.height;
+  const cols = preset.cols(isWide);
+  const rows = preset.rows(isWide);
+  return computeCeilingGridDistribution({ bounds, cols, rows });
+}
+
 /**
  * Determina el contorno interior efectivo del cielorraso para un ambiente.
  * Si es cubierto, retorna el polígono de muros interiores.

@@ -4,7 +4,8 @@ import {
   setCeilingMaterialInStore,
   addCeilingBoxInStore,
   centerCeilingBoxInStore,
-  deleteCeilingBoxInStore
+  deleteCeilingBoxInStore,
+  distributeCeilingBoxesInStore
 } from '../useCeilingPlanViewModel';
 import { useProjectStore } from '../useProjectStore';
 
@@ -115,4 +116,37 @@ describe('ViewModel: Plano de Cielorraso Reflejado (useCeilingPlanViewModel)', (
     deleteCeilingBoxInStore(elementId);
     expect(useProjectStore.getState().project.electricalElements.length).toBe(0);
   });
+
+  it('permite distribuir múltiples bocas simétricamente reemplazando las anteriores', () => {
+    // 1 boca inicial existente
+    addCeilingBoxInStore('sp-101', { x: 3.0, y: 2.0 });
+    expect(useProjectStore.getState().project.electricalElements.length).toBe(1);
+
+    // Distribuir 4 bocas (matriz 2x2) reemplazando la existente
+    const positions = [
+      { x: 1.5, y: 1.0 },
+      { x: 4.5, y: 1.0 },
+      { x: 1.5, y: 3.0 },
+      { x: 4.5, y: 3.0 }
+    ];
+    const createdIds = distributeCeilingBoxesInStore('sp-101', positions, true);
+
+    expect(createdIds.length).toBe(4);
+    const elements = useProjectStore.getState().project.electricalElements;
+    expect(elements.length).toBe(4);
+    expect(elements.every(e => e.placement === 'ceiling')).toBe(true);
+    expect(elements.every(e => e.spaceId === 'sp-101')).toBe(true);
+  });
+
+  it('permite activar y alternar el modo de colocación directa al tocar (placeMode)', () => {
+    const store = useCeilingPlanStore.getState();
+    expect(store.isPlaceMode).toBe(false);
+
+    store.togglePlaceMode();
+    expect(useCeilingPlanStore.getState().isPlaceMode).toBe(true);
+
+    store.setPlaceMode(false);
+    expect(useCeilingPlanStore.getState().isPlaceMode).toBe(false);
+  });
 });
+

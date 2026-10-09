@@ -12,7 +12,10 @@ import { useProjectStore } from './useProjectStore';
 import {
   buildCeilingPlanData,
   type CeilingMaterialType,
-  type CeilingPlanData
+  type CeilingPlanData,
+  type CeilingDistributionPresetType,
+  calculatePresetDistribution,
+  computeCeilingGridDistribution
 } from '../models/architecture/ceilingPlan';
 import {
   resolveSpacePolygon,
@@ -26,6 +29,7 @@ export interface CeilingPlanStoreState {
   showDimensions: boolean;
   showWallDrops: boolean;
   showModularGrid: boolean;
+  isPlaceMode: boolean;
   zoom: number;
   panOffset: { x: number; y: number };
 
@@ -35,6 +39,8 @@ export interface CeilingPlanStoreState {
   toggleDimensions: () => void;
   toggleWallDrops: () => void;
   toggleModularGrid: () => void;
+  setPlaceMode: (active: boolean) => void;
+  togglePlaceMode: () => void;
   setZoom: (zoom: number) => void;
   setPan: (pan: { x: number; y: number }) => void;
   resetViewport: () => void;
@@ -46,6 +52,7 @@ export const useCeilingPlanStore = create<CeilingPlanStoreState>((set) => ({
   showDimensions: true,
   showWallDrops: true,
   showModularGrid: true,
+  isPlaceMode: false,
   zoom: 1,
   panOffset: { x: 0, y: 0 },
 
@@ -53,6 +60,7 @@ export const useCeilingPlanStore = create<CeilingPlanStoreState>((set) => ({
     set({
       activeSpaceId: spaceId,
       selectedBoxId: null,
+      isPlaceMode: false,
       zoom: 1,
       panOffset: { x: 0, y: 0 }
     }),
@@ -60,7 +68,8 @@ export const useCeilingPlanStore = create<CeilingPlanStoreState>((set) => ({
   closeCeilingPlan: () =>
     set({
       activeSpaceId: null,
-      selectedBoxId: null
+      selectedBoxId: null,
+      isPlaceMode: false
     }),
 
   setSelectedBoxId: (id: string | null) => set({ selectedBoxId: id }),
@@ -70,6 +79,10 @@ export const useCeilingPlanStore = create<CeilingPlanStoreState>((set) => ({
   toggleWallDrops: () => set((state) => ({ showWallDrops: !state.showWallDrops })),
 
   toggleModularGrid: () => set((state) => ({ showModularGrid: !state.showModularGrid })),
+
+  setPlaceMode: (active: boolean) => set({ isPlaceMode: active }),
+
+  togglePlaceMode: () => set((state) => ({ isPlaceMode: !state.isPlaceMode })),
 
   setZoom: (zoom: number) => set({ zoom: Math.max(0.4, Math.min(zoom, 4)) }),
 
@@ -140,6 +153,41 @@ export function deleteCeilingBoxInStore(elementId: string): void {
 }
 
 /**
+ * Distribuye un conjunto de bocas en el cielorraso del ambiente.
+ * Si replaceExisting es true, elimina primero las bocas de techo existentes en este ambiente.
+ */
+export function distributeCeilingBoxesInStore(
+  spaceId: string,
+  positions: Array<{ x: number; y: number }>,
+  replaceExisting: boolean = true,
+  symbolId: string = 'sym-planta-boca-techo'
+): string[] {
+  const store = useProjectStore.getState();
+  const space = store.project.spaces.find((s) => s.id === spaceId);
+  if (!space || positions.length === 0) return [];
+
+  if (replaceExisting) {
+    // Buscar elementos existentes en cielorraso pertenecientes a este espacio
+    const existingCeilingElements = store.project.electricalElements.filter(
+      (el) =>
+        el.levelId === space.levelId &&
+        (el.spaceId === spaceId || el.placement === 'ceiling') &&
+        (el.placement === 'ceiling' || el.symbolId.includes('techo') || el.symbolId.includes('dicroica'))
+    );
+    for (const el of existingCeilingElements) {
+      store.deleteElectricalElement(el.id);
+    }
+  }
+
+  const createdIds: string[] = [];
+  for (const pos of positions) {
+    const id = addCeilingBoxInStore(spaceId, pos, symbolId);
+    createdIds.push(id);
+  }
+  return createdIds;
+}
+
+/**
  * Mueve una boca cenital a una nueva posición en el cielorraso.
  */
 export function moveCeilingBoxInStore(elementId: string, newPos: { x: number; y: number }): void {
@@ -158,6 +206,7 @@ export function useCeilingPlanViewModel() {
   const showDimensions = useCeilingPlanStore((s) => s.showDimensions);
   const showWallDrops = useCeilingPlanStore((s) => s.showWallDrops);
   const showModularGrid = useCeilingPlanStore((s) => s.showModularGrid);
+  const isPlaceMode = useCeilingPlanStore((s) => s.isPlaceMode);
   const zoom = useCeilingPlanStore((s) => s.zoom);
   const panOffset = useCeilingPlanStore((s) => s.panOffset);
 
@@ -167,6 +216,8 @@ export function useCeilingPlanViewModel() {
   const toggleDimensions = useCeilingPlanStore((s) => s.toggleDimensions);
   const toggleWallDrops = useCeilingPlanStore((s) => s.toggleWallDrops);
   const toggleModularGrid = useCeilingPlanStore((s) => s.toggleModularGrid);
+  const setPlaceMode = useCeilingPlanStore((s) => s.setPlaceMode);
+  const togglePlaceMode = useCeilingPlanStore((s) => s.togglePlaceMode);
   const setZoom = useCeilingPlanStore((s) => s.setZoom);
   const setPan = useCeilingPlanStore((s) => s.setPan);
   const resetViewport = useCeilingPlanStore((s) => s.resetViewport);
@@ -230,6 +281,40 @@ export function useCeilingPlanViewModel() {
     [activeSpaceId, setSelectedBoxId]
   );
 
+  const distributeBoxes = useCallback(
+    (positions: Array<{ x: number; y: number }>, replaceExisting: boolean = true, symbolId?: string) => {
+      if (!activeSpaceId) return [];
+      const ids = distributeCeilingBoxesInStore(activeSpaceId, positions, replaceExisting, symbolId);
+      if (ids.length > 0) {
+        setSelectedBoxId(ids[0]);
+      }
+      return ids;
+    },
+    [activeSpaceId, setSelectedBoxId]
+  );
+
+  const applyDistributionPreset = useCallback(
+    (presetId: CeilingDistributionPresetType, replaceExisting: boolean = true, symbolId?: string) => {
+      if (!ceilingPlanData || !activeSpaceId) return [];
+      const positions = calculatePresetDistribution(presetId, ceilingPlanData.bounds);
+      return distributeBoxes(positions, replaceExisting, symbolId);
+    },
+    [activeSpaceId, ceilingPlanData, distributeBoxes]
+  );
+
+  const applyCustomGridDistribution = useCallback(
+    (cols: number, rows: number, replaceExisting: boolean = true, symbolId?: string) => {
+      if (!ceilingPlanData || !activeSpaceId) return [];
+      const positions = computeCeilingGridDistribution({
+        bounds: ceilingPlanData.bounds,
+        cols,
+        rows
+      });
+      return distributeBoxes(positions, replaceExisting, symbolId);
+    },
+    [activeSpaceId, ceilingPlanData, distributeBoxes]
+  );
+
   const deleteBox = useCallback(
     (elementId: string) => {
       deleteCeilingBoxInStore(elementId);
@@ -253,6 +338,7 @@ export function useCeilingPlanViewModel() {
     showDimensions,
     showWallDrops,
     showModularGrid,
+    isPlaceMode,
     zoom,
     panOffset,
 
@@ -263,6 +349,8 @@ export function useCeilingPlanViewModel() {
     toggleDimensions,
     toggleWallDrops,
     toggleModularGrid,
+    setPlaceMode,
+    togglePlaceMode,
     setZoom,
     setPan,
     resetViewport,
@@ -271,6 +359,9 @@ export function useCeilingPlanViewModel() {
     setMaterial,
     addBoxAt,
     centerBox,
+    distributeBoxes,
+    applyDistributionPreset,
+    applyCustomGridDistribution,
     deleteBox,
     moveBox
   };

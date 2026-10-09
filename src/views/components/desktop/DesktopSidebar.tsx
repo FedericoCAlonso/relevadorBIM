@@ -20,7 +20,9 @@ import {
 import {
   isSpaceOpenAir,
   isSpaceSemiCovered,
-  calculateSpaceMetrics
+  calculateSpaceMetrics,
+  SPACE_COVER_TYPE_OPTIONS,
+  getSpaceCoverOption
 } from '../../../models/architecture/Space';
 import { calculateProjectLimitSurface } from '../../../models/electrical/electricalStandards';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -53,7 +55,10 @@ import {
   Edit2,
   GitBranch,
   Eye,
-  Cloud
+  Cloud,
+  Home,
+  Umbrella,
+  Sun
 } from 'lucide-react';
 import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
@@ -1647,6 +1652,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   const isOpenAir = isSpaceOpenAir(space);
                   const isSemi = isSpaceSemiCovered(space);
 
+                  const coverOption = getSpaceCoverOption(space.coverType);
                   const roomSuggestions = ['Living', 'Comedor', 'Cocina', 'Dormitorio 1', 'Dormitorio 2', 'Baño', 'Pasillo', 'Lavadero', 'Balcón', 'Galería', 'Patio'];
                   const heightPresets = [2.60, 2.70, 2.80, 3.00];
 
@@ -1672,7 +1678,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               ? 'bg-cyan-100 text-cyan-800'
                               : 'bg-slate-100 text-slate-700'
                           }`}>
-                            {isOpenAir ? 'Descubierto' : isSemi ? 'Semicubierto' : 'Cubierto'}
+                            {coverOption.shortLabel}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -1723,10 +1729,132 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         ))}
                       </div>
 
-                      {/* Altura de Cielorraso o Aviso de Descubierto */}
-                      {isOpenAir ? (
+                      {/* Tipo de Recinto y Cubierta (AEA 771) */}
+                      <div className="space-y-1.5 pt-1 border-t border-slate-200/80">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-500">TIPO DE CUBIERTA (AEA 771)</label>
+                          <span className="text-[10px] font-mono font-bold text-slate-600">
+                            {coverOption.aeaAreaFactor === 1 ? '100% AEA' : coverOption.aeaAreaFactor === 0.5 ? '50% AEA' : '0% AEA'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {SPACE_COVER_TYPE_OPTIONS.map((opt) => {
+                            const isTypeSelected = (space.coverType || 'cubierto') === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => {
+                                  updateSpace(space.id, {
+                                    coverType: opt.id,
+                                    category: opt.defaultCategory,
+                                    ceilingProjection:
+                                      opt.id === 'semicubierto'
+                                        ? space.ceilingProjection || { mode: 'total', overhangDepth: 1.50 }
+                                        : space.ceilingProjection
+                                  });
+                                }}
+                                className={`px-2 py-1.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                  isTypeSelected
+                                    ? 'bg-blue-600 text-white border-blue-700 shadow-xs font-bold'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                                }`}
+                                title={opt.description}
+                              >
+                                {opt.id === 'cubierto' && <Home size={13} className={isTypeSelected ? 'text-white' : 'text-blue-600'} />}
+                                {opt.id === 'semicubierto' && <Umbrella size={13} className={isTypeSelected ? 'text-white' : 'text-cyan-600'} />}
+                                {opt.id === 'descubierto' && <Sun size={13} className={isTypeSelected ? 'text-white' : 'text-amber-500'} />}
+                                {opt.id === 'vacio' && <Layers size={13} className={isTypeSelected ? 'text-white' : 'text-slate-400'} />}
+                                <div className="min-w-0">
+                                  <span className="text-[11px] block leading-tight truncate">{opt.shortLabel}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Proyección de Alero para Semicubierto */}
+                      {isSemi && (
+                        <div className="p-2.5 bg-cyan-50/70 border border-cyan-200 rounded-xl space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-cyan-900">
+                            <span className="flex items-center gap-1">
+                              <Umbrella size={12} className="text-cyan-600" />
+                              <span>Proyección de Techo / Alero</span>
+                            </span>
+                            <span className="font-mono text-cyan-700">50% AEA</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateSpace(space.id, {
+                                  ceilingProjection: {
+                                    ...(space.ceilingProjection || { overhangDepth: 1.50 }),
+                                    mode: 'total'
+                                  }
+                                });
+                              }}
+                              className={`py-1 px-1.5 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer text-center ${
+                                !space.ceilingProjection || space.ceilingProjection.mode === 'total'
+                                  ? 'bg-cyan-600 text-white border-cyan-600'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              Techo Total
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateSpace(space.id, {
+                                  ceilingProjection: {
+                                    ...(space.ceilingProjection || { overhangDepth: 1.50 }),
+                                    mode: 'alero'
+                                  }
+                                });
+                              }}
+                              className={`py-1 px-1.5 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer text-center ${
+                                space.ceilingProjection?.mode === 'alero'
+                                  ? 'bg-cyan-600 text-white border-cyan-600'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              Alero Parcial
+                            </button>
+                          </div>
+                          {space.ceilingProjection?.mode === 'alero' && (
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] font-bold text-slate-600">Profundidad Alero:</span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  step="0.10"
+                                  min="0.30"
+                                  max="10.0"
+                                  value={space.ceilingProjection.overhangDepth}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 1.50;
+                                    updateSpace(space.id, {
+                                      ceilingProjection: {
+                                        ...space.ceilingProjection,
+                                        mode: 'alero',
+                                        overhangDepth: Math.max(0.20, val)
+                                      }
+                                    });
+                                  }}
+                                  className="w-16 px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono font-bold text-center text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                                <span className="font-mono text-xs text-slate-400">m</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Altura de Cielorraso o Aviso de Descubierto / Vacío */}
+                      {isOpenAir || space.coverType === 'vacio' ? (
                         <div className="pt-2 border-t border-slate-200/80 text-[11px] text-amber-800 bg-amber-50/60 p-2 rounded-xl flex items-center justify-between">
-                          <span>A cielo abierto (sin cielorraso)</span>
+                          <span>{space.coverType === 'vacio' ? 'Vacío / Pleno (sin cielorraso)' : 'A cielo abierto (sin cielorraso)'}</span>
                           <span className="font-bold font-mono">0% AEA</span>
                         </div>
                       ) : (

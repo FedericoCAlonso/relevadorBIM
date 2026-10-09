@@ -2,13 +2,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * VISTA: TopStatusBar.tsx
  * Barra Superior Minimalista (Directiva AGENTS.md / Cero Ruido Contextual).
- * Estructura: [ ☰ Menú ]  RelevadorBIM · Nivel          [ Cotas ]  [ ⛶ ]
+ * Estructura: [ ☰ Menú ]  RelevadorBIM · Nivel               [ ⛶ ]
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Menu, Maximize, Minimize, Ruler, Filter } from 'lucide-react';
+import { Menu, Maximize, Minimize, Filter } from 'lucide-react';
 
 interface TopStatusBarProps {
   onOpenMenu: () => void;
@@ -16,7 +16,7 @@ interface TopStatusBarProps {
 }
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBatchSelect }) => {
-  const { project, showDimensions, toggleDimensions, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
+  const { project, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const cycleLabelMode = () => {
@@ -136,20 +136,6 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBa
             </span>
           </button>
         )}
-
-        <button
-          type="button"
-          onClick={toggleDimensions}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors ${
-            showDimensions
-              ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
-              : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
-          }`}
-          title={showDimensions ? 'Ocultar cotas métricas' : 'Mostrar cotas métricas'}
-        >
-          <Ruler size={14} className={showDimensions ? 'text-blue-600' : 'text-slate-400'} />
-          <span className="hidden sm:inline">Cotas</span>
-        </button>
 
         <button
           type="button"

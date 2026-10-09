@@ -4,7 +4,10 @@ import {
   getCeilingMaterialOption,
   computeEffectiveCeilingPolygon,
   calculateSettingOutDimensions,
-  buildCeilingPlanData
+  buildCeilingPlanData,
+  CEILING_DISTRIBUTION_PRESETS,
+  computeCeilingGridDistribution,
+  calculatePresetDistribution
 } from '../ceilingPlan';
 import type { Space } from '../Space';
 import type { WallVertex, Wall } from '../Wall';
@@ -179,4 +182,44 @@ describe('Modelo: Plano de Cielorraso Reflejado (RCP - ceilingPlan.ts)', () => {
     expect(rcpData!.wallDrops[0].isSwitch).toBe(true);
     expect(rcpData!.areaM2).toBe(24); // 6m * 4m
   });
+
+  it('debe calcular la cuadrícula simétrica de bocas con la regla luminotécnica d = S / 2', () => {
+    const bounds = { minX: 0, minY: 0, maxX: 6, maxY: 4, width: 6, height: 4 };
+
+    // 2 columnas, 1 fila (2 bocas en línea horizontal)
+    const points2 = computeCeilingGridDistribution({ bounds, cols: 2, rows: 1 });
+    expect(points2.length).toBe(2);
+    // Cada mitad de 6m mide 3m. La boca va al centro de cada mitad: 1.5m y 4.5m
+    expect(points2[0]).toEqual({ x: 1.5, y: 2.0 });
+    expect(points2[1]).toEqual({ x: 4.5, y: 2.0 });
+
+    // Matriz 2x2 (4 bocas)
+    const points4 = computeCeilingGridDistribution({ bounds, cols: 2, rows: 2 });
+    expect(points4.length).toBe(4);
+    expect(points4[0]).toEqual({ x: 1.5, y: 1.0 });
+    expect(points4[1]).toEqual({ x: 4.5, y: 1.0 });
+    expect(points4[2]).toEqual({ x: 1.5, y: 3.0 });
+    expect(points4[3]).toEqual({ x: 4.5, y: 3.0 });
+  });
+
+  it('debe calcular los presets predefinidos de distribución para un recinto apaisado', () => {
+    const bounds = { minX: 0, minY: 0, maxX: 6, maxY: 4, width: 6, height: 4 };
+
+    expect(CEILING_DISTRIBUTION_PRESETS.length).toBeGreaterThanOrEqual(5);
+
+    // Preset 1 boca en centro
+    const pCenter = calculatePresetDistribution('1_center', bounds);
+    expect(pCenter).toEqual([{ x: 3.0, y: 2.0 }]);
+
+    // Preset 2 bocas en línea a lo largo del eje mayor (X porque 6 > 4)
+    const pLinear2 = calculatePresetDistribution('2_linear', bounds);
+    expect(pLinear2.length).toBe(2);
+    expect(pLinear2[0]).toEqual({ x: 1.5, y: 2.0 });
+    expect(pLinear2[1]).toEqual({ x: 4.5, y: 2.0 });
+
+    // Preset 4 bocas (matriz 2x2)
+    const pGrid4 = calculatePresetDistribution('4_grid', bounds);
+    expect(pGrid4.length).toBe(4);
+  });
 });
+
