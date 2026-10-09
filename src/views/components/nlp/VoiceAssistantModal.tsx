@@ -105,16 +105,28 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
             onClick={handleMicToggle}
             className={`relative flex h-20 w-20 items-center justify-center rounded-full border-2 transition-all shadow-lg ${
               speech.isListening
-                ? 'border-rose-500 bg-rose-600/30 text-rose-400 shadow-rose-500/30 animate-pulse'
+                ? 'border-rose-500 bg-rose-600/30 text-rose-400 shadow-rose-500/30 animate-pulse scale-105'
+                : !speech.isSupported
+                ? 'border-slate-700 bg-slate-800/40 text-slate-500 hover:border-slate-600'
                 : 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 hover:scale-105'
             }`}
-            title={speech.isListening ? 'Detener micrófono' : 'Iniciar dictado por voz'}
+            title={
+              speech.isListening
+                ? 'Detener micrófono'
+                : !speech.isSupported
+                ? 'Navegador sin soporte de voz nativo (usar campo de texto)'
+                : 'Iniciar dictado por voz'
+            }
           >
             {speech.isListening ? <Mic className="h-9 w-9" /> : <MicOff className="h-9 w-9" />}
           </button>
 
           <p className="mt-3 text-xs font-medium text-slate-300">
-            {speech.isListening ? '🎙 Escuchando... Hablá ahora' : 'Tocá el micrófono para dictar'}
+            {speech.isListening
+              ? '🎙 Escuchando... Hablá ahora'
+              : !speech.isSupported
+              ? 'Dictado por voz no disponible en este navegador'
+              : 'Tocá el micrófono para dictar'}
           </p>
 
           {speech.interimTranscript && (
@@ -124,7 +136,9 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
           )}
 
           {speech.errorMessage && (
-            <p className="mt-2 text-xs text-rose-400 text-center">{speech.errorMessage}</p>
+            <div className="mt-3 max-w-sm rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300 text-center animate-fade-in">
+              {speech.errorMessage}
+            </div>
           )}
         </div>
 

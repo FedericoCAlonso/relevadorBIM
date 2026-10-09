@@ -142,6 +142,13 @@ export function useVoiceAssistantViewModel() {
     }
   });
 
+  // Detener el micrófono si se cierra el modal
+  useEffect(() => {
+    if (!isModalOpen && speech.isListening) {
+      speech.stopListening();
+    }
+  }, [isModalOpen, speech.isListening, speech.stopListening]);
+
   const confirmPending = useCallback(() => {
     setPendingConfirmation(null);
   }, []);
