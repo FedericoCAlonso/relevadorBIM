@@ -255,14 +255,17 @@ describe('Canalizaciones en el alzado', () => {
     expect(pts[0].y).toBeGreaterThan(pts[1].y);
   });
 
-  it('vía losa con ambas cajas en el paramento: dibuja un chicote por extremo', () => {
+  it('vía losa con ambas cajas en el paramento: dibuja un puente continuo en U por cielorraso', () => {
     const elev = buildWallElevation(
       params({ elements: [a, b], conduits: [{ ...baseConduit, routingPlane: 'ceiling_slab' }], face: 'left' })
     )!;
     const segs = elev.conduits[0].segments;
-    expect(segs).toHaveLength(2);
-    expect(segs[0][0].x).not.toBeCloseTo(segs[1][0].x, 3);
-    segs.forEach((s) => expect(s[1].y).toBeCloseTo(elev.ceilingY, 9));
+    expect(segs).toHaveLength(1);
+    const bridge = segs[0];
+    expect(bridge).toHaveLength(4);
+    expect(bridge[1].y).toBeCloseTo(elev.ceilingY, 9);
+    expect(bridge[2].y).toBeCloseTo(elev.ceilingY, 9);
+    expect(bridge[0].x).not.toBeCloseTo(bridge[3].x, 3);
   });
 
   it('vía contrapiso: baja hasta el piso', () => {

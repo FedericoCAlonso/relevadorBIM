@@ -51,11 +51,33 @@ export interface SelectedEntity {
   id: string;
 }
 
+export interface ProjectHistoryEntry {
+  project: BuildingProject;
+  activeAnchorVertexId: string | null;
+}
+
+export const MAX_PROJECT_UNDO_STACK = 25;
+
+function cloneProject(project: BuildingProject): BuildingProject {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(project);
+  }
+  return JSON.parse(JSON.stringify(project));
+}
+
 interface ProjectStoreState {
   project: BuildingProject;
   selectedEntity: SelectedEntity | null;
   selectedEntities: SelectedEntity[];
   activeAnchorVertexId: string | null;
+
+  // Historial Deshacer / Rehacer Multinivel Global
+  undoStack: ProjectHistoryEntry[];
+  redoStack: ProjectHistoryEntry[];
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
 
   // Selección y Navegación
   setSelectedEntity: (entity: SelectedEntity | null) => void;
@@ -215,13 +237,112 @@ interface ProjectStoreState {
   setLabelDisplayMode: (mode: LabelDisplayMode) => void;
 }
 
-export const useProjectStore = create<ProjectStoreState>((set, get) => ({
-  project: createEmptyProject(),
-  selectedEntity: null,
-  selectedEntities: [],
-  activeAnchorVertexId: null,
-  showDimensions: true,
-  labelDisplayMode: 'full',
+export const useProjectStore = create<ProjectStoreState>((rawSet, get) => {
+  const set: typeof rawSet = (partial, replace) => {
+    rawSet((state) => {
+      const nextPartial = typeof partial === 'function' ? (partial as any)(state) : partial;
+      if (!nextPartial || typeof nextPartial !== 'object') {
+        return nextPartial;
+      }
+
+      // Si es una acción interna de restauración del historial, omitir captura redundante
+      if ((nextPartial as any)._skipHistory) {
+        const { _skipHistory, ...rest } = nextPartial as any;
+        return rest;
+      }
+
+      // Si se modifica 'project' y es una referencia distinta al proyecto actual
+      if ('project' in nextPartial && nextPartial.project && nextPartial.project !== state.project) {
+        const currentEntry: ProjectHistoryEntry = {
+          project: cloneProject(state.project),
+          activeAnchorVertexId: state.activeAnchorVertexId
+        };
+        const nextUndo = [...(state.undoStack || []), currentEntry];
+        if (nextUndo.length > MAX_PROJECT_UNDO_STACK) {
+          nextUndo.shift();
+        }
+        return {
+          ...nextPartial,
+          undoStack: nextUndo,
+          redoStack: [],
+          canUndo: true,
+          canRedo: false
+        };
+      }
+
+      return nextPartial;
+    }, replace as any);
+  };
+
+  return {
+    project: createEmptyProject(),
+    selectedEntity: null,
+    selectedEntities: [],
+    activeAnchorVertexId: null,
+    undoStack: [],
+    redoStack: [],
+    canUndo: false,
+    canRedo: false,
+    showDimensions: true,
+    labelDisplayMode: 'full',
+
+    undo: () => {
+      const state = get();
+      const stack = state.undoStack || [];
+      if (stack.length === 0) return;
+      const prevEntry = stack[stack.length - 1];
+      const newUndoStack = stack.slice(0, -1);
+      const currentEntry: ProjectHistoryEntry = {
+        project: cloneProject(state.project),
+        activeAnchorVertexId: state.activeAnchorVertexId
+      };
+      const nextRedoStack = [currentEntry, ...(state.redoStack || [])];
+      if (nextRedoStack.length > MAX_PROJECT_UNDO_STACK) {
+        nextRedoStack.pop();
+      }
+
+      rawSet({
+        project: prevEntry.project,
+        activeAnchorVertexId: prevEntry.activeAnchorVertexId,
+        undoStack: newUndoStack,
+        redoStack: nextRedoStack,
+        canUndo: newUndoStack.length > 0,
+        canRedo: true,
+        selectedEntity: null,
+        selectedEntities: []
+      });
+
+      get().autoDetectSpaces();
+    },
+
+    redo: () => {
+      const state = get();
+      const stack = state.redoStack || [];
+      if (stack.length === 0) return;
+      const nextEntry = stack[0];
+      const newRedoStack = stack.slice(1);
+      const currentEntry: ProjectHistoryEntry = {
+        project: cloneProject(state.project),
+        activeAnchorVertexId: state.activeAnchorVertexId
+      };
+      const nextUndoStack = [...(state.undoStack || []), currentEntry];
+      if (nextUndoStack.length > MAX_PROJECT_UNDO_STACK) {
+        nextUndoStack.shift();
+      }
+
+      rawSet({
+        project: nextEntry.project,
+        activeAnchorVertexId: nextEntry.activeAnchorVertexId,
+        undoStack: nextUndoStack,
+        redoStack: newRedoStack,
+        canUndo: true,
+        canRedo: newRedoStack.length > 0,
+        selectedEntity: null,
+        selectedEntities: []
+      });
+
+      get().autoDetectSpaces();
+    },
 
   setShowDimensions: (show) => set({ showDimensions: show }),
   toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
@@ -1074,6 +1195,12 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   },
 
   undoLastWall: () => {
+    const { undoStack, undo } = get();
+    if (undoStack && undoStack.length > 0) {
+      undo();
+      return;
+    }
+
     const { project } = get();
     if (project.walls.length === 0) return;
 
@@ -1248,8 +1375,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       project: {
         ...project,
         spaces: [...otherLevelSpaces, ...newSpacesInLevel]
-      }
-    });
+      },
+      _skipHistory: true
+    } as any);
   },
 
   addElectricalElement: (element) =>
@@ -1823,9 +1951,27 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         dimensions: project.dimensions || []
       },
       selectedEntity: null,
-      activeAnchorVertexId: null
-    });
+      selectedEntities: [],
+      activeAnchorVertexId: null,
+      undoStack: [],
+      redoStack: [],
+      canUndo: false,
+      canRedo: false,
+      _skipHistory: true
+    } as any);
   },
 
-  resetProject: () => set({ project: createEmptyProject(), selectedEntity: null, activeAnchorVertexId: null })
-}));
+  resetProject: () =>
+    set({
+      project: createEmptyProject(),
+      selectedEntity: null,
+      selectedEntities: [],
+      activeAnchorVertexId: null,
+      undoStack: [],
+      redoStack: [],
+      canUndo: false,
+      canRedo: false,
+      _skipHistory: true
+    } as any)
+  };
+});

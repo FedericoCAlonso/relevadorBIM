@@ -929,5 +929,153 @@ describe('useWallElevationStore', () => {
       expect(nonExistent).toBeNull();
     });
   });
+
+  describe('Eliminación de cajas, reactividad y conexiones exteriores', () => {
+    it('elimina la caja seleccionada del proyecto y limpia sus cañerías asociadas', () => {
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+      const box2 = placeElectricalElementInStore({
+        worldX: 3.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 3.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      const initialConduits = useProjectStore.getState().project.conduits.length;
+
+      const conduit = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box2.id
+      });
+      expect(conduit).not.toBeNull();
+      expect(useProjectStore.getState().project.conduits.length).toBe(initialConduits + 1);
+
+      useWallElevationStore.getState().setSelection({ type: 'box', id: box1.id });
+      expect(useWallElevationStore.getState().selection?.id).toBe(box1.id);
+
+      // Eliminar box1
+      useProjectStore.getState().deleteElectricalElement(box1.id);
+
+      const state = useProjectStore.getState();
+      expect(state.project.electricalElements.find((e) => e.id === box1.id)).toBeUndefined();
+      expect(state.project.electricalElements.find((e) => e.id === box2.id)).toBeDefined();
+      // La cañería conectada a box1 debe haberse eliminado automáticamente
+      expect(state.project.conduits.find((c) => c.id === conduit!.id)).toBeUndefined();
+      expect(state.project.conduits.length).toBe(initialConduits);
+    });
+
+    it('genera puente continuo en U de 4 puntos para conexiones por losa en el mismo muro', () => {
+      const box1 = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+      const box2 = placeElectricalElementInStore({
+        worldX: 3.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 3.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 1.10,
+        autoConnectConduits: false
+      });
+
+      const conduit = connectWallElevationBoxesInStore({
+        wallId: 'wall-101',
+        face: 'left',
+        fromBoxId: box1.id,
+        toBoxId: box2.id,
+        presetOverride: 'ceiling_exit'
+      });
+
+      expect(conduit).not.toBeNull();
+      expect(conduit?.elevationRoute?.points.length).toBe(4);
+      const pts = conduit!.elevationRoute!.points;
+      expect(pts[0].z).toBe(0.30);
+      expect(pts[1].z).toBe(2.80);
+      expect(pts[2].z).toBe(2.80);
+      expect(pts[3].z).toBe(1.10);
+      expect(pts[0].u).toBe(pts[1].u);
+      expect(pts[2].u).toBe(pts[3].u);
+    });
+
+    it('permite conectar una caja del muro a un elemento exterior (boca de techo) y traza la salida vertical', () => {
+      const wallBox = placeElectricalElementInStore({
+        worldX: 1.0,
+        worldY: 0,
+        symbolId: 'sym-planta-toma',
+        snapInfo: { wallId: 'wall-101', wallOffset: 1.0, side: 'left', rotationDeg: 0 },
+        overrideHeightZ: 0.30,
+        autoConnectConduits: false
+      });
+
+      // Crear boca cenital de techo fuera del muro
+      useProjectStore.getState().addElectricalElement({
+        id: 'ceiling-box-1',
+        levelId: 'level-1',
+        spaceId: 's1',
+        x: 2.0,
+        y: 2.0,
+        heightZ: 2.60,
+        placement: 'ceiling',
+        symbolId: 'sym-planta-boca-techo',
+        boxOrientation: 'horizontal',
+        boxRotationDeg: 0
+      });
+
+      // Conexión externa por losa de cielorraso
+      const extConduitId = 'cond-ext-1';
+      useProjectStore.getState().addConduit({
+        id: extConduitId,
+        fromElementId: wallBox.id,
+        toElementId: 'ceiling-box-1',
+        fromLevelId: 'level-1',
+        toLevelId: 'level-1',
+        diameterMM: 19,
+        material: 'hierro_semipesado_rs',
+        isVerticalRiser: false,
+        conductors: [],
+        routingMode: 'orthogonal',
+        routingPlane: 'ceiling_slab'
+      });
+
+      const { project } = useProjectStore.getState();
+      const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+      const wall = project.walls.find((w) => w.id === 'wall-101')!;
+
+      const elevation = buildWallElevation({
+        wall,
+        vertices: verticesMap,
+        face: 'left',
+        openings: project.openings,
+        elements: project.electricalElements,
+        panels: project.panels,
+        conduits: project.conduits,
+        circuits: project.circuits,
+        spaces: project.spaces
+      });
+
+      expect(elevation).not.toBeNull();
+      const condElev = elevation!.conduits.find((c) => c.id === extConduitId);
+      expect(condElev).toBeDefined();
+      expect(condElev!.segments.length).toBe(1);
+      // Debe subir verticalmente hasta el cielorraso
+      const seg = condElev!.segments[0];
+      expect(seg.length).toBe(2);
+      expect(seg[0].x).toBeCloseTo(seg[1].x, 2);
+    });
+  });
 });
 

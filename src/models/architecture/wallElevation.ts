@@ -749,11 +749,17 @@ function buildConduitSegments(params: {
   if (fromBox && toBox && fromBox.id !== toBox.id) {
     if (plane === 'ceiling_slab' || plane === 'floor_slab') {
       const target = plane === 'ceiling_slab' ? ceilingY : floorY;
-      return conduitEndBoxes(fromBox, toBox).map((box, i) => {
-        const x = box.centerX + (offsets[i] ?? 0);
-        const from = plane === 'ceiling_slab' ? box.rect.y : box.rect.y + box.rect.height;
-        return [{ x, y: from }, { x, y: target }];
-      });
+      const [b1, b2] = fromBox.centerX <= toBox.centerX ? [fromBox, toBox] : [toBox, fromBox];
+      const off = offsets[0] ?? 0;
+      const y1 = plane === 'ceiling_slab' ? b1.rect.y : b1.rect.y + b1.rect.height;
+      const y2 = plane === 'ceiling_slab' ? b2.rect.y : b2.rect.y + b2.rect.height;
+      const yBridge = target + (plane === 'ceiling_slab' ? -off : off);
+      return [[
+        { x: b1.centerX + off, y: y1 },
+        { x: b1.centerX + off, y: yBridge },
+        { x: b2.centerX + off, y: yBridge },
+        { x: b2.centerX + off, y: y2 }
+      ]];
     }
     return [buildWallRunSegment(fromBox, toBox, offsets[0] ?? 0, wallHeightM, ceilingZ, H)];
   }

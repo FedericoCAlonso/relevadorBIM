@@ -64,6 +64,7 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
   Undo2,
+  Redo2,
   MapPin,
   Cable,
   Layers,
@@ -142,7 +143,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     rotateWall,
     invertWallDirection,
     deleteWall,
-    undoLastWall,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     setActiveAnchorVertexId,
     updateOpening,
     deleteOpening,
@@ -450,17 +454,29 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 <span>+ AGREGAR PARED (Enter)</span>
               </button>
 
-              {/* Deshacer Última Pared */}
-              <button
-                type="button"
-                onClick={undoLastWall}
-                disabled={project.walls.length === 0}
-                className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
-                title="Deshacer la última pared trazada (Ctrl+Z)"
-              >
-                <Undo2 size={14} />
-                <span>Deshacer Última Pared</span>
-              </button>
+              {/* Deshacer / Rehacer Global */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={undo}
+                  disabled={!canUndo}
+                  className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
+                  title="Deshacer última acción (Ctrl+Z)"
+                >
+                  <Undo2 size={14} />
+                  <span>Deshacer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={redo}
+                  disabled={!canRedo}
+                  className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-35 disabled:hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
+                  title="Rehacer acción (Ctrl+Y / Ctrl+Shift+Z)"
+                >
+                  <Redo2 size={14} />
+                  <span>Rehacer</span>
+                </button>
+              </div>
 
               {/* ─── ESTRUCTURA & INTERFERENCIAS (BIM) ─── */}
               <div className="pt-2 border-t border-slate-200">

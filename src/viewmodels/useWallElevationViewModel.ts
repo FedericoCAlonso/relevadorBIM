@@ -286,6 +286,15 @@ interface ViewportOverride {
   viewBox: ElevationViewBox;
 }
 
+export interface ExternalConnectTarget {
+  id: string;
+  name: string;
+  category: 'ceiling' | 'panel' | 'wall';
+  sublabel: string;
+  mountZ?: number;
+  circuitId?: string | null;
+}
+
 const FACE_FALLBACK_LABEL: Record<ElevationFace, string> = {
   left: 'Cara izquierda',
   right: 'Cara derecha'
@@ -294,9 +303,13 @@ const FACE_FALLBACK_LABEL: Record<ElevationFace, string> = {
 export function useWallElevationViewModel() {
   const project = useProjectStore((s) => s.project);
   const updateElectricalElement = useProjectStore((s) => s.updateElectricalElement);
+  const deleteElectricalElement = useProjectStore((s) => s.deleteElectricalElement);
   const updatePanel = useProjectStore((s) => s.updatePanel);
+  const deletePanel = useProjectStore((s) => s.deletePanel);
   const updateOpening = useProjectStore((s) => s.updateOpening);
   const addOpeningDirect = useProjectStore((s) => s.addOpeningDirect);
+  const deleteOpening = useProjectStore((s) => s.deleteOpening);
+  const addConduit = useProjectStore((s) => s.addConduit);
   const updateConduit = useProjectStore((s) => s.updateConduit);
   const setProjectSelection = useProjectStore((s) => s.setSelectedEntity);
 
@@ -453,12 +466,117 @@ export function useWallElevationViewModel() {
     [nodeFor, wall, target, verticesMap]
   );
 
+  const updateConduitsOnBoxMove = useCallback(
+    (boxId: string, move: NodeElevationMove) => {
+      if (!wall || !elevation || !target) return;
+      const connected = project.conduits.filter(
+        (c) => c.fromElementId === boxId || c.toElementId === boxId
+      );
+      if (connected.length === 0) return;
+
+      const frame = getWallAxisFrame(wall, verticesMap);
+
+      connected.forEach((c) => {
+        const isFrom = c.fromElementId === boxId;
+        const otherId = isFrom ? c.toElementId : c.fromElementId;
+        const otherBox = elevation.boxes.find((b) => b.id === otherId);
+
+        // Si la cañería tiene ruta explícita en este muro:
+        if (c.elevationRoute && c.elevationRoute.wallId === wall.id) {
+          const preset = c.elevationRoute.preset;
+          if (otherBox && preset && preset !== 'custom') {
+            const otherU = screenXToAlongWall(otherBox.centerX, elevation.lengthM, target.face);
+            const otherZ = otherBox.centerZ;
+            const fromU = isFrom ? move.wallOffset : otherU;
+            const fromZ = isFrom ? move.heightZ : otherZ;
+            const toU = isFrom ? otherU : move.wallOffset;
+            const toZ = isFrom ? otherZ : move.heightZ;
+
+            const nextRoute = buildPresetElevationRoute({
+              wallId: wall.id,
+              fromU,
+              fromZ,
+              toU,
+              toZ,
+              preset,
+              ceilingZ: elevation.ceilingZ,
+              wallHeightM: elevation.wallHeightM
+            });
+
+            const planWaypoints = frame ? elevationRouteToPlanWaypoints(nextRoute.points, frame) : undefined;
+            updateConduit(c.id, {
+              elevationRoute: nextRoute,
+              waypoints: planWaypoints
+            });
+            return;
+          }
+
+          if (!otherBox && (preset === 'ceiling_exit' || preset === 'floor_exit')) {
+            const nextRoute = buildPresetElevationRoute({
+              wallId: wall.id,
+              fromU: move.wallOffset,
+              fromZ: move.heightZ,
+              toU: move.wallOffset,
+              toZ: move.heightZ,
+              preset,
+              ceilingZ: elevation.ceilingZ,
+              wallHeightM: elevation.wallHeightM
+            });
+
+            const planWaypoints = frame ? elevationRouteToPlanWaypoints(nextRoute.points, frame) : undefined;
+            updateConduit(c.id, {
+              elevationRoute: nextRoute,
+              waypoints: planWaypoints
+            });
+            return;
+          }
+
+          // Si es custom o tiene puntos fijos: actualizar el extremo terminal
+          if (c.elevationRoute.points && c.elevationRoute.points.length >= 2) {
+            const newPoints = [...c.elevationRoute.points];
+            const updatedTerminal: ConduitElevationPoint = {
+              u: Number(move.wallOffset.toFixed(3)),
+              z: Number(move.heightZ.toFixed(3))
+            };
+            if (isFrom) {
+              newPoints[0] = updatedTerminal;
+            } else {
+              newPoints[newPoints.length - 1] = updatedTerminal;
+            }
+
+            const nextRoute = { ...c.elevationRoute, points: newPoints };
+            const planWaypoints = frame ? elevationRouteToPlanWaypoints(newPoints, frame) : undefined;
+            updateConduit(c.id, {
+              elevationRoute: nextRoute,
+              waypoints: planWaypoints
+            });
+            return;
+          }
+        }
+
+        // Si no tiene ruta de alzado pero tiene waypoints de planta:
+        if (c.waypoints && c.waypoints.length >= 2) {
+          const nextWaypoints = [...c.waypoints];
+          const newTerminalWaypoint = { x: move.x, y: move.y, heightZ: move.heightZ };
+          if (isFrom) {
+            nextWaypoints[0] = newTerminalWaypoint;
+          } else {
+            nextWaypoints[nextWaypoints.length - 1] = newTerminalWaypoint;
+          }
+          updateConduit(c.id, { waypoints: nextWaypoints });
+        }
+      });
+    },
+    [wall, elevation, target, project.conduits, verticesMap, updateConduit]
+  );
+
   const commitMove = useCallback(
     (box: ElevationBox, move: NodeElevationMove) => {
       if (box.kind === 'panel') updatePanel(box.id, move);
       else updateElectricalElement(box.id, move);
+      updateConduitsOnBoxMove(box.id, move);
     },
-    [updatePanel, updateElectricalElement]
+    [updatePanel, updateElectricalElement, updateConduitsOnBoxMove]
   );
 
   // ─── Arrastre con imán a alturas AEA ───
@@ -523,16 +641,54 @@ export function useWallElevationViewModel() {
   // Conductos a dibujar: el que se arrastra se muestra en su posición provisoria.
   const displayConduits: ElevationConduit[] = useMemo(() => {
     if (!elevation || !target) return [];
-    if (!gripDrag) return elevation.conduits;
-    return elevation.conduits.map((c) => {
-      if (c.id !== gripDrag.conduitId) return c;
-      const seg: ElevationPoint[] = gripDrag.points.map((p) => ({
-        x: alongWallToScreenX(p.u, elevation.lengthM, target.face),
-        y: toDrawingY(p.z, elevation.drawingHeightM)
-      }));
-      return { ...c, segments: [seg] };
-    });
-  }, [elevation, target, gripDrag]);
+    if (gripDrag) {
+      return elevation.conduits.map((c) => {
+        if (c.id !== gripDrag.conduitId) return c;
+        const seg: ElevationPoint[] = gripDrag.points.map((p) => ({
+          x: alongWallToScreenX(p.u, elevation.lengthM, target.face),
+          y: toDrawingY(p.z, elevation.drawingHeightM)
+        }));
+        return { ...c, segments: [seg] };
+      });
+    }
+    if (drag) {
+      const origBox = elevation.boxes.find((b) => b.id === drag.id);
+      const draggedX = alongWallToScreenX(drag.move.wallOffset, elevation.lengthM, target.face);
+      const draggedY = toDrawingY(drag.move.heightZ, elevation.drawingHeightM);
+      return elevation.conduits.map((c) => {
+        if (c.fromElementId !== drag.id && c.toElementId !== drag.id) return c;
+        const segs = c.segments.map((seg) => {
+          if (seg.length < 2) return seg;
+          const nextSeg = [...seg];
+          const dStart = origBox ? Math.hypot(seg[0].x - origBox.centerX, seg[0].y - origBox.rect.cy) : 0;
+          const dEnd = origBox
+            ? Math.hypot(seg[seg.length - 1].x - origBox.centerX, seg[seg.length - 1].y - origBox.rect.cy)
+            : 1;
+          const isAtStart = dStart <= dEnd;
+
+          if (isAtStart) {
+            nextSeg[0] = { x: draggedX, y: draggedY };
+            if (nextSeg.length === 2 && Math.abs(seg[0].x - seg[1].x) < 0.05) {
+              nextSeg[1] = { x: draggedX, y: seg[1].y };
+            } else if (nextSeg.length === 4) {
+              nextSeg[1] = { x: draggedX, y: seg[1].y };
+            }
+          } else {
+            const lastIdx = nextSeg.length - 1;
+            nextSeg[lastIdx] = { x: draggedX, y: draggedY };
+            if (nextSeg.length === 2 && Math.abs(seg[0].x - seg[1].x) < 0.05) {
+              nextSeg[0] = { x: draggedX, y: seg[0].y };
+            } else if (nextSeg.length === 4) {
+              nextSeg[lastIdx - 1] = { x: draggedX, y: seg[lastIdx - 1].y };
+            }
+          }
+          return nextSeg;
+        });
+        return { ...c, segments: segs };
+      });
+    }
+    return elevation.conduits;
+  }, [elevation, target, gripDrag, drag]);
 
   const guideZ = drag?.guideZ ?? gripDrag?.guideZ ?? placementPreview?.guideZ ?? null;
   const guideY = guideZ != null && elevation ? toDrawingY(guideZ, elevation.drawingHeightM) : null;
@@ -1197,6 +1353,191 @@ export function useWallElevationViewModel() {
     [project.materialCatalog]
   );
 
+  const deleteSelectedBox = useCallback(() => {
+    if (!selectedBox) return;
+    if (selectedBox.kind === 'panel') {
+      deletePanel(selectedBox.id);
+    } else {
+      deleteElectricalElement(selectedBox.id);
+    }
+    setSelection(null);
+  }, [selectedBox, deletePanel, deleteElectricalElement, setSelection]);
+
+  const deleteSelectedOpening = useCallback(() => {
+    if (!selectedOpening) return;
+    deleteOpening(selectedOpening.id);
+    setSelection(null);
+  }, [selectedOpening, deleteOpening, setSelection]);
+
+  const deleteSelectedConduit = useCallback(() => {
+    if (!selectedConduit) return;
+    deleteConduit(selectedConduit.id);
+    setSelection(null);
+  }, [selectedConduit, deleteConduit, setSelection]);
+
+  const deleteCurrentSelection = useCallback(() => {
+    if (selectedBox) deleteSelectedBox();
+    else if (selectedOpening) deleteSelectedOpening();
+    else if (selectedConduit) deleteSelectedConduit();
+  }, [selectedBox, selectedOpening, selectedConduit, deleteSelectedBox, deleteSelectedOpening, deleteSelectedConduit]);
+
+  const availableExternalTargets: ExternalConnectTarget[] = useMemo(() => {
+    if (!elevation) return [];
+    const localBoxIds = new Set(elevation.boxes.map((b) => b.id));
+    const activeLevelId = wall?.levelId;
+    const spacesMap = new Map(project.spaces.map((s) => [s.id, s]));
+    const wallsMap = new Map(project.walls.map((w) => [w.id, w]));
+
+    const targets: ExternalConnectTarget[] = [];
+
+    // 1. Bocas de techo / cielorraso
+    for (const el of project.electricalElements) {
+      if (localBoxIds.has(el.id)) continue;
+      if (activeLevelId && el.levelId !== activeLevelId) continue;
+      const isCeiling =
+        el.placement === 'ceiling' ||
+        el.symbolId.includes('techo') ||
+        el.symbolId.includes('cielorraso');
+      if (isCeiling) {
+        const space = el.spaceId ? spacesMap.get(el.spaceId) : undefined;
+        targets.push({
+          id: el.id,
+          name: el.label || 'Boca Cielorraso',
+          category: 'ceiling',
+          sublabel: space ? `Cielorraso · ${space.name}` : 'Cielorraso',
+          mountZ: el.heightZ,
+          circuitId: el.circuitId
+        });
+      }
+    }
+
+    // 2. Tableros
+    for (const p of project.panels || []) {
+      if (localBoxIds.has(p.id)) continue;
+      if (activeLevelId && p.levelId !== activeLevelId) continue;
+      targets.push({
+        id: p.id,
+        name: p.name || 'Tablero',
+        category: 'panel',
+        sublabel: p.type === 'principal' ? 'Tablero Principal' : 'Tablero Seccional',
+        mountZ: p.heightZ,
+        circuitId: null
+      });
+    }
+
+    // 3. Bocas en otros muros o libres
+    for (const el of project.electricalElements) {
+      if (localBoxIds.has(el.id)) continue;
+      if (activeLevelId && el.levelId !== activeLevelId) continue;
+      const isCeiling =
+        el.placement === 'ceiling' ||
+        el.symbolId.includes('techo') ||
+        el.symbolId.includes('cielorraso');
+      if (!isCeiling) {
+        const otherWall = el.wallId ? wallsMap.get(el.wallId) : undefined;
+        const space = el.spaceId ? spacesMap.get(el.spaceId) : undefined;
+        const sub = otherWall
+          ? `Muro adyacente · ${otherWall.description || otherWall.id.slice(-4)}`
+          : space
+            ? `Pared · ${space.name}`
+            : 'Pared';
+        targets.push({
+          id: el.id,
+          name: el.label || 'Boca en pared',
+          category: 'wall',
+          sublabel: sub,
+          mountZ: el.heightZ,
+          circuitId: el.circuitId
+        });
+      }
+    }
+
+    return targets;
+  }, [elevation, wall?.levelId, project.spaces, project.walls, project.electricalElements, project.panels]);
+
+  const connectToExternalElement = useCallback(
+    (sourceBoxId: string, targetId: string, routingPlane: ConduitRoutingPlane = 'ceiling_slab') => {
+      if (!wall || !elevation || !target) return null;
+      const sourceBox = elevation.boxes.find((b) => b.id === sourceBoxId);
+      if (!sourceBox) return null;
+
+      const targetEl =
+        project.electricalElements.find((e) => e.id === targetId) ||
+        project.panels?.find((p) => p.id === targetId);
+      if (!targetEl) return null;
+
+      const sourceEl =
+        project.electricalElements.find((e) => e.id === sourceBox.id) ||
+        project.panels?.find((p) => p.id === sourceBox.id);
+      if (!sourceEl) return null;
+
+      const preset: ConduitRoutePreset =
+        routingPlane === 'floor_slab' ? 'floor_exit' : 'ceiling_exit';
+
+      const sourceU = screenXToAlongWall(sourceBox.centerX, elevation.lengthM, target.face);
+      const route = buildPresetElevationRoute({
+        wallId: wall.id,
+        fromU: sourceU,
+        fromZ: sourceBox.centerZ,
+        toU: sourceU,
+        toZ: sourceBox.centerZ,
+        preset,
+        ceilingZ: elevation.ceilingZ,
+        wallHeightM: elevation.wallHeightM
+      });
+
+      const frame = getWallAxisFrame(wall, verticesMap);
+      const planWaypoints = frame ? elevationRouteToPlanWaypoints(route.points, frame) : undefined;
+
+      const fromCircuitId = 'circuitId' in sourceEl ? sourceEl.circuitId : null;
+      const toCircuitId = 'circuitId' in targetEl ? targetEl.circuitId : null;
+      const activeCircuitId = fromCircuitId || toCircuitId || null;
+      const circ = activeCircuitId ? project.circuits.find((c) => c.id === activeCircuitId) : null;
+      const section = circ?.wireSectionBaseMM2 || 2.5;
+
+      const conductors: ConductorLine[] = [
+        { role: 'fase', sectionMM2: section, color: '#991b1b', circuitId: activeCircuitId || undefined },
+        { role: 'neutro', sectionMM2: section, color: '#2563eb', circuitId: activeCircuitId || undefined },
+        { role: 'pe', sectionMM2: section, color: '#16a34a', circuitId: activeCircuitId || undefined }
+      ];
+
+      const sequenceStore = useElectricalSequenceStore.getState();
+      const conduitId = `cond-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const newConduit: Conduit = {
+        id: conduitId,
+        circuitId: activeCircuitId,
+        circuitIds: activeCircuitId ? [activeCircuitId] : [],
+        fromElementId: sourceEl.id,
+        toElementId: targetEl.id,
+        fromLevelId: sourceEl.levelId,
+        toLevelId: targetEl.levelId,
+        diameterMM: sequenceStore.sequenceConduitDiameterMM || 19,
+        material: sequenceStore.sequenceConduitMaterial || 'hierro_semipesado_rs',
+        isVerticalRiser: false,
+        conductors,
+        routingMode: 'orthogonal',
+        routingPlane,
+        elevationRoute: route,
+        waypoints: planWaypoints
+      };
+
+      addConduit(newConduit);
+      setSelection({ type: 'conduit', id: newConduit.id });
+      return newConduit;
+    },
+    [
+      wall,
+      elevation,
+      target,
+      project.electricalElements,
+      project.panels,
+      project.circuits,
+      verticesMap,
+      addConduit,
+      setSelection
+    ]
+  );
+
   // ─── Catálogos expuestos a la vista ───
   const heightPresets: readonly HeightPresetOption[] = useMemo(
     () => AEA_HEIGHT_PRESETS.filter((p) => elevation !== null && p.meters <= elevation.wallHeightM),
@@ -1286,6 +1627,12 @@ export function useWallElevationViewModel() {
     nudgeSelectedConduitHeight,
     setSelectedConduitHeight,
     deleteConduit,
+    deleteSelectedBox,
+    deleteSelectedOpening,
+    deleteSelectedConduit,
+    deleteCurrentSelection,
+    availableExternalTargets,
+    connectToExternalElement,
     rawSelectedConduit,
     autoConnectConduits,
     setAutoConnectConduits,

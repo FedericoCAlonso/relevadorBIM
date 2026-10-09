@@ -49,7 +49,8 @@ export function App() {
     setSelectedEntity,
     toggleSelectEntity,
     clearSelection,
-    undoLastWall,
+    undo,
+    redo,
     deleteWall,
     deleteOpening,
     deleteElectricalElement,
@@ -208,7 +209,17 @@ export function App() {
 
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
-        undoLastWall();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        redo();
         return;
       }
 

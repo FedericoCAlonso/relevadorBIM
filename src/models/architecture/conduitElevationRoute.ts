@@ -113,16 +113,30 @@ export function buildPresetElevationRoute(params: BuildPresetElevationRouteParam
   const { wallId, fromU, fromZ, toU, toZ, preset, ceilingZ, wallHeightM } = params;
   const maxZ = Math.min(ceilingZ, wallHeightM);
 
+  const isSamePoint = Math.abs(fromU - toU) < 0.005 && Math.abs(fromZ - toZ) < 0.005;
+
   if (preset === 'ceiling_exit') {
     const p0: ConduitElevationPoint = { u: round(fromU), z: round(fromZ) };
+    if (isSamePoint) {
+      const p1: ConduitElevationPoint = { u: round(fromU), z: round(maxZ) };
+      return { wallId, preset, points: [p0, p1] };
+    }
     const p1: ConduitElevationPoint = { u: round(fromU), z: round(maxZ) };
-    return { wallId, preset, points: [p0, p1] };
+    const p2: ConduitElevationPoint = { u: round(toU), z: round(maxZ) };
+    const p3: ConduitElevationPoint = { u: round(toU), z: round(toZ) };
+    return { wallId, preset, points: [p0, p1, p2, p3] };
   }
 
   if (preset === 'floor_exit') {
     const p0: ConduitElevationPoint = { u: round(fromU), z: round(fromZ) };
+    if (isSamePoint) {
+      const p1: ConduitElevationPoint = { u: round(fromU), z: 0 };
+      return { wallId, preset, points: [p0, p1] };
+    }
     const p1: ConduitElevationPoint = { u: round(fromU), z: 0 };
-    return { wallId, preset, points: [p0, p1] };
+    const p2: ConduitElevationPoint = { u: round(toU), z: 0 };
+    const p3: ConduitElevationPoint = { u: round(toU), z: round(toZ) };
+    return { wallId, preset, points: [p0, p1, p2, p3] };
   }
 
   if (preset === 'direct') {

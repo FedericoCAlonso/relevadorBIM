@@ -34,6 +34,7 @@ import {
   CornerDownLeft,
   SlidersHorizontal,
   Undo2,
+  Redo2,
   Zap,
   Ruler,
   DoorOpen,
@@ -132,7 +133,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     selectedEntities,
     setSelectedEntity,
     clearSelection,
-    undoLastWall,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     deleteWall,
     updateOpening,
     deleteOpening,
@@ -1346,17 +1350,27 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             </div>
           )}
 
-          {/* Botón Gigante y Deshacer */}
+          {/* Botón Gigante y Deshacer / Rehacer */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={undoLastWall}
-              disabled={project.walls.length === 0}
+              onClick={undo}
+              disabled={!canUndo}
               className="h-12 px-3.5 flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:scale-95 disabled:opacity-30 disabled:hover:bg-slate-100 text-slate-700 font-bold rounded-2xl border border-slate-300 transition-all flex-shrink-0"
-              title="Deshacer última pared"
+              title="Deshacer última acción (Ctrl+Z)"
             >
               <Undo2 size={18} />
             </button>
+            {canRedo && (
+              <button
+                type="button"
+                onClick={redo}
+                className="h-12 px-3 flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold rounded-2xl border border-slate-300 transition-all flex-shrink-0"
+                title="Rehacer acción (Ctrl+Y)"
+              >
+                <Redo2 size={18} />
+              </button>
+            )}
             <button
               type="button"
               onClick={onCommitWall}

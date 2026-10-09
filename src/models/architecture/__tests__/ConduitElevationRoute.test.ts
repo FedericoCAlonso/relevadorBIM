@@ -206,4 +206,45 @@ describe('ConduitElevationRoute — Trazas en alzado de muro', () => {
     // Cajas estándar separadas a alturas distintas -> top_bridge
     expect(suggestElevationRoutePreset(1.0, 0.3, 3.0, 1.1)).toBe('top_bridge');
   });
+
+  it('genera preset ceiling_exit con puente continuo en U de 4 puntos entre dos cajas en la misma pared', () => {
+    const route = buildPresetElevationRoute({
+      wallId: 'w1',
+      fromU: 1.0,
+      fromZ: 0.3,
+      toU: 3.5,
+      toZ: 1.1,
+      preset: 'ceiling_exit',
+      ceilingZ: 2.7,
+      wallHeightM: 2.8
+    });
+
+    expect(route.preset).toBe('ceiling_exit');
+    expect(route.points).toHaveLength(4);
+    expect(route.points[0]).toEqual({ u: 1.0, z: 0.3 });
+    expect(route.points[1]).toEqual({ u: 1.0, z: 2.7 });
+    expect(route.points[2]).toEqual({ u: 3.5, z: 2.7 });
+    expect(route.points[3]).toEqual({ u: 3.5, z: 1.1 });
+  });
+
+  it('genera preset floor_exit con puente continuo en U de 4 puntos entre dos cajas en la misma pared', () => {
+    const route = buildPresetElevationRoute({
+      wallId: 'w1',
+      fromU: 1.2,
+      fromZ: 1.1,
+      toU: 4.0,
+      toZ: 0.3,
+      preset: 'floor_exit',
+      ceilingZ: 2.7,
+      wallHeightM: 2.8
+    });
+
+    expect(route.preset).toBe('floor_exit');
+    expect(route.points).toHaveLength(4);
+    expect(route.points[0]).toEqual({ u: 1.2, z: 1.1 });
+    expect(route.points[1]).toEqual({ u: 1.2, z: 0 });
+    expect(route.points[2]).toEqual({ u: 4.0, z: 0 });
+    expect(route.points[3]).toEqual({ u: 4.0, z: 0.3 });
+  });
 });
+

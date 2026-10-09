@@ -17,12 +17,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import {
   useWallElevationViewModel
 } from '../../../viewmodels/useWallElevationViewModel';
 import { WALL_ELEVATION_STYLE } from '../../../models/architecture/wallElevationStyle';
 import { WALL_ELEVATION_CONSTANTS, toDrawingY } from '../../../models/architecture/wallElevation';
+import type { ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
 import {
   X,
   Plus,
@@ -40,7 +41,8 @@ import {
   Focus,
   Zap,
   Cable,
-  Trash2
+  Trash2,
+  ArrowUpRight
 } from 'lucide-react';
 import { ConduitModal } from '../electrical/ConduitModal';
 
@@ -118,6 +120,10 @@ export const WallElevationModal: React.FC = () => {
     nudgeSelectedConduitHeight,
     setSelectedConduitHeight,
     deleteConduit,
+    deleteSelectedBox,
+    deleteSelectedOpening,
+    availableExternalTargets,
+    connectToExternalElement,
     rawSelectedConduit,
     autoConnectConduits,
     setAutoConnectConduits,
@@ -146,58 +152,136 @@ export const WallElevationModal: React.FC = () => {
   const [isPlacementMenuOpen, setIsPlacementMenuOpen] = useState(false);
   const [isOpeningPlacementMenuOpen, setIsOpeningPlacementMenuOpen] = useState(false);
   const [isConduitModalOpen, setIsConduitModalOpen] = useState(false);
+  const [isExternalModalOpen, setIsExternalModalOpen] = useState(false);
+  const [externalRoutingPlane, setExternalRoutingPlane] = useState<ConduitRoutingPlane>('ceiling_slab');
+  const [externalCategoryFilter, setExternalCategoryFilter] = useState<'all' | 'ceiling' | 'panel' | 'wall'>('all');
+  const [externalSearchQuery, setExternalSearchQuery] = useState('');
   const [placementCircuitId, setPlacementCircuitId] = useState<string | null>(null);
   const [pointerWorld, setPointerWorld] = useState<{ x: number; y: number } | null>(null);
   const [mobileSheetMode, setMobileSheetMode] = useState<'none' | 'add_box' | 'add_opening' | 'info'>('none');
   const [boxCategoryTab, setBoxCategoryTab] = useState<'tomas' | 'llaves' | 'tableros' | 'paso' | 'apliques'>('tomas');
   const [openingCategoryTab, setOpeningCategoryTab] = useState<'door' | 'window' | 'passage'>('door');
 
-  // Cerrar con Escape
+  const filteredExternalTargets = useMemo(() => {
+    return availableExternalTargets.filter((t) => {
+      if (externalCategoryFilter !== 'all' && t.category !== externalCategoryFilter) {
+        return false;
+      }
+      if (externalSearchQuery.trim()) {
+        const query = externalSearchQuery.toLowerCase();
+        return (
+          t.name.toLowerCase().includes(query) ||
+          t.sublabel.toLowerCase().includes(query) ||
+          (t.circuitId && t.circuitId.toLowerCase().includes(query))
+        );
+      }
+      return true;
+    });
+  }, [availableExternalTargets, externalCategoryFilter, externalSearchQuery]);
+
+  const handlersRef = useRef({
+    isOpen,
+    isConnectingConduit,
+    placementTool,
+    openingPlacementTool,
+    isPlacementMenuOpen,
+    isOpeningPlacementMenuOpen,
+    isExternalModalOpen,
+    mobileSheetMode,
+    isDragging,
+    isGripDragging,
+    selectedBox,
+    selectedOpening,
+    selectedConduit,
+    cancelConduitConnection,
+    cancelPlacement,
+    cancelOpeningPlacement,
+    cancelBoxDrag,
+    cancelRoutePointDrag,
+    deleteSelectedBox,
+    deleteSelectedOpening,
+    deleteConduit,
+    clearSelection,
+    close
+  });
+
+  useEffect(() => {
+    handlersRef.current = {
+      isOpen,
+      isConnectingConduit,
+      placementTool,
+      openingPlacementTool,
+      isPlacementMenuOpen,
+      isOpeningPlacementMenuOpen,
+      isExternalModalOpen,
+      mobileSheetMode,
+      isDragging,
+      isGripDragging,
+      selectedBox,
+      selectedOpening,
+      selectedConduit,
+      cancelConduitConnection,
+      cancelPlacement,
+      cancelOpeningPlacement,
+      cancelBoxDrag,
+      cancelRoutePointDrag,
+      deleteSelectedBox,
+      deleteSelectedOpening,
+      deleteConduit,
+      clearSelection,
+      close
+    };
+  });
+
+  // Cerrar con Escape / Borrar con Delete o Backspace
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      const h = handlersRef.current;
       if (e.key === 'Escape') {
-        if (isConnectingConduit) {
-          cancelConduitConnection();
+        if (h.isConnectingConduit) {
+          h.cancelConduitConnection();
           setPointerWorld(null);
-        } else if (placementTool) {
-          cancelPlacement();
-        } else if (openingPlacementTool) {
-          cancelOpeningPlacement();
-        } else if (isPlacementMenuOpen) {
+        } else if (h.isExternalModalOpen) {
+          setIsExternalModalOpen(false);
+        } else if (h.placementTool) {
+          h.cancelPlacement();
+        } else if (h.openingPlacementTool) {
+          h.cancelOpeningPlacement();
+        } else if (h.isPlacementMenuOpen) {
           setIsPlacementMenuOpen(false);
-        } else if (isOpeningPlacementMenuOpen) {
+        } else if (h.isOpeningPlacementMenuOpen) {
           setIsOpeningPlacementMenuOpen(false);
-        } else if (mobileSheetMode !== 'none') {
+        } else if (h.mobileSheetMode !== 'none') {
           setMobileSheetMode('none');
-        } else if (isDragging) {
-          cancelBoxDrag();
-        } else if (isGripDragging) {
-          cancelRoutePointDrag();
+        } else if (h.isDragging) {
+          h.cancelBoxDrag();
+        } else if (h.isGripDragging) {
+          h.cancelRoutePointDrag();
         } else {
-          close();
+          h.close();
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+        if (activeTag === 'input' || activeTag === 'select' || activeTag === 'textarea') {
+          return;
+        }
+        if (h.selectedBox) {
+          e.preventDefault();
+          h.deleteSelectedBox();
+        } else if (h.selectedConduit) {
+          e.preventDefault();
+          h.deleteConduit(h.selectedConduit.id);
+          h.clearSelection();
+        } else if (h.selectedOpening) {
+          e.preventDefault();
+          h.deleteSelectedOpening();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    isOpen,
-    isConnectingConduit,
-    cancelConduitConnection,
-    placementTool,
-    openingPlacementTool,
-    isPlacementMenuOpen,
-    isOpeningPlacementMenuOpen,
-    mobileSheetMode,
-    isDragging,
-    isGripDragging,
-    cancelPlacement,
-    cancelOpeningPlacement,
-    cancelBoxDrag,
-    cancelRoutePointDrag,
-    close
-  ]);
+  }, [isOpen]);
 
   // Transforma coordenadas de pantalla a coordenadas del dibujo (metros)
   const clientToWorld = useCallback((clientX: number, clientY: number) => {
@@ -1639,7 +1723,7 @@ export const WallElevationModal: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => startConduitConnection(selectedBox.id)}
-                    className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    className="px-2 py-1.5 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
                     title="Trazar cañería desde esta caja a otra"
                   >
                     <Cable size={13} />
@@ -1647,8 +1731,25 @@ export const WallElevationModal: React.FC = () => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setIsExternalModalOpen(true)}
+                    className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    title="Conectar a losa/cielorraso u otros muros"
+                  >
+                    <ArrowUpRight size={13} />
+                    <span>Exterior</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedBox}
+                    className="p-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-lg active:scale-95 transition-transform"
+                    title="Eliminar caja (Delete)"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={rotateSelectedBox}
-                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
+                    className="px-2 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-transform"
                     title="Rotar caja 90°"
                   >
                     <RotateCw size={13} />
@@ -2527,15 +2628,36 @@ export const WallElevationModal: React.FC = () => {
                 </button>
               </div>
 
-              {/* Acción rápida: Trazar cañería desde esta caja */}
+              {/* Acciones rápidas de conexión y eliminación */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => startConduitConnection(selectedBox.id)}
+                  className="py-2 px-3 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform"
+                  title="Trazar cañería a otra caja en este muro"
+                >
+                  <Cable size={14} />
+                  <span>Conectar Muro</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExternalModalOpen(true)}
+                  className="py-2 px-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform"
+                  title="Conectar a losa/cielorraso, tablero u otro muro"
+                >
+                  <ArrowUpRight size={14} />
+                  <span>Conectar Exterior</span>
+                </button>
+              </div>
+
               <button
                 type="button"
-                onClick={() => startConduitConnection(selectedBox.id)}
-                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform"
-                title="Trazar cañería desde esta caja a otra caja en el muro"
+                onClick={deleteSelectedBox}
+                className="w-full py-2 px-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors active:scale-95"
+                title="Eliminar caja del proyecto (Tecla Supr / Delete)"
               >
-                <Cable size={14} />
-                <span>☍ Trazar Cañería desde esta Caja</span>
+                <Trash2 size={14} />
+                <span>Eliminar Caja Seleccionada</span>
               </button>
 
               {/* Orientación y Rotación de Caja */}
@@ -2930,6 +3052,16 @@ export const WallElevationModal: React.FC = () => {
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={deleteSelectedOpening}
+                className="w-full py-2 px-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors active:scale-95"
+                title="Eliminar abertura del muro (Tecla Supr / Delete)"
+              >
+                <Trash2 size={14} />
+                <span>Eliminar Abertura</span>
+              </button>
             </div>
           ) : selectedConduit ? (
             /* CASO C: Canalización Seleccionada */
@@ -3203,6 +3335,167 @@ export const WallElevationModal: React.FC = () => {
         isOpen={isConduitModalOpen && Boolean(rawSelectedConduit)}
         onClose={() => setIsConduitModalOpen(false)}
       />
+
+      {/* Modal para conectar caja con elementos exteriores (techo, otros muros, tableros) */}
+      {isExternalModalOpen && selectedBox && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-4 py-3 bg-slate-800/80 border-b border-slate-700/80 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <ArrowUpRight size={16} className="text-cyan-400" />
+                  Conectar con Elemento Exterior
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Caja origen: <span className="text-cyan-300 font-mono">{selectedBox.label || selectedBox.id.slice(-6)}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExternalModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700/50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3.5 overflow-y-auto flex-1 text-xs">
+              {/* Salida del muro: Cielorraso vs Contrapiso */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
+                  Plano de Salida del Muro
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExternalRoutingPlane('ceiling_slab')}
+                    className={`py-2 px-2.5 rounded-xl border text-left transition-all ${
+                      externalRoutingPlane === 'ceiling_slab'
+                        ? 'bg-blue-600/30 border-blue-500 text-blue-200 font-bold'
+                        : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <ArrowUpRight size={14} className="text-blue-400" />
+                      <span>Por Cielorraso</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
+                      Sube a losa superior
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExternalRoutingPlane('floor_slab')}
+                    className={`py-2 px-2.5 rounded-xl border text-left transition-all ${
+                      externalRoutingPlane === 'floor_slab'
+                        ? 'bg-amber-600/30 border-amber-500 text-amber-200 font-bold'
+                        : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <MoveVertical size={14} className="text-amber-400" />
+                      <span>Por Contrapiso</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-normal block mt-0.5">
+                      Baja a nivel de piso
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtro de Categoría */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Destinos Disponibles ({availableExternalTargets.length})
+                  </label>
+                </div>
+                <div className="flex gap-1 bg-slate-800/80 p-1 rounded-xl mb-2 text-[11px]">
+                  {(['all', 'ceiling', 'panel', 'wall'] as const).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setExternalCategoryFilter(cat)}
+                      className={`flex-1 py-1 px-1.5 rounded-lg font-semibold capitalize transition-all ${
+                        externalCategoryFilter === cat
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {cat === 'all' ? 'Todos' : cat === 'ceiling' ? 'Cielorraso' : cat === 'panel' ? 'Tableros' : 'Paredes'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Búsqueda rápida */}
+                <input
+                  type="text"
+                  placeholder="Filtrar por nombre o circuito..."
+                  value={externalSearchQuery}
+                  onChange={(e) => setExternalSearchQuery(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 mb-2"
+                />
+
+                {/* Lista de Destinos */}
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                  {filteredExternalTargets.length === 0 ? (
+                    <div className="p-4 text-center text-slate-500 bg-slate-800/30 rounded-xl">
+                      No se encontraron elementos disponibles con ese filtro.
+                    </div>
+                  ) : (
+                    filteredExternalTargets.map((extTarget) => (
+                      <div
+                        key={extTarget.id}
+                        className="p-2.5 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-slate-600 rounded-xl flex items-center justify-between gap-2 transition-all"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`text-[9px] uppercase px-1.5 py-0.5 rounded-md font-bold tracking-wider ${
+                                extTarget.category === 'ceiling'
+                                  ? 'bg-cyan-500/20 text-cyan-300'
+                                  : extTarget.category === 'panel'
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-emerald-500/20 text-emerald-300'
+                              }`}
+                            >
+                              {extTarget.category === 'ceiling' ? 'Techo' : extTarget.category === 'panel' ? 'Tablero' : 'Pared'}
+                            </span>
+                            <span className="font-semibold text-slate-100 truncate">{extTarget.name}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 block truncate mt-0.5">
+                            {extTarget.sublabel} {extTarget.mountZ != null ? `· h=${extTarget.mountZ.toFixed(2)}m` : ''}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            connectToExternalElement(selectedBox.id, extTarget.id, externalRoutingPlane);
+                            setIsExternalModalOpen(false);
+                          }}
+                          className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-lg text-[11px] font-bold shadow shrink-0 transition-transform"
+                        >
+                          Conectar
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 bg-slate-800/50 border-t border-slate-700/80 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsExternalModalOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
