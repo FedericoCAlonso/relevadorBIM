@@ -52,9 +52,11 @@ import {
   Server,
   Edit2,
   GitBranch,
-  Eye
+  Eye,
+  Cloud
 } from 'lucide-react';
 import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
+import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
 import { BulkEditPanel } from '../electrical/BulkEditPanel';
 
 interface DesktopSidebarProps {
@@ -1673,8 +1675,21 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                             {isOpenAir ? 'Descubierto' : isSemi ? 'Semicubierto' : 'Cubierto'}
                           </span>
                         </div>
-                        <div className="text-[11px] font-mono font-bold text-slate-700">
-                          {metrics.areaM2.toFixed(2)} m² {isOpenAir ? '' : `· ${metrics.volumeM3.toFixed(2)} m³`}
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-[11px] font-mono font-bold text-slate-700">
+                            {metrics.areaM2.toFixed(2)} m² {isOpenAir ? '' : `· ${metrics.volumeM3.toFixed(2)} m³`}
+                          </div>
+                          {!isOpenAir && space.coverType !== 'vacio' && (
+                            <button
+                              type="button"
+                              onClick={() => useCeilingPlanStore.getState().openCeilingPlan(space.id)}
+                              className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-sky-400 border border-slate-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                              title="Abrir Plano de Cielorraso Reflejado (RCP)"
+                            >
+                              <Cloud size={11} />
+                              <span>RCP</span>
+                            </button>
+                          )}
                         </div>
                       </div>
 

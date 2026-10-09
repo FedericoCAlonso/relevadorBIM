@@ -29,6 +29,7 @@ import { ElectricalReportModal } from './views/components/electrical/ElectricalR
 import { BatchSelectModal } from './views/components/electrical/BatchSelectModal';
 import { BulkEditModal } from './views/components/electrical/BulkEditModal';
 import { WallElevationModal } from './views/components/architecture/WallElevationModal';
+import { CeilingPlanModal } from './views/components/architecture/CeilingPlanModal';
 import { useWallElevationStore } from './viewmodels/useWallElevationViewModel';
 import { useUnderlaySheetViewModel } from './viewmodels/useUnderlaySheetViewModel';
 import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorViewModel';
@@ -1032,8 +1033,11 @@ export function App() {
         onClose={() => setShowBulkEditModal(false)}
       />
 
-      {/* 13. Modal / Visor de Alzado y Elevación de Muros 2D (Fase 3) */}
+      {/* 13. Modal / Visor de Alzado y Elevación de Muros 2D */}
       <WallElevationModal />
+
+      {/* 14. Modal de Plano de Cielorraso Reflejado (RCP) */}
+      <CeilingPlanModal />
     </div>
   );
 }

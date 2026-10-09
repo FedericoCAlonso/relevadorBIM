@@ -8,6 +8,7 @@
  */
 
 import type { Vector2D, WallVertex } from './Wall';
+import type { CeilingMaterialType } from './ceilingPlan';
 
 export type SpaceCategory =
   | 'living'
@@ -46,6 +47,7 @@ export interface Space {
   wallIds: string[];           // IDs de los muros que lo rodean
   coverType?: SpaceCoverType;  // Tipo de cubierta: cubierto, semicubierto (balcón), descubierto o vacío
   ceilingProjection?: CeilingProjection; // Proyección de techo / alero para ambientes semicubiertos
+  ceilingMaterial?: CeilingMaterialType; // Materialidad constructiva del cielorraso (losa, durlock, etc.)
   color?: string;              // Color tenue de relleno para identificación
 }
 

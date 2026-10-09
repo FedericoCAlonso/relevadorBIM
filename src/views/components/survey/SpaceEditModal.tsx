@@ -20,6 +20,7 @@ import {
   type SpaceCoverType
 } from '../../../models/architecture/Space';
 import { getRecommendedIPForCover } from '../../../models/electrical/electricalStandards';
+import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
 import {
   X,
   Building2,
@@ -30,7 +31,8 @@ import {
   Sun,
   ShieldCheck,
   Ruler,
-  SquareDashed
+  SquareDashed,
+  Cloud
 } from 'lucide-react';
 
 interface SpaceEditModalProps {
@@ -409,11 +411,26 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
           </div>
         )}
 
+        {/* Acceso a Vista de Cielorraso Reflejado (RCP) */}
+        {resolvedCoverType !== 'descubierto' && resolvedCoverType !== 'vacio' && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              useCeilingPlanStore.getState().openCeilingPlan(space.id);
+            }}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-sky-400 border border-slate-700 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer mt-1"
+          >
+            <Cloud size={16} />
+            <span>VER PLANO DE CIELORRASO REFLEJADO (RCP)</span>
+          </button>
+        )}
+
         {/* Botón de Guardar / Aceptar */}
         <button
           type="button"
           onClick={onClose}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all mt-2 cursor-pointer"
+          className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all mt-1 cursor-pointer"
         >
           <Check size={16} strokeWidth={2.5} />
           <span>GUARDAR CAMBIOS</span>
