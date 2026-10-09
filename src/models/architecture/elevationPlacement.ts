@@ -64,9 +64,9 @@ export function computeNewNodeFromElevation(
   const halfThick = wall.thickness / 2;
   const v = face === 'left' ? halfThick : -halfThick;
 
-  const angleRad = Math.atan2(frame.uy, frame.ux);
-  let rotationDeg = Math.round((angleRad * 180) / Math.PI);
-  if (rotationDeg < 0) rotationDeg += 360;
+  const wallAngleDeg = (Math.atan2(frame.uy, frame.ux) * 180) / Math.PI;
+  let rotationDeg = face === 'left' ? wallAngleDeg + 180 : wallAngleDeg;
+  rotationDeg = Math.round(((rotationDeg % 360) + 360) % 360);
 
   return {
     x: round3(frame.origin.x + frame.ux * u + frame.nx * v),
