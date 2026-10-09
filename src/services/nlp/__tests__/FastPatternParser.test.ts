@@ -78,6 +78,20 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
         expect(intent.relativeTo?.sharedWall).toBe('este');
       }
     });
+
+    it('extrae recinto adosado cuando la cláusula está antes de las dimensiones ("Balcón pegado a pared sur de 4.5 por 1")', () => {
+      const intent = parseNaturalLanguageFast('Balcón pegado a pared sur de 4.5 por 1');
+
+      expect(intent).not.toBeNull();
+      expect(intent?.action).toBe('create_space');
+      if (intent?.action === 'create_space') {
+        expect(intent.name).toBe('Balcon');
+        expect(intent.category).toBe('balcon');
+        expect(intent.dimensions.widthM).toBe(4.5);
+        expect(intent.dimensions.lengthM).toBe(1);
+        expect(intent.relativeTo?.sharedWall).toBe('sur');
+      }
+    });
   });
 
   describe('Emplazamiento de Aberturas Individuales', () => {

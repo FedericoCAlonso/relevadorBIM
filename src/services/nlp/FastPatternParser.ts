@@ -169,10 +169,22 @@ function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
   const match = clean.match(pattern);
   if (!match) return null;
 
-  const rawName = match[1].trim();
+  let rawName = match[1].trim();
   const rawDim1 = match[2].trim();
   const rawDim2 = match[3].trim();
   const rest = match[4]?.trim() || '';
+
+  // Detectar adosado a otro ambiente (muro compartido) tanto si vino antes de las dimensiones (en rawName) como si vino después (en rest)
+  const attachedPattern = /(?:pegado|adosado|compartiendo|al lado)\s+(?:a|de|al)?\s*(?:la\s+pared\s+([a-z]+)|el\s+muro\s+([a-z]+)|pared\s+([a-z]+)|muro\s+([a-z]+)|al\s+([a-z]+))?\s*(?:de|del)?\s*([a-z0-9\s]+)?/i;
+
+  let attachedMatch = rest.match(attachedPattern);
+  if (!attachedMatch) {
+    attachedMatch = rawName.match(attachedPattern);
+    if (attachedMatch) {
+      // Limpiar la cláusula de adosado del nombre del ambiente para que quede limpio (ej: "Balcón")
+      rawName = rawName.replace(attachedPattern, '').trim();
+    }
+  }
 
   // Descartar si el nombre es una palabra de comando eléctrico o abertura
   if (
@@ -217,11 +229,9 @@ function tryParseCreateSpace(text: string): CreateSpaceIntent | null {
     intent.category = 'balcon';
   }
 
-  // Detectar adosado a otro ambiente (muro compartido)
-  const attachedMatch = rest.match(/(?:pegado|adosado|compartiendo|al lado)\s+(?:a|de|al)?\s*(?:la\s+pared\s+([a-z]+))?\s*(?:de|del)?\s*([a-z0-9\s]+)?/);
   if (attachedMatch) {
-    const rawWall = attachedMatch[1];
-    const rawTarget = attachedMatch[2]?.trim();
+    const rawWall = attachedMatch[1] || attachedMatch[2] || attachedMatch[3] || attachedMatch[4] || attachedMatch[5];
+    const rawTarget = attachedMatch[6]?.trim();
     intent.relativeTo = {};
     if (rawWall) intent.relativeTo.sharedWall = parseOrientation(rawWall);
     if (rawTarget) intent.relativeTo.targetSpaceName = rawTarget;
