@@ -32,15 +32,18 @@ import {
   ShieldCheck,
   Ruler,
   SquareDashed,
-  Cloud
+  Cloud,
+  PenTool,
+  Repeat
 } from 'lucide-react';
 
 interface SpaceEditModalProps {
   spaceId: string | null;
   onClose: () => void;
+  onStartDrawingOverhang?: (spaceId: string) => void;
 }
 
-export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose }) => {
+export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose, onStartDrawingOverhang }) => {
   const { project, updateSpace } = useProjectStore();
 
   const space = useMemo(() => {
@@ -271,9 +274,59 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
               </button>
             </div>
 
-            {/* Ajuste de Profundidad de Alero cuando mode === 'alero' */}
+            {/* Ajuste de Alero cuando mode === 'alero' */}
             {space.ceilingProjection?.mode === 'alero' && (
-              <div className="space-y-2 pt-2 border-t border-blue-200/60">
+              <div className="space-y-2.5 pt-2 border-t border-blue-200/60">
+                {/* Botón de Trazar en Plano */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onStartDrawingOverhang?.(space.id);
+                  }}
+                  className="w-full py-2 px-3 bg-white hover:bg-blue-50 text-blue-800 border border-blue-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                >
+                  <PenTool size={14} className="text-blue-600" />
+                  <span>
+                    {space.ceilingProjection?.projectionLine
+                      ? 'Re-trazar Alero en Plano (2 clics)'
+                      : 'Trazar Alero en Plano (2 clics)'}
+                  </span>
+                </button>
+
+                {/* Selector de Muro de Apoyo */}
+                {space.wallIds && space.wallIds.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-blue-900">Muro de Apoyo / Fachada:</label>
+                    <select
+                      value={space.ceilingProjection?.referenceWallId || ''}
+                      onChange={(e) => {
+                        updateSpace(space.id, {
+                          ceilingProjection: {
+                            ...(space.ceilingProjection || { mode: 'alero' }),
+                            referenceWallId: e.target.value || undefined,
+                            projectionLine: undefined
+                          }
+                        });
+                      }}
+                      className="w-full text-xs py-1.5 px-2 bg-white border border-blue-200 rounded-lg font-medium text-slate-700"
+                    >
+                      <option value="">Automático (muro más largo)</option>
+                      {space.wallIds.map((wId, i) => {
+                        const w = project.walls.find((wall) => wall.id === wId);
+                        const v1 = project.vertices.find((v) => v.id === w?.startVertexId);
+                        const v2 = project.vertices.find((v) => v.id === w?.endVertexId);
+                        const len = v1 && v2 ? Math.hypot(v2.x - v1.x, v2.y - v1.y) : 0;
+                        return (
+                          <option key={wId} value={wId}>
+                            Muro #{i + 1} ({len.toFixed(2)}m)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Ruler size={13} className="text-blue-600" />
@@ -292,7 +345,8 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
                           ceilingProjection: {
                             ...space.ceilingProjection!,
                             mode: 'alero',
-                            overhangDepth: val
+                            overhangDepth: val,
+                            projectionLine: undefined
                           }
                         });
                       }}
@@ -303,7 +357,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
                 </div>
 
                 {/* Presets de profundidad */}
-                <div className="flex gap-1.5 justify-end">
+                <div className="flex gap-1.5 justify-end flex-wrap">
                   {STANDARD_OVERHANG_DEPTH_PRESETS.map((depth) => (
                     <button
                       key={depth}
@@ -313,7 +367,8 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
                           ceilingProjection: {
                             ...space.ceilingProjection!,
                             mode: 'alero',
-                            overhangDepth: depth
+                            overhangDepth: depth,
+                            projectionLine: undefined
                           }
                         });
                       }}
@@ -328,12 +383,37 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
                   ))}
                 </div>
 
-                {/* Detalle de superficie efectiva */}
-                <div className="text-[11px] text-blue-800 bg-white/70 p-2 rounded-xl border border-blue-100 flex items-center justify-between">
-                  <span>Área cubierta por alero:</span>
-                  <span className="font-mono font-bold">
-                    {ceilingProj.coveredAreaM2.toFixed(2)} m² (50% AEA: {(ceilingProj.coveredAreaM2 * 0.5).toFixed(2)} m²)
-                  </span>
+                {/* Invertir Lado Techado */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateSpace(space.id, {
+                      ceilingProjection: {
+                        ...(space.ceilingProjection || { mode: 'alero' }),
+                        invertSide: !space.ceilingProjection?.invertSide
+                      }
+                    });
+                  }}
+                  className="w-full py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Repeat size={12} className="text-blue-600" />
+                  <span>Invertir Lado Techado ({space.ceilingProjection?.invertSide ? 'Invertido' : 'Normal'})</span>
+                </button>
+
+                {/* Detalle de superficies desglosadas */}
+                <div className="text-[11px] bg-white/90 p-2.5 rounded-xl border border-blue-200 space-y-1">
+                  <div className="flex items-center justify-between text-blue-950 font-bold">
+                    <span>Área techada (50% AEA):</span>
+                    <span className="font-mono">
+                      {ceilingProj.coveredAreaM2.toFixed(2)} m² ({(ceilingProj.coveredAreaM2 * 0.5).toFixed(2)} m²)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-800 font-medium">
+                    <span>Área a cielo abierto (0% AEA):</span>
+                    <span className="font-mono">
+                      {ceilingProj.uncoveredAreaM2.toFixed(2)} m²
+                    </span>
+                  </div>
                 </div>
               </div>
             )}

@@ -34,6 +34,8 @@ export interface CeilingProjection {
   overhangDepth?: number;   // Profundidad de alero en metros (default: 1.50)
   ceilingHeight?: number;   // Altura libre piso-techo del alero (si difiere de space.ceilingHeight)
   referenceWallId?: string; // ID del muro de fachada / apoyo desde donde proyecta el alero
+  projectionLine?: [Vector2D, Vector2D]; // Línea explícita trazada por 2 clics o calculada
+  invertSide?: boolean;     // Invertir cuál de los dos lados del corte es el techado vs descubierto
 }
 
 export interface Space {
@@ -168,6 +170,8 @@ export interface SpaceMetrics {
   perimeterM: number;
   volumeM3: number;
   limitAreaM2?: number; // Superficie computable AEA 771 (m²)
+  coveredAreaM2?: number; // Superficie semicubierta techada (m²)
+  uncoveredAreaM2?: number; // Superficie a cielo abierto remanente (m²)
 }
 
 // ─── CÁLCULOS GEOMÉTRICOS DE SUPERFICIES Y CENTROIDES ───────────────────────
@@ -280,14 +284,133 @@ export function resolveSpacePolygon(
 
 export interface CeilingProjectionResult {
   coveredAreaM2: number;
+  uncoveredAreaM2: number;
   projectionLine?: [Vector2D, Vector2D]; // Línea del límite del alero en coordenadas métricas
   isPartial: boolean;
+  coveredPolygon?: Vector2D[];
+  uncoveredPolygon?: Vector2D[];
+}
+
+/**
+ * Recorta un polígono 2D simple contra un semiplano delimitado por una recta dirigida (P1 -> P2).
+ * Retorna las coordenadas de los vértices del subpolígono resultante (Sutherland-Hodgman).
+ */
+export function clipPolygonHalfPlane(
+  polygon: Vector2D[],
+  lineP1: Vector2D,
+  lineP2: Vector2D,
+  keepSide: 'positive' | 'negative'
+): Vector2D[] {
+  const n = polygon.length;
+  if (n < 3) return [];
+
+  const dx = lineP2.x - lineP1.x;
+  const dy = lineP2.y - lineP1.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-5) return polygon;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const dist = (p: Vector2D) => (p.x - lineP1.x) * nx + (p.y - lineP1.y) * ny;
+  const isInside = (d: number) => (keepSide === 'positive' ? d >= -1e-5 : d <= 1e-5);
+
+  const output: Vector2D[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const cur = polygon[i];
+    const next = polygon[(i + 1) % n];
+
+    const dCur = dist(cur);
+    const dNext = dist(next);
+
+    const curInside = isInside(dCur);
+    const nextInside = isInside(dNext);
+
+    if (curInside) {
+      output.push({ x: Number(cur.x.toFixed(3)), y: Number(cur.y.toFixed(3)) });
+      if (!nextInside) {
+        const t = dCur / (dCur - dNext);
+        output.push({
+          x: Number((cur.x + t * (next.x - cur.x)).toFixed(3)),
+          y: Number((cur.y + t * (next.y - cur.y)).toFixed(3))
+        });
+      }
+    } else if (nextInside) {
+      const t = dCur / (dCur - dNext);
+      output.push({
+        x: Number((cur.x + t * (next.x - cur.x)).toFixed(3)),
+        y: Number((cur.y + t * (next.y - cur.y)).toFixed(3))
+      });
+    }
+  }
+
+  return output;
+}
+
+/**
+ * Encuentra el segmento de intersección entre una recta infinita (P1, P2) y el perímetro de un polígono.
+ */
+export function getLineIntersectionWithPolygon(
+  polygon: Vector2D[],
+  lineP1: Vector2D,
+  lineP2: Vector2D
+): [Vector2D, Vector2D] | null {
+  const n = polygon.length;
+  if (n < 3) return null;
+
+  const dx = lineP2.x - lineP1.x;
+  const dy = lineP2.y - lineP1.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-5) return null;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const dist = (p: Vector2D) => (p.x - lineP1.x) * nx + (p.y - lineP1.y) * ny;
+  const intersections: Vector2D[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const cur = polygon[i];
+    const next = polygon[(i + 1) % n];
+    const dCur = dist(cur);
+    const dNext = dist(next);
+
+    if (Math.abs(dCur) < 1e-5) {
+      intersections.push({ x: Number(cur.x.toFixed(3)), y: Number(cur.y.toFixed(3)) });
+    } else if (dCur * dNext < 0) {
+      const t = dCur / (dCur - dNext);
+      intersections.push({
+        x: Number((cur.x + t * (next.x - cur.x)).toFixed(3)),
+        y: Number((cur.y + t * (next.y - cur.y)).toFixed(3))
+      });
+    }
+  }
+
+  const unique: Vector2D[] = [];
+  for (const pt of intersections) {
+    if (!unique.some((u) => Math.hypot(u.x - pt.x, u.y - pt.y) < 1e-3)) {
+      unique.push(pt);
+    }
+  }
+
+  if (unique.length >= 2) {
+    // Ordenar a lo largo del vector directriz (lineP1 -> lineP2) para preservar orientación
+    unique.sort((a, b) => {
+      const projA = (a.x - lineP1.x) * dx + (a.y - lineP1.y) * dy;
+      const projB = (b.x - lineP1.x) * dx + (b.y - lineP1.y) * dy;
+      return projA - projB;
+    });
+    return [unique[0], unique[unique.length - 1]];
+  }
+
+  return null;
 }
 
 /**
  * Calcula la proyección geométrica del techo o alero para un recinto arquitectónico.
- * Si es semicubierto con alero paramétrico, determina la línea de proyección normalizada (-- - --)
- * y la superficie cubierta efectiva.
+ * Si es semicubierto con alero paramétrico o línea de alero trazada, determina la línea de proyección normalizada (-- - --),
+ * los subpolígonos cubierto y descubierto, y las superficies efectivas.
  */
 export function computeCeilingProjection(
   space: Space,
@@ -298,21 +421,68 @@ export function computeCeilingProjection(
   const totalArea = poly.length >= 3 ? calculatePolygonArea(poly) : 0;
 
   if (isSpaceVoid(space) || isSpaceOpenAir(space)) {
-    return { coveredAreaM2: 0, isPartial: false };
+    return { coveredAreaM2: 0, uncoveredAreaM2: totalArea, isPartial: false };
   }
 
   if (!isSpaceSemiCovered(space)) {
     // Cubierto u otro tipo cerrado completo
-    return { coveredAreaM2: totalArea, isPartial: false };
+    return { coveredAreaM2: totalArea, uncoveredAreaM2: 0, isPartial: false };
   }
 
   // Recinto semicubierto
   const proj = space.ceilingProjection;
   if (!proj || proj.mode === 'total') {
-    return { coveredAreaM2: totalArea, isPartial: false };
+    return { coveredAreaM2: totalArea, uncoveredAreaM2: 0, isPartial: false };
   }
 
-  // proj.mode === 'alero'
+  // Caso A: Línea explícita trazada por 2 clics
+  if (proj.projectionLine && proj.projectionLine.length === 2) {
+    const [p1, p2] = proj.projectionLine;
+    const cutLine = getLineIntersectionWithPolygon(poly, p1, p2) || [p1, p2];
+
+    // Determinar qué lado es el cubierto
+    let coveredSide: 'positive' | 'negative' = proj.invertSide ? 'positive' : 'negative';
+
+    if (proj.referenceWallId && wallsMap) {
+      const refWall = wallsMap.get(proj.referenceWallId);
+      if (refWall) {
+        const v1 = verticesMap.get(refWall.startVertexId);
+        const v2 = verticesMap.get(refWall.endVertexId);
+        if (v1 && v2) {
+          const midX = (v1.x + v2.x) / 2;
+          const midY = (v1.y + v2.y) / 2;
+          const dx = cutLine[1].x - cutLine[0].x;
+          const dy = cutLine[1].y - cutLine[0].y;
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const dRef = (midX - cutLine[0].x) * nx + (midY - cutLine[0].y) * ny;
+          coveredSide = dRef >= 0 ? 'positive' : 'negative';
+          if (proj.invertSide) {
+            coveredSide = coveredSide === 'positive' ? 'negative' : 'positive';
+          }
+        }
+      }
+    }
+
+    const uncoveredSide = coveredSide === 'positive' ? 'negative' : 'positive';
+    const coveredPoly = clipPolygonHalfPlane(poly, cutLine[0], cutLine[1], coveredSide);
+    const uncoveredPoly = clipPolygonHalfPlane(poly, cutLine[0], cutLine[1], uncoveredSide);
+
+    const covArea = coveredPoly.length >= 3 ? calculatePolygonArea(coveredPoly) : 0;
+    const uncovArea = uncoveredPoly.length >= 3 ? calculatePolygonArea(uncoveredPoly) : totalArea - covArea;
+
+    return {
+      coveredAreaM2: Number(covArea.toFixed(2)),
+      uncoveredAreaM2: Number(uncovArea.toFixed(2)),
+      projectionLine: cutLine,
+      isPartial: true,
+      coveredPolygon: coveredPoly,
+      uncoveredPolygon: uncoveredPoly
+    };
+  }
+
+  // Caso B: proj.mode === 'alero' paramétrico por profundidad desde muro de apoyo
   const depth = Math.max(0.1, proj.overhangDepth ?? 1.50);
 
   // Buscar el muro de referencia desde donde se proyecta el alero
@@ -321,7 +491,6 @@ export function computeCeilingProjection(
     refWall = wallsMap.get(proj.referenceWallId);
   }
   if (!refWall && wallsMap && space.wallIds && space.wallIds.length > 0) {
-    // Si no se especificó, buscar el muro más largo del ambiente como apoyo principal
     let maxLen = -1;
     for (const wId of space.wallIds) {
       const w = wallsMap.get(wId);
@@ -341,7 +510,11 @@ export function computeCeilingProjection(
 
   if (!refWall || !verticesMap.has(refWall.startVertexId) || !verticesMap.has(refWall.endVertexId)) {
     const covered = Math.min(totalArea, totalArea * 0.5);
-    return { coveredAreaM2: Number(covered.toFixed(2)), isPartial: true };
+    return {
+      coveredAreaM2: Number(covered.toFixed(2)),
+      uncoveredAreaM2: Number((totalArea - covered).toFixed(2)),
+      isPartial: true
+    };
   }
 
   const v1 = verticesMap.get(refWall.startVertexId)!;
@@ -350,7 +523,7 @@ export function computeCeilingProjection(
   const dy = v2.y - v1.y;
   const wallLen = Math.hypot(dx, dy);
   if (wallLen < 1e-4) {
-    return { coveredAreaM2: totalArea, isPartial: false };
+    return { coveredAreaM2: totalArea, uncoveredAreaM2: 0, isPartial: false };
   }
 
   // Vector unitario en dirección del muro
@@ -382,12 +555,37 @@ export function computeCeilingProjection(
     y: Number((v2.y + ny * depth).toFixed(3))
   };
 
-  const approxCovered = Math.min(totalArea, wallLen * depth);
+  const cutLine = getLineIntersectionWithPolygon(poly, p1, p2) || [p1, p2];
+
+  // Evaluar qué lado corresponde al muro de referencia
+  const cdx = cutLine[1].x - cutLine[0].x;
+  const cdy = cutLine[1].y - cutLine[0].y;
+  const clen = Math.hypot(cdx, cdy) || 1;
+  const cnx = -cdy / clen;
+  const cny = cdx / clen;
+  const dMidWall = (midX - cutLine[0].x) * cnx + (midY - cutLine[0].y) * cny;
+  let coveredSide: 'positive' | 'negative' = dMidWall >= 0 ? 'positive' : 'negative';
+  if (proj.invertSide) {
+    coveredSide = coveredSide === 'positive' ? 'negative' : 'positive';
+  }
+  const uncoveredSide = coveredSide === 'positive' ? 'negative' : 'positive';
+
+  const coveredPoly = clipPolygonHalfPlane(poly, cutLine[0], cutLine[1], coveredSide);
+  const uncoveredPoly = clipPolygonHalfPlane(poly, cutLine[0], cutLine[1], uncoveredSide);
+
+  let coveredArea = coveredPoly.length >= 3 ? calculatePolygonArea(coveredPoly) : Math.min(totalArea, wallLen * depth);
+  let uncoveredArea = uncoveredPoly.length >= 3 ? calculatePolygonArea(uncoveredPoly) : Math.max(0, totalArea - coveredArea);
+
+  coveredArea = Math.min(totalArea, Math.max(0, coveredArea));
+  uncoveredArea = Math.min(totalArea, Math.max(0, uncoveredArea));
 
   return {
-    coveredAreaM2: Number(approxCovered.toFixed(2)),
-    projectionLine: [p1, p2],
-    isPartial: true
+    coveredAreaM2: Number(coveredArea.toFixed(2)),
+    uncoveredAreaM2: Number(uncoveredArea.toFixed(2)),
+    projectionLine: cutLine,
+    isPartial: true,
+    coveredPolygon: coveredPoly,
+    uncoveredPolygon: uncoveredPoly
   };
 }
 
@@ -407,11 +605,16 @@ export function calculateSpaceMetrics(
   const isOpenAir = isSpaceOpenAir(space);
   const volumeM3 = (isVoid || isOpenAir) ? 0 : Number((areaM2 * (space.ceilingHeight || 2.70)).toFixed(2));
 
+  let coveredAreaM2 = isVoid || isOpenAir ? 0 : areaM2;
+  let uncoveredAreaM2 = isVoid || isOpenAir ? areaM2 : 0;
   let limitAreaM2 = areaM2;
+
   if (isVoid || isOpenAir) {
     limitAreaM2 = 0;
   } else if (isSpaceSemiCovered(space)) {
-    const { coveredAreaM2 } = computeCeilingProjection(space, verticesMap, wallsMap);
+    const proj = computeCeilingProjection(space, verticesMap, wallsMap);
+    coveredAreaM2 = proj.coveredAreaM2;
+    uncoveredAreaM2 = proj.uncoveredAreaM2;
     limitAreaM2 = Number((coveredAreaM2 * 0.50).toFixed(2));
   }
 
@@ -419,7 +622,9 @@ export function calculateSpaceMetrics(
     areaM2,
     perimeterM,
     volumeM3,
-    limitAreaM2: Number(limitAreaM2.toFixed(2))
+    limitAreaM2: Number(limitAreaM2.toFixed(2)),
+    coveredAreaM2: Number(coveredAreaM2.toFixed(2)),
+    uncoveredAreaM2: Number(uncoveredAreaM2.toFixed(2))
   };
 }
 

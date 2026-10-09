@@ -213,6 +213,9 @@ export function computeEffectiveCeilingPolygon(
 
   if (isSpaceSemiCovered(space) && space.ceilingProjection?.mode === 'alero') {
     const projResult = computeCeilingProjection(space, verticesMap, wallsMap);
+    if (projResult.coveredPolygon && projResult.coveredPolygon.length >= 3) {
+      return projResult.coveredPolygon;
+    }
     if (projResult.projectionLine && wallsMap && space.ceilingProjection.referenceWallId) {
       const refWall = wallsMap.get(space.ceilingProjection.referenceWallId);
       if (refWall) {

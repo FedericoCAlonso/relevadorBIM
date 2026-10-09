@@ -52,6 +52,7 @@ export function useSurveyViewModel() {
     addElectricalElement,
     addConduit,
     updateConduit,
+    updateSpace,
     addDimensionLine,
     setShowDimensions
   } = useProjectStore();
@@ -315,6 +316,61 @@ export function useSurveyViewModel() {
     [isAddingDimension, dimensionP1, project.activeLevelId, addDimensionLine, setSelectedEntity]
   );
 
+  // ─── ESTADO DE TRAZADO INTERACTIVO DE ALERO (2 CLICS) ───
+  const [isDrawingOverhang, setIsDrawingOverhang] = useState(false);
+  const [overhangSpaceId, setOverhangSpaceId] = useState<string | null>(null);
+  const [overhangP1, setOverhangP1] = useState<{ x: number; y: number } | null>(null);
+
+  const startDrawingOverhang = useCallback((spaceId: string) => {
+    setIsDrawingOverhang(true);
+    setOverhangSpaceId(spaceId);
+    setOverhangP1(null);
+    setIsAddingDimension(false);
+    setDimensionP1(null);
+    setIsConnectingConduit(false);
+    setPendingConduitStartId(null);
+    setPendingConduitWaypoints([]);
+    setSelectedSymbolId(null);
+  }, []);
+
+  const cancelDrawingOverhang = useCallback(() => {
+    setIsDrawingOverhang(false);
+    setOverhangSpaceId(null);
+    setOverhangP1(null);
+  }, []);
+
+  const handleOverhangCanvasClick = useCallback(
+    (worldX: number, worldY: number) => {
+      if (!isDrawingOverhang || !overhangSpaceId) return;
+
+      if (!overhangP1) {
+        setOverhangP1({ x: worldX, y: worldY });
+      } else {
+        const dist = Math.hypot(worldX - overhangP1.x, worldY - overhangP1.y);
+        if (dist >= 0.10) {
+          const currentSpace = project.spaces.find((s) => s.id === overhangSpaceId);
+          if (currentSpace) {
+            updateSpace(overhangSpaceId, {
+              coverType: 'semicubierto',
+              ceilingProjection: {
+                ...(currentSpace.ceilingProjection || {}),
+                mode: 'alero',
+                projectionLine: [
+                  { x: Number(overhangP1.x.toFixed(3)), y: Number(overhangP1.y.toFixed(3)) },
+                  { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) }
+                ]
+              }
+            });
+          }
+        }
+        setIsDrawingOverhang(false);
+        setOverhangSpaceId(null);
+        setOverhangP1(null);
+      }
+    },
+    [isDrawingOverhang, overhangSpaceId, overhangP1, project.spaces, updateSpace]
+  );
+
   /**
    * Conexión de cañerías entre bocas eléctricas y tableros distribuidores.
    */
@@ -572,6 +628,12 @@ export function useSurveyViewModel() {
     setDimensionP1,
     startAddingDimension,
     cancelAddingDimension,
-    handleDimensionCanvasClick
+    handleDimensionCanvasClick,
+    isDrawingOverhang,
+    overhangSpaceId,
+    overhangP1,
+    startDrawingOverhang,
+    cancelDrawingOverhang,
+    handleOverhangCanvasClick
   };
 }

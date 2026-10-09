@@ -61,7 +61,45 @@ export const OPENING_SWING_OPTIONS: readonly OpeningSwingOption[] = [
 export const ARCHITECTURAL_SPACE_CONFIG = {
   DEFAULT_CEILING_HEIGHT_M: 2.70,
   CEILING_HEIGHT_PRESETS: [2.40, 2.60, 2.70, 3.00, 3.50] as const,
+  DEFAULT_OVERHANG_DEPTH_M: 1.50,
+  OVERHANG_DEPTH_PRESETS: [1.00, 1.20, 1.50, 2.00, 2.50] as const,
   MINIMUM_DETECTABLE_AREA_M2: 0.05
+} as const;
+
+export const ARCHITECTURAL_SPACE_STYLES = {
+  COVERED: {
+    fill: 'rgba(241, 245, 249, 0.75)',
+    stroke: 'none',
+    strokeWidth: 0,
+    strokeDasharray: undefined as string | undefined
+  },
+  SEMI_COVERED: {
+    fillUnderRoof: 'rgba(224, 242, 254, 0.70)',
+    fillUncovered: 'url(#hatch-open-air)',
+    stroke: '#0284c7',
+    strokeWidth: 1.5,
+    strokeDasharray: '8 3 2 3',
+    lineStroke: '#0284c7',
+    lineDasharray: '8 3 2 3'
+  },
+  OPEN_AIR: {
+    fill: 'url(#hatch-open-air)',
+    stroke: '#d97706',
+    strokeWidth: 1.2,
+    strokeDasharray: '6 4'
+  },
+  VOID: {
+    fill: 'rgba(255, 255, 255, 0.4)',
+    stroke: '#94a3b8',
+    strokeWidth: 1,
+    strokeDasharray: '4 3'
+  },
+  SHAFT: {
+    fill: 'rgba(203, 213, 225, 0.45)',
+    stroke: '#64748b',
+    strokeWidth: 1,
+    strokeDasharray: undefined as string | undefined
+  }
 } as const;
 
 export interface SpaceCoverTypeOption {

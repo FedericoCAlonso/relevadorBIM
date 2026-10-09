@@ -170,5 +170,93 @@ describe('Modelo: Tipología de Cubierta y Proyección de Techos/Aleros (Space)'
     // Y el cálculo de métricas en Space debe computar limitAreaM2 como el 50% de 7.50 = 3.75 m²
     const metricsAlero = calculateSpaceMetrics(spaceAlero, verticesMap, wallsMap);
     expect(metricsAlero.limitAreaM2).toBe(3.75);
+    expect(metricsAlero.coveredAreaM2).toBe(7.5);
+    expect(metricsAlero.uncoveredAreaM2).toBe(12.5);
+    expect(projAlero.coveredPolygon?.length).toBe(4);
+    expect(projAlero.uncoveredPolygon?.length).toBe(4);
+  });
+
+  it('debe soportar trazado directo de línea de alero por 2 clics y recortar polígonos cubierto/descubierto', () => {
+    // Galería de 6x4 = 24 m²
+    const verticesMap = new Map<string, WallVertex>([
+      ['v1', { id: 'v1', x: 0, y: 0 }],
+      ['v2', { id: 'v2', x: 6, y: 0 }],
+      ['v3', { id: 'v3', x: 6, y: 4 }],
+      ['v4', { id: 'v4', x: 0, y: 4 }]
+    ]);
+
+    const space2Clicks: Space = {
+      id: 'sp-galeria-2c',
+      name: 'Galería Trazada',
+      category: 'balcon',
+      levelId: 'lvl-1',
+      ceilingHeight: 2.70,
+      floorElevation: 0,
+      boundaryVertexIds: ['v1', 'v2', 'v3', 'v4'],
+      wallIds: [],
+      coverType: 'semicubierto',
+      ceilingProjection: {
+        mode: 'alero',
+        projectionLine: [
+          { x: 0, y: 2.0 },
+          { x: 6, y: 2.0 }
+        ]
+      }
+    };
+
+    const proj = computeCeilingProjection(space2Clicks, verticesMap);
+    expect(proj.isPartial).toBe(true);
+    expect(proj.projectionLine).toBeDefined();
+    expect(proj.coveredAreaM2).toBe(12);
+    expect(proj.uncoveredAreaM2).toBe(12);
+    expect(proj.coveredPolygon?.length).toBe(4);
+    expect(proj.uncoveredPolygon?.length).toBe(4);
+
+    const metrics = calculateSpaceMetrics(space2Clicks, verticesMap);
+    expect(metrics.coveredAreaM2).toBe(12);
+    expect(metrics.uncoveredAreaM2).toBe(12);
+    expect(metrics.limitAreaM2).toBe(6); // 50% de 12 m² = 6 m²
+  });
+
+  it('debe permitir invertir el lado techado con invertSide', () => {
+    const verticesMap = new Map<string, WallVertex>([
+      ['v1', { id: 'v1', x: 0, y: 0 }],
+      ['v2', { id: 'v2', x: 4, y: 0 }],
+      ['v3', { id: 'v3', x: 4, y: 6 }],
+      ['v4', { id: 'v4', x: 0, y: 6 }]
+    ]);
+
+    const spaceNormal: Space = {
+      id: 'sp-inv',
+      name: 'Porche',
+      category: 'balcon',
+      levelId: 'lvl-1',
+      ceilingHeight: 2.60,
+      floorElevation: 0,
+      boundaryVertexIds: ['v1', 'v2', 'v3', 'v4'],
+      wallIds: [],
+      coverType: 'semicubierto',
+      ceilingProjection: {
+        mode: 'alero',
+        projectionLine: [{ x: 0, y: 1.5 }, { x: 4, y: 1.5 }],
+        invertSide: false
+      }
+    };
+
+    const projNormal = computeCeilingProjection(spaceNormal, verticesMap);
+    expect(projNormal.coveredAreaM2).toBe(6); // 4 * 1.5 = 6 m²
+    expect(projNormal.uncoveredAreaM2).toBe(18); // 4 * 4.5 = 18 m²
+
+    const spaceInverted: Space = {
+      ...spaceNormal,
+      ceilingProjection: {
+        ...spaceNormal.ceilingProjection!,
+        invertSide: true
+      }
+    };
+
+    const projInverted = computeCeilingProjection(spaceInverted, verticesMap);
+    expect(projInverted.coveredAreaM2).toBe(18);
+    expect(projInverted.uncoveredAreaM2).toBe(6);
   });
 });

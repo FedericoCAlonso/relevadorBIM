@@ -22,7 +22,8 @@ import {
   CONDUCTOR_ROLE_OPTIONS,
   CABLE_QUICK_SECTIONS,
   BREAKER_AMPERAGE_PRESETS,
-  AEA_GRID_CONSTANTS
+  AEA_GRID_CONSTANTS,
+  ARCHITECTURAL_SPACE_CONFIG
 } from '../../../config';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
@@ -74,7 +75,9 @@ import {
   Cloud,
   Home,
   Umbrella,
-  Sun
+  Sun,
+  PenTool,
+  Repeat
 } from 'lucide-react';
 import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
@@ -101,6 +104,7 @@ interface DesktopSidebarProps {
   onUndoEditingConduitWaypoint?: () => void;
   wallJustification?: WallJustification;
   onChangeJustification?: (j: WallJustification) => void;
+  onStartDrawingOverhang?: (spaceId: string) => void;
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
@@ -123,7 +127,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onStartRedesigningConduitRoute,
   onUndoEditingConduitWaypoint,
   wallJustification = 'interior',
-  onChangeJustification
+  onChangeJustification,
+  onStartDrawingOverhang
 }) => {
   const {
     project,
@@ -1792,7 +1797,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 
                       {/* Proyección de Alero para Semicubierto */}
                       {isSemi && (
-                        <div className="p-2.5 bg-cyan-50/70 border border-cyan-200 rounded-xl space-y-1.5">
+                        <div className="p-2.5 bg-cyan-50/70 border border-cyan-200 rounded-xl space-y-2">
                           <div className="flex items-center justify-between text-[10px] font-bold text-cyan-900">
                             <span className="flex items-center gap-1">
                               <Umbrella size={12} className="text-cyan-600" />
@@ -1806,7 +1811,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               onClick={() => {
                                 updateSpace(space.id, {
                                   ceilingProjection: {
-                                    ...(space.ceilingProjection || { overhangDepth: 1.50 }),
+                                    ...(space.ceilingProjection || { overhangDepth: ARCHITECTURAL_SPACE_CONFIG.DEFAULT_OVERHANG_DEPTH_M }),
                                     mode: 'total'
                                   }
                                 });
@@ -1824,7 +1829,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               onClick={() => {
                                 updateSpace(space.id, {
                                   ceilingProjection: {
-                                    ...(space.ceilingProjection || { overhangDepth: 1.50 }),
+                                    ...(space.ceilingProjection || { overhangDepth: ARCHITECTURAL_SPACE_CONFIG.DEFAULT_OVERHANG_DEPTH_M }),
                                     mode: 'alero'
                                   }
                                 });
@@ -1838,29 +1843,140 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                               Alero Parcial
                             </button>
                           </div>
+
                           {space.ceilingProjection?.mode === 'alero' && (
-                            <div className="flex items-center justify-between pt-1">
-                              <span className="text-[10px] font-bold text-slate-600">Profundidad Alero:</span>
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  step="0.10"
-                                  min="0.30"
-                                  max="10.0"
-                                  value={space.ceilingProjection.overhangDepth}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 1.50;
-                                    updateSpace(space.id, {
-                                      ceilingProjection: {
-                                        ...space.ceilingProjection,
-                                        mode: 'alero',
-                                        overhangDepth: Math.max(0.20, val)
-                                      }
-                                    });
-                                  }}
-                                  className="w-16 px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono font-bold text-center text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                                />
-                                <span className="font-mono text-xs text-slate-400">m</span>
+                            <div className="space-y-2 pt-1 border-t border-cyan-200/60">
+                              {/* Botón de Trazado Libre en Plano por 2 clics */}
+                              <button
+                                type="button"
+                                onClick={() => onStartDrawingOverhang?.(space.id)}
+                                className="w-full py-1.5 px-2 bg-white hover:bg-cyan-100 text-cyan-800 border border-cyan-300 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                              >
+                                <PenTool size={12} className="text-cyan-600" />
+                                <span>{space.ceilingProjection?.projectionLine ? 'Re-trazar Alero en Plano (2 clics)' : 'Trazar Alero en Plano (2 clics)'}</span>
+                              </button>
+
+                              {/* Selector de Muro de Apoyo / Fachada */}
+                              {space.wallIds && space.wallIds.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                                    <span>Muro de Apoyo / Fachada:</span>
+                                  </div>
+                                  <select
+                                    value={space.ceilingProjection?.referenceWallId || ''}
+                                    onChange={(e) => {
+                                      updateSpace(space.id, {
+                                        ceilingProjection: {
+                                          ...(space.ceilingProjection || { mode: 'alero' }),
+                                          referenceWallId: e.target.value || undefined,
+                                          projectionLine: undefined
+                                        }
+                                      });
+                                    }}
+                                    className="w-full text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700"
+                                  >
+                                    <option value="">Automático (muro más largo)</option>
+                                    {space.wallIds.map((wId, i) => {
+                                      const w = project.walls.find((wall) => wall.id === wId);
+                                      const v1 = project.vertices.find((v) => v.id === w?.startVertexId);
+                                      const v2 = project.vertices.find((v) => v.id === w?.endVertexId);
+                                      const len = v1 && v2 ? Math.hypot(v2.x - v1.x, v2.y - v1.y) : 0;
+                                      return (
+                                        <option key={wId} value={wId}>
+                                          Muro #{i + 1} ({len.toFixed(2)}m)
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Input Numérico de Profundidad de Alero */}
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-600">Profundidad Alero:</span>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    step="0.05"
+                                    min="0.20"
+                                    max="10.0"
+                                    value={space.ceilingProjection.overhangDepth ?? ARCHITECTURAL_SPACE_CONFIG.DEFAULT_OVERHANG_DEPTH_M}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value) || ARCHITECTURAL_SPACE_CONFIG.DEFAULT_OVERHANG_DEPTH_M;
+                                      updateSpace(space.id, {
+                                        ceilingProjection: {
+                                          ...space.ceilingProjection,
+                                          mode: 'alero',
+                                          overhangDepth: Math.max(0.20, val),
+                                          projectionLine: undefined
+                                        }
+                                      });
+                                    }}
+                                    className="w-16 px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono font-bold text-center text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                  />
+                                  <span className="font-mono text-xs text-slate-400">m</span>
+                                </div>
+                              </div>
+
+                              {/* Presets de profundidad normalizados */}
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="text-[10px] font-bold text-slate-500 mr-0.5">Presets:</span>
+                                {ARCHITECTURAL_SPACE_CONFIG.OVERHANG_DEPTH_PRESETS.map((depth) => {
+                                  const isSelected =
+                                    Math.abs((space.ceilingProjection?.overhangDepth ?? ARCHITECTURAL_SPACE_CONFIG.DEFAULT_OVERHANG_DEPTH_M) - depth) < 0.01;
+                                  return (
+                                    <button
+                                      key={depth}
+                                      type="button"
+                                      onClick={() => {
+                                        updateSpace(space.id, {
+                                          ceilingProjection: {
+                                            ...(space.ceilingProjection || {}),
+                                            mode: 'alero',
+                                            overhangDepth: depth,
+                                            projectionLine: undefined
+                                          }
+                                        });
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-cyan-600 text-white border-cyan-600'
+                                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      {depth.toFixed(2)}m
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Invertir Lado Techado */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateSpace(space.id, {
+                                    ceilingProjection: {
+                                      ...(space.ceilingProjection || { mode: 'alero' }),
+                                      invertSide: !space.ceilingProjection?.invertSide
+                                    }
+                                  });
+                                }}
+                                className="w-full py-1 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <Repeat size={11} className="text-cyan-600" />
+                                <span>Invertir Lado Techado ({space.ceilingProjection?.invertSide ? 'Invertido' : 'Normal'})</span>
+                              </button>
+
+                              {/* Resumen de Áreas Techada y Libre */}
+                              <div className="p-2 bg-white/80 border border-cyan-200 rounded-lg text-[10px] space-y-0.5 font-mono">
+                                <div className="flex justify-between text-cyan-900 font-bold">
+                                  <span>Techado (50% AEA):</span>
+                                  <span>{metrics.coveredAreaM2?.toFixed(2) ?? '-'} m² ({(metrics.limitAreaM2 ?? 0).toFixed(2)} m²)</span>
+                                </div>
+                                <div className="flex justify-between text-amber-800 font-medium">
+                                  <span>A cielo abierto (0% AEA):</span>
+                                  <span>{metrics.uncoveredAreaM2?.toFixed(2) ?? '-'} m²</span>
+                                </div>
                               </div>
                             </div>
                           )}

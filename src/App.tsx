@@ -98,6 +98,12 @@ export function App() {
     startAddingDimension,
     cancelAddingDimension,
     handleDimensionCanvasClick,
+    isDrawingOverhang,
+    overhangSpaceId,
+    overhangP1,
+    startDrawingOverhang,
+    cancelDrawingOverhang,
+    handleOverhangCanvasClick,
     commitConduitWithTerminalReference,
     wallJustification,
     setWallJustification
@@ -420,6 +426,7 @@ export function App() {
             onUndoEditingConduitWaypoint={undoEditingConduitWaypoint}
             wallJustification={wallJustification}
             onChangeJustification={setWallJustification}
+            onStartDrawingOverhang={startDrawingOverhang}
           />
         )}
 
@@ -573,6 +580,11 @@ export function App() {
             }}
             onDimensionCanvasClick={handleDimensionCanvasClick}
             onCancelAddingDimension={cancelAddingDimension}
+            isDrawingOverhang={isDrawingOverhang}
+            overhangSpaceId={overhangSpaceId}
+            overhangP1={overhangP1}
+            onOverhangCanvasClick={handleOverhangCanvasClick}
+            onCancelDrawingOverhang={cancelDrawingOverhang}
             isSamplingPattern={isSamplingPattern}
             positiveExemplarsCount={positiveExemplars.length}
             stencilSizeWorld={stencilSizeWorld}
@@ -913,6 +925,10 @@ export function App() {
         onClose={() => {
           setEditingSpaceId(null);
           setSelectedEntity(null);
+        }}
+        onStartDrawingOverhang={(spaceId) => {
+          setEditingSpaceId(null);
+          startDrawingOverhang(spaceId);
         }}
       />
 

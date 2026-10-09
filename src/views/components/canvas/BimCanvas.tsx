@@ -27,7 +27,7 @@ import { getColumnPolygon, getBeamPolygon } from '../../../models/architecture/S
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
-import { CAD_VIEWPORT_CONFIG } from '../../../config';
+import { CAD_VIEWPORT_CONFIG, ARCHITECTURAL_SPACE_STYLES } from '../../../config';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
@@ -73,6 +73,11 @@ interface BimCanvasProps {
   onToggleAddingDimension?: () => void;
   onDimensionCanvasClick?: (worldX: number, worldY: number) => void;
   onCancelAddingDimension?: () => void;
+  isDrawingOverhang?: boolean;
+  overhangSpaceId?: string | null;
+  overhangP1?: { x: number; y: number } | null;
+  onOverhangCanvasClick?: (worldX: number, worldY: number) => void;
+  onCancelDrawingOverhang?: () => void;
   isSamplingPattern?: boolean;
   positiveExemplarsCount?: number;
   stencilSizeWorld?: { width: number; height: number } | null;
@@ -151,6 +156,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   onToggleAddingDimension,
   onDimensionCanvasClick,
   onCancelAddingDimension,
+  isDrawingOverhang = false,
+  overhangSpaceId = null,
+  overhangP1 = null,
+  onOverhangCanvasClick,
+  onCancelDrawingOverhang,
   isSamplingPattern = false,
   positiveExemplarsCount = 0,
   stencilSizeWorld = null,
@@ -904,6 +914,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (isDrawingOverhang) {
+      onOverhangCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
+    }
+
     // Si la arquitectura está bloqueada y no se está emplazando una boca ni conectando cañería, ignorar clics de fondo
     if (isArchitectureLocked && !selectedSymbolId && !isConnectingConduit) {
       return;
@@ -1009,12 +1024,21 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           }
         }
 
+        const isPartialSemi =
+          isSemi &&
+          ceilingProjResult?.isPartial &&
+          ceilingProjResult.coveredPolygon &&
+          ceilingProjResult.coveredPolygon.length >= 3;
+
+        const isSelected = selectedEntity?.type === 'space' && selectedEntity.id === space.id;
+        const isDrawingTarget = isDrawingOverhang && overhangSpaceId === space.id;
+
         return (
           <g
             key={space.id}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isDrawingOverhang) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -1023,23 +1047,105 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             className="cursor-pointer"
           >
-            <polygon
-              points={pointsStr}
-              fill={
-                isVoid
-                  ? 'rgba(255, 255, 255, 0.4)'
-                  : isShaft
-                  ? 'rgba(203, 213, 225, 0.45)'
-                  : isOpenAir
-                  ? space.color || 'rgba(254, 249, 195, 0.25)'
-                  : isSemi
-                  ? space.color || 'rgba(240, 249, 255, 0.55)'
-                  : space.color || 'rgba(241, 245, 249, 0.75)'
-              }
-              stroke={isVoid ? '#94a3b8' : isShaft ? '#64748b' : isOpenAir ? '#d97706' : isSemi ? '#0284c7' : 'none'}
-              strokeWidth={isVoid || isShaft || isOpenAir || isSemi ? 1 : 0}
-              strokeDasharray={isVoid ? '4 3' : isOpenAir ? '6 4' : isSemi ? '8 3 2 3' : undefined}
-            />
+            {/* 1. Relleno y Tramas de Superficie */}
+            {isPartialSemi && ceilingProjResult ? (
+              <>
+                {/* Porción bajo alero (semicubierta) */}
+                <polygon
+                  points={ceilingProjResult.coveredPolygon!.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
+                  fill={space.color || ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUnderRoof}
+                  stroke="none"
+                />
+                {/* Porción descubierta remanente (trama arquitectónica de patio) */}
+                {ceilingProjResult.uncoveredPolygon && ceilingProjResult.uncoveredPolygon.length >= 3 && (
+                  <polygon
+                    points={ceilingProjResult.uncoveredPolygon.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
+                    fill={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUncovered}
+                    stroke="none"
+                  />
+                )}
+                {/* Contorno perimetral semicubierto */}
+                <polygon
+                  points={pointsStr}
+                  fill="none"
+                  stroke={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.stroke}
+                  strokeWidth={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth}
+                  strokeDasharray={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeDasharray}
+                />
+              </>
+            ) : (
+              <polygon
+                points={pointsStr}
+                fill={
+                  isVoid
+                    ? ARCHITECTURAL_SPACE_STYLES.VOID.fill
+                    : isShaft
+                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.fill
+                    : isOpenAir
+                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.fill
+                    : isSemi
+                    ? space.color || ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUnderRoof
+                    : space.color || ARCHITECTURAL_SPACE_STYLES.COVERED.fill
+                }
+                stroke={
+                  isVoid
+                    ? ARCHITECTURAL_SPACE_STYLES.VOID.stroke
+                    : isShaft
+                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.stroke
+                    : isOpenAir
+                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.stroke
+                    : isSemi
+                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.stroke
+                    : ARCHITECTURAL_SPACE_STYLES.COVERED.stroke
+                }
+                strokeWidth={
+                  isVoid
+                    ? ARCHITECTURAL_SPACE_STYLES.VOID.strokeWidth
+                    : isShaft
+                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.strokeWidth
+                    : isOpenAir
+                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.strokeWidth
+                    : isSemi
+                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth
+                    : ARCHITECTURAL_SPACE_STYLES.COVERED.strokeWidth
+                }
+                strokeDasharray={
+                  isVoid
+                    ? ARCHITECTURAL_SPACE_STYLES.VOID.strokeDasharray
+                    : isShaft
+                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.strokeDasharray
+                    : isOpenAir
+                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.strokeDasharray
+                    : isSemi
+                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeDasharray
+                    : ARCHITECTURAL_SPACE_STYLES.COVERED.strokeDasharray
+                }
+              />
+            )}
+
+            {/* Resaltado de selección activa del ambiente */}
+            {isSelected && (
+              <polygon
+                points={pointsStr}
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                className="pointer-events-none"
+              />
+            )}
+
+            {/* Resaltado durante trazado interactivo de alero */}
+            {isDrawingTarget && (
+              <polygon
+                points={pointsStr}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth={2.5}
+                strokeDasharray="6 3"
+                className="pointer-events-none animate-pulse"
+              />
+            )}
 
             {/* Cruz diagonal reglamentaria para vacíos de losa / patio de aire y luz */}
             {isVoid && (
@@ -1071,9 +1177,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   y1={ceilingProjResult.projectionLine[0].y * zoom}
                   x2={ceilingProjResult.projectionLine[1].x * zoom}
                   y2={ceilingProjResult.projectionLine[1].y * zoom}
+                  stroke={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.lineStroke}
+                  strokeWidth={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth}
+                  strokeDasharray={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.lineDasharray}
+                />
+                <rect
+                  x={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom - 65}
+                  y={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom - 15}
+                  width={130}
+                  height={14}
+                  rx={3}
+                  fill="rgba(255, 255, 255, 0.9)"
                   stroke="#0284c7"
-                  strokeWidth={1.5}
-                  strokeDasharray="8 3 2 3"
+                  strokeWidth={0.5}
                 />
                 <text
                   x={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom}
@@ -1084,8 +1200,19 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                   fontWeight="bold"
                   className="font-mono select-none"
                 >
-                  Proy. Alero ({space.ceilingProjection?.overhangDepth ?? 1.5}m)
+                  Proy. Alero ({ceilingProjResult.coveredAreaM2.toFixed(2)} m²)
                 </text>
+                {/* Grip de punto medio visible al seleccionar */}
+                {isSelected && (
+                  <circle
+                    cx={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom}
+                    cy={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom}
+                    r={5}
+                    fill="#0284c7"
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                  />
+                )}
               </g>
             )}
 
@@ -1110,9 +1237,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
                 : isShaft
                 ? `${area.toFixed(2)} m² · PLENO TÉCNICO`
                 : isOpenAir
-                ? `${area.toFixed(2)} m² · DESCUBIERTO (A cielo abierto)`
+                ? `${area.toFixed(2)} m² · DESCUBIERTO (A cielo abierto · 0% AEA)`
                 : isSemi
-                ? `${area.toFixed(2)} m² · SEMICUBIERTO · h: ${space.ceilingHeight.toFixed(2)}m (50% AEA: ${(area * 0.5).toFixed(2)} m²)`
+                ? isPartialSemi && ceilingProjResult
+                  ? `${area.toFixed(2)} m² · SEMICUBIERTO (Techado: ${ceilingProjResult.coveredAreaM2.toFixed(2)} m² · 50% AEA: ${(ceilingProjResult.coveredAreaM2 * 0.5).toFixed(2)} m² | Libre: ${ceilingProjResult.uncoveredAreaM2.toFixed(2)} m²)`
+                  : `${area.toFixed(2)} m² · SEMICUBIERTO · h: ${space.ceilingHeight.toFixed(2)}m (50% AEA: ${(area * 0.5).toFixed(2)} m²)`
                 : `${area.toFixed(2)} m² · h: ${space.ceilingHeight.toFixed(2)}m`}
             </text>
           </g>
@@ -1124,10 +1253,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     verticesMap,
     wallsMap,
     zoom,
+    selectedEntity,
     selectedSymbolId,
     isConnectingConduit,
     isCalibratingUnderlay,
     isAddingDimension,
+    isDrawingOverhang,
+    overhangSpaceId,
     onSpaceClick
   ]);
 
@@ -3096,6 +3228,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           >
             <path d={`M ${zoom} 0 L 0 0 0 ${zoom}`} fill="none" stroke="#e2e8f0" strokeWidth={0.75} />
           </pattern>
+          <pattern
+            id="hatch-open-air"
+            width={14}
+            height={14}
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width={14} height={14} fill="rgba(254, 252, 232, 0.45)" />
+            <line x1={0} y1={0} x2={0} y2={14} stroke="#d97706" strokeWidth={1.2} strokeOpacity={0.35} />
+          </pattern>
         </defs>
 
         <rect width="100%" height="100%" fill="url(#grid-pattern)" />
@@ -3610,6 +3752,49 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
+          {/* Línea elástica interactiva al trazar línea de alero (2 clics) */}
+          {isDrawingOverhang && overhangP1 && (
+            <g pointerEvents="none">
+              {hoverWorldPos && (
+                <>
+                  <line
+                    x1={overhangP1.x * zoom}
+                    y1={overhangP1.y * zoom}
+                    x2={hoverWorldPos.x * zoom}
+                    y2={hoverWorldPos.y * zoom}
+                    stroke="#0284c7"
+                    strokeWidth={2}
+                    strokeDasharray="8 3 2 3"
+                  />
+                  <circle
+                    cx={hoverWorldPos.x * zoom}
+                    cy={hoverWorldPos.y * zoom}
+                    r={5}
+                    fill="#0284c7"
+                  />
+                  <text
+                    x={((overhangP1.x + hoverWorldPos.x) / 2) * zoom}
+                    y={((overhangP1.y + hoverWorldPos.y) / 2) * zoom - 8}
+                    textAnchor="middle"
+                    fontSize={11}
+                    className="font-mono font-bold fill-cyan-700 bg-white"
+                  >
+                    Arista de Alero ({Math.hypot(hoverWorldPos.x - overhangP1.x, hoverWorldPos.y - overhangP1.y).toFixed(2)} m)
+                  </text>
+                </>
+              )}
+              {/* Punto 1 marcado */}
+              <circle
+                cx={overhangP1.x * zoom}
+                cy={overhangP1.y * zoom}
+                r={6}
+                fill="#0284c7"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            </g>
+          )}
+
           {/* Línea elástica y marcas de calibración métrica del plano de fondo */}
           {isCalibratingUnderlay && calibrationP1 && (
             <g pointerEvents="none">
@@ -3905,6 +4090,31 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               }}
               className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
               title="Cancelar trazado de cota"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Banner / Píldora superior durante trazado de alero / techo parcial */}
+      {isDrawingOverhang && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+          <span>
+            {overhangP1
+              ? '☂ 1° punto fijado · Hacé clic en el segundo punto de la arista del alero'
+              : '☂ Trazar Alero: Hacé clic en el primer punto de la arista del techo'}
+          </span>
+          {onCancelDrawingOverhang && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelDrawingOverhang();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar trazado de alero"
             >
               ✕
             </button>
