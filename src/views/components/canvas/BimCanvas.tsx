@@ -27,6 +27,7 @@ import { getColumnPolygon, getBeamPolygon } from '../../../models/architecture/S
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
+import { CAD_VIEWPORT_CONFIG } from '../../../config';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
@@ -221,8 +222,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const setSequenceRoutingMode = useElectricalSequenceStore((s) => s.setSequenceRoutingMode);
 
   // Escala y transformación de vista (Pan y Zoom)
-  const [zoom, setZoom] = useState(60); // 60 píxeles = 1 metro
-  const [pan, setPan] = useState({ x: 150, y: 150 });
+  const [zoom, setZoom] = useState<number>(CAD_VIEWPORT_CONFIG.DEFAULT_PIXELS_PER_METER);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ ...CAD_VIEWPORT_CONFIG.DEFAULT_PAN });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
@@ -307,7 +308,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   // Control para evitar clics espurios al finalizar un gesto de arrastre o paneo
   const lastDragEndTimeRef = useRef<number>(0);
-  const wasDraggingRecently = () => Date.now() - lastDragEndTimeRef.current < 200;
+  const wasDraggingRecently = () => Date.now() - lastDragEndTimeRef.current < CAD_VIEWPORT_CONFIG.DRAG_RECENT_THRESHOLD_MS;
   const wasDraggingRecentlyRef = useRef(wasDraggingRecently);
   useEffect(() => {
     wasDraggingRecentlyRef.current = wasDraggingRecently;
@@ -331,8 +332,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   // Recentrar y encuadrar todo el plano
   const handleRecenter = () => {
     if (project.vertices.length === 0) {
-      setPan({ x: 150, y: 150 });
-      setZoom(60);
+      setPan(CAD_VIEWPORT_CONFIG.DEFAULT_PAN);
+      setZoom(CAD_VIEWPORT_CONFIG.DEFAULT_PIXELS_PER_METER);
       return;
     }
     const xs = project.vertices.map((v) => v.x);
@@ -3975,7 +3976,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
         >
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.min(300, Number((z * 1.25).toFixed(1))))}
+            onClick={() => setZoom((z) => Math.min(CAD_VIEWPORT_CONFIG.MAX_ZOOM_PIXELS_PER_METER, Number((z * CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))))}
             className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
             title="Acercar (+)"
           >
@@ -3983,7 +3984,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.max(15, Number((z / 1.25).toFixed(1))))}
+            onClick={() => setZoom((z) => Math.max(CAD_VIEWPORT_CONFIG.MIN_ZOOM_PIXELS_PER_METER, Number((z / CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))))}
             className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
             title="Alejar (-)"
           >

@@ -7,6 +7,12 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import {
+  CABLE_QUICK_SECTIONS,
+  DEFAULT_CONDUIT_MATERIAL,
+  DEFAULT_CONDUIT_DIAMETER_MM,
+  DEFAULT_CABLE_STANDARD
+} from '../../../config';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSizesForConduitType, getDefaultSizeForConduitType } from '../../../models/electrical/electricalStandards';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
@@ -34,11 +40,11 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
   const { project } = useProjectStore();
 
   const [circuitId, setCircuitId] = useState<string>('');
-  const [conduitMaterial, setConduitMaterial] = useState<ConduitMaterial>('hierro_semipesado_rs');
-  const [conduitDiameterMM, setConduitDiameterMM] = useState<number>(19);
-  const [wireSectionMM2, setWireSectionMM2] = useState<number>(2.5);
+  const [conduitMaterial, setConduitMaterial] = useState<ConduitMaterial>(DEFAULT_CONDUIT_MATERIAL);
+  const [conduitDiameterMM, setConduitDiameterMM] = useState<number>(DEFAULT_CONDUIT_DIAMETER_MM);
+  const [wireSectionMM2, setWireSectionMM2] = useState<number>(CABLE_QUICK_SECTIONS[1]);
   const [conductorPresetId, setConductorPresetId] = useState<string>('');
-  const [cableStandard, setCableStandard] = useState<CableStandard>('IRAM_NM_247_3');
+  const [cableStandard, setCableStandard] = useState<CableStandard>(DEFAULT_CABLE_STANDARD);
   const [routingPlane, setRoutingPlane] = useState<ConduitRoutingPlane>('ceiling_slab');
   const [status, setStatus] = useState<'existente' | 'proyectado' | 'a_reemplazar'>('proyectado');
   const [appliedNotification, setAppliedNotification] = useState(false);
@@ -274,7 +280,7 @@ export const BranchEditModal: React.FC<BranchEditModalProps> = ({ isOpen, onClos
                   Sección Troncal de Cable:
                 </label>
                 <div className="grid grid-cols-4 gap-1">
-                  {[1.5, 2.5, 4.0, 6.0].map((sec) => (
+                  {CABLE_QUICK_SECTIONS.slice(0, 4).map((sec) => (
                     <button
                       key={sec}
                       type="button"

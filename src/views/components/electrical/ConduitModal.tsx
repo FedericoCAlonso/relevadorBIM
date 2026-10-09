@@ -7,6 +7,11 @@
  */
 
 import React, { useState } from 'react';
+import {
+  DEFAULT_CONDUIT_DIAMETER_MM,
+  CONDUCTOR_ROLE_OPTIONS,
+  CABLE_QUICK_SECTIONS
+} from '../../../config';
 import type { Conduit, CableStandard, ConductorRole } from '../../../models/electrical/ElectricalModel';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -63,7 +68,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
       .split(',')
       .map((s) => parseFloat(s.trim()))
       .filter((n) => !isNaN(n) && n > 0);
-    const availableSizes = (sizes.length > 0 ? sizes : [19]).map((mm) => ({
+    const availableSizes = (sizes.length > 0 ? sizes : [DEFAULT_CONDUIT_DIAMETER_MM]).map((mm) => ({
       value: mm,
       label: `Ø${mm} mm`,
       standardSize: `Ø${mm} mm`,
@@ -730,14 +735,9 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                         }}
                         className="bg-transparent font-bold text-xs text-slate-800 focus:outline-none"
                       >
-                        <option value="fase">Fase (L)</option>
-                        <option value="neutro">Neutro (N)</option>
-                        <option value="pe">Tierra (PE)</option>
-                        <option value="retorno">Retorno</option>
-                        <option value="fase_r">Fase R</option>
-                        <option value="fase_s">Fase S</option>
-                        <option value="fase_t">Fase T</option>
-                        <option value="comando">Comando</option>
+                        {CONDUCTOR_ROLE_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -768,7 +768,7 @@ export const ConduitModal: React.FC<ConduitModalProps> = ({ conduit, isOpen, onC
                         }
                         className="px-2 py-1 bg-white border border-slate-300 rounded-lg font-mono font-bold text-xs text-blue-900"
                       >
-                        {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                        {CABLE_QUICK_SECTIONS.map((sec) => (
                           <option key={sec} value={sec}>
                             {sec.toFixed(1)} mm²
                           </option>

@@ -12,6 +12,7 @@
 
 import type { Vector2D, Wall, WallVertex } from './Wall';
 import type { Opening } from './Opening';
+import { CAD_SNAP_CONFIG } from '../../config/appCadConfig';
 
 export type SnapTargetType =
   | 'vertex'
@@ -49,7 +50,7 @@ export interface WallSnapOptions {
   enableGrid?: boolean;         // default: false
 }
 
-export const NOTABLE_POLAR_ANGLES_DEG = [0, 45, 90, 135, 180, 225, 270, 315] as const;
+export const NOTABLE_POLAR_ANGLES_DEG = CAD_SNAP_CONFIG.NOTABLE_POLAR_ANGLES_DEG;
 
 /**
  * Normaliza un ángulo en grados al rango [0, 360).
@@ -74,7 +75,7 @@ export function getSmallestAngleDiffDeg(a: number, b: number): number {
 export function calculatePolarAngleSnap(
   point: Vector2D,
   fixedPoint: Vector2D,
-  toleranceDeg = 4.0
+  toleranceDeg: number = CAD_SNAP_CONFIG.ANGLE_TOLERANCE_DEG
 ): { snappedPoint: Vector2D; angleDeg: number; lengthM: number } | null {
   const dx = point.x - fixedPoint.x;
   const dy = point.y - fixedPoint.y;
@@ -114,7 +115,7 @@ export function calculateWallSlideSnap(
   walls: Wall[],
   vertices: Map<string, WallVertex>,
   excludeWallId?: string,
-  toleranceM = 0.25
+  toleranceM: number = CAD_SNAP_CONFIG.WALL_SLIDE_TOLERANCE_M
 ): { snappedPoint: Vector2D; wall: Wall; guide: GuideLine } | null {
   let bestResult: { snappedPoint: Vector2D; wall: Wall; guide: GuideLine } | null = null;
   let minPerpDist = toleranceM;
@@ -171,7 +172,7 @@ export function calculateSmartGuides(
   point: Vector2D,
   vertices: WallVertex[],
   excludeVertexIds: Set<string>,
-  toleranceM = 0.15
+  toleranceM: number = CAD_SNAP_CONFIG.ALIGN_TOLERANCE_M
 ): { snappedPoint: Vector2D; guides: GuideLine[] } {
   let snappedX = point.x;
   let snappedY = point.y;
@@ -249,12 +250,12 @@ export function findWallDragSnap(params: {
     options = {}
   } = params;
 
-  const vertexToleranceM = options.vertexToleranceM ?? 0.25;
-  const wallSlideToleranceM = options.wallSlideToleranceM ?? 0.25;
-  const alignToleranceM = options.alignToleranceM ?? 0.15;
-  const angleToleranceDeg = options.angleToleranceDeg ?? 4.0;
+  const vertexToleranceM = options.vertexToleranceM ?? CAD_SNAP_CONFIG.VERTEX_TOLERANCE_M;
+  const wallSlideToleranceM = options.wallSlideToleranceM ?? CAD_SNAP_CONFIG.WALL_SLIDE_TOLERANCE_M;
+  const alignToleranceM = options.alignToleranceM ?? CAD_SNAP_CONFIG.ALIGN_TOLERANCE_M;
+  const angleToleranceDeg = options.angleToleranceDeg ?? CAD_SNAP_CONFIG.ANGLE_TOLERANCE_DEG;
   const enableGrid = options.enableGrid ?? false;
-  const gridStepM = options.gridStepM ?? 0.05;
+  const gridStepM = options.gridStepM ?? CAD_SNAP_CONFIG.GRID_STEP_M;
 
   const verticesMap = new Map(allVertices.map((v) => [v.id, v]));
   const excludeVertexIds = new Set<string>([draggedVertexId]);

@@ -115,8 +115,8 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
    - Vigas descolgadas bajo losa con trazo discontinuo (`- - - -`).
    - Caracterización reglamentaria de vacíos (aspa en cruz "X" en patios de aire y luz) y tramado en plenos técnicos.
 
-### Fase 3: Vista de Alzado / Elevación de Caras de Muro (Wall Elevation View) (En curso / Próxima prioridad)
-*(Inspección vertical, replanteo 2D a escala real y edición interactiva de paramentos)*
+### Fase 3: Vista de Alzado / Elevación de Caras de Muro (Wall Elevation View) y RCP (Completada)
+*(Inspección vertical, replanteo 2D a escala real, edición interactiva de paramentos y plano de cielorraso reflejado)*
 1. **Apertura de la Vista y Contexto Operativo:**
    - Disparador ergonómico al seleccionar un muro en planta: botón interactivo `[ ⊞ Ver Alzado ]` en inspector/sheet y atajo por doble clic/toque en lienzo.
    - Selector de visualización de paramento: **Cara Interior** (predeterminada de ambiente) vs **Cara Exterior**.
@@ -133,8 +133,22 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
 4. **Acotación Automática Integrada:**
    - Cotas lineales acumuladas desde la esquina de referencia a bordes de aberturas y ejes de cajas.
    - Cotas de nivel altimétricas reglamentarias respecto al piso terminado ($+0.00$, $+0.30$, $+1.10$, $+2.00$, $+H$).
+5. **Plano de Cielorraso Reflejado (RCP):**
+   - Vista especializada de cielorraso con proyección ortogonal, distribución matricial de bocas ($1$, $2$, $3$, $4$, $6$ y matriz $N \times M$), reposicionamiento táctil y cotas perimetrales de replanteo.
 
-### Fase 4: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D) (Planificada)
+### Fase 3.5: Centralización de Configuración y Erradicación de Código Hardcodeado (Completada)
+*(Arquitectura desacoplada de catálogos y presets, cero números mágicos y gestión de entorno en modal)*
+1. **Módulo Central de Configuración (`src/config/`):**
+   - Creación de archivos modulares especializados: `aeaStandardsConfig.ts`, `appCadConfig.ts`, `architecturalConfig.ts`, `electricalCatalogsConfig.ts` y fachada unificada `index.ts`.
+   - Centralización estricta de constantes físicas (red 220V/380V, 50Hz, conductividad Cu 56), caídas de tensión (3%, 5%), ocupación de conductos (53%, 31%, 35%) y alturas de montaje.
+2. **Refactorización Integral de Vistas y Modelos:**
+   - Erradicación total de números mágicos y arrays inline de `<option>` y botones en `WallSnapEngine`, `BimCanvas`, `DesktopSidebar`, `ThumbSurveyDock`, `BranchEditModal`, `CircuitsModal`, `ConduitModal`, `ElectricalElementModal` y `SurveyActionSheets`.
+3. **Pestañas de Configuración en App (`ProjectSettingsModal`):**
+   - Incorporación de solapas especializadas para **Datos de Obra**, **Entorno CAD** (sensibilidad de snap y smart grips), **Normas AEA** (lectura técnica objetiva y neutral) y **Catálogo de Materiales**.
+4. **Control de Calidad Automatizado:**
+   - Suite de pruebas unitarias (`src/config/__tests__/config.test.ts`) con 100% de éxito y cero advertencias de linter (`oxlint`).
+
+### Fase 4: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D) (En curso / Próxima prioridad)
 *(Generación asistida y optimizada de recorridos según restricciones de tecnología y normativa)*
 1. **Grafo Ortogonal 2.5D:** Construcción de nodos de navegación tridimensional conectando planos de losa, contrapiso y paramentos verticales de muros.
 2. **Matriz de Fricción y Costos:** Penalizaciones topológicas según tecnología de canalización (embutido en ladrillo vs a la vista vs bandeja perforada).
@@ -149,7 +163,11 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
 - [x] Las esquinas de muros a 90° y ángulos oblicuos cierran de forma continua sin huecos en la cara exterior (Fase 1).
 - [x] La medida ingresada en modo paramento interior refleja exactamente la luz libre del ambiente (Fase 1).
 - [x] Las columnas, vigas, muros bajos, barandas y vacíos se modelan y renderizan en planta respetando convenciones gráficas (Fase 2).
-- [ ] La vista de alzado de muro proyecta fielmente aberturas, cajas y cañerías con sus cotas $Z$ métricas reales (Fase 3).
-- [ ] La manipulación de cajas en la vista de alzado actualiza bidireccionalmente la planta CAD y el estado centralizado del proyecto (Fase 3).
-- [ ] Ningún cálculo de vectores ni opciones hardcodeadas residen en componentes `.tsx` de la vista.
-- [ ] El suite completo de pruebas unitarias (`npm test`) y la compilación (`npm run build`) pasan al 100% sin advertencias.
+- [x] La vista de alzado de muro proyecta fielmente aberturas, cajas y cañerías con sus cotas $Z$ métricas reales (Fase 3).
+- [x] La manipulación de cajas en la vista de alzado actualiza bidireccionalmente la planta CAD y el estado centralizado del proyecto (Fase 3).
+- [x] El plano de cielorraso reflejado (RCP) permite replantear luminarias con cotas ortogonales y presets de distribución (Fase 3).
+- [ ] Construcción del grafo tridimensional 2.5D para ruteo ortogonal automático entre bocas y tableros (Fase 4).
+- [ ] Cálculo de camino óptimo con penalizaciones por tecnología y exclusiones constructivas (Fase 4).
+- [ ] Detección e inserción automática de cajas de paso intermedias por límite de curvas y metraje AEA (Fase 4).
+- [x] Ningún cálculo de vectores ni opciones hardcodeadas residen en componentes `.tsx` de la vista.
+- [x] El suite completo de pruebas unitarias (`npm test`) y la compilación (`npm run build`) pasan al 100% sin advertencias.

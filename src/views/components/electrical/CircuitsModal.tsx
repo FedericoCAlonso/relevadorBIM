@@ -22,6 +22,13 @@ import {
   PANEL_PRESETS
 } from '../../../models/electrical/electricalStandards';
 import {
+  CIRCUIT_TYPE_OPTIONS,
+  PANEL_TYPE_OPTIONS,
+  AEA_GRID_CONSTANTS,
+  CABLE_QUICK_SECTIONS,
+  BREAKER_AMPERAGE_PRESETS
+} from '../../../config';
+import {
   Layers,
   Plus,
   Trash2,
@@ -483,9 +490,9 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         onChange={(e) => setPanelType(e.target.value as any)}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="principal">Principal (Cabecera TP)</option>
-                        <option value="seccional">Seccional (Subtablero TS)</option>
-                        <option value="auxiliar">Auxiliar / Bombas</option>
+                        {PANEL_TYPE_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -494,12 +501,16 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         RED DE ALIMENTACIÓN
                       </label>
                       <select
-                        value={panelIsThreePhase ? '380' : '220'}
-                        onChange={(e) => setPanelIsThreePhase(e.target.value === '380')}
+                        value={panelIsThreePhase ? String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE) : String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE)}
+                        onChange={(e) => setPanelIsThreePhase(e.target.value === String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE))}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="220">Monofásico (220 V)</option>
-                        <option value="380">Trifásico (380 V + N)</option>
+                        <option value={String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE)}>
+                          Monofásico ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE} V)
+                        </option>
+                        <option value={String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE)}>
+                          Trifásico ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE} V + N)
+                        </option>
                       </select>
                     </div>
                   </div>
@@ -807,15 +818,9 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         onChange={(e) => setCircuitType(e.target.value as CircuitType)}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="IUG">IUG (Iluminación General)</option>
-                        <option value="IUE">IUE (Iluminación Especial)</option>
-                        <option value="TUG">TUG (Tomas Generales)</option>
-                        <option value="TUE">TUE (Tomas Especiales)</option>
-                        <option value="ACU">ACU (Alimentación Clima)</option>
-                        <option value="FM">FM (Fuerza Motriz / Bombas)</option>
-                        <option value="LP">LP (Línea Principal Alimentador)</option>
-                        <option value="LS">LS (Línea Seccional Subtablero)</option>
-                        <option value="OTRO">OTRO (Uso Específico)</option>
+                        {CIRCUIT_TYPE_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -932,7 +937,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         }}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
-                        {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                        {CABLE_QUICK_SECTIONS.map((sec) => (
                           <option key={sec} value={sec}>
                             {sec} mm²
                           </option>
@@ -949,7 +954,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         onChange={(e) => setWireSectionPe(Number(e.target.value))}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
-                        {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                        {CABLE_QUICK_SECTIONS.map((sec) => (
                           <option key={sec} value={sec}>
                             {sec} mm²
                           </option>
@@ -966,7 +971,7 @@ export const CircuitsModal: React.FC<CircuitsModalProps> = ({ isOpen, onClose })
                         onChange={(e) => setBreakerAmperage(Number(e.target.value))}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
-                        {[10, 16, 20, 25, 32, 40, 50, 63].map((amp) => (
+                        {BREAKER_AMPERAGE_PRESETS.map((amp) => (
                           <option key={amp} value={amp}>
                             {amp} A
                           </option>

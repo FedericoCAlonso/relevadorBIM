@@ -56,6 +56,9 @@ export interface ProjectMetadata {
   defaultConduitMaterial?: ConduitMaterial; // Material de cañería por defecto
   defaultCableStandard?: CableStandard;     // Norma de conductor por defecto
   defaultVoltageV?: number;                 // Tensión de red por defecto (220 o 380)
+  cadSnapToleranceM?: number;               // Tolerancia de snap magnético a vértices (m)
+  cadWallToleranceM?: number;               // Tolerancia de deslizamiento sobre muros (m)
+  cadOrthogonalAngleToleranceDeg?: number;  // Tolerancia angular para ortogonal / polar (deg)
   createdAt: number;
   updatedAt: number;
   scale: number; // Escala 1:50, 1:100, etc.

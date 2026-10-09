@@ -8,6 +8,22 @@
  */
 
 import React, { useState } from 'react';
+import {
+  CAD_SNAP_CONFIG,
+  ARCHITECTURAL_WALL_CONFIG,
+  ARCHITECTURAL_OPENING_CONFIG,
+  AEA_MOUNTING_HEIGHTS,
+  AEA_MINIMUM_WIRE_SECTIONS_MM2,
+  CIRCUIT_TYPE_OPTIONS,
+  PANEL_TYPE_OPTIONS,
+  DEFAULT_CIRCUIT_COLOR,
+  CONDUIT_QUICK_DIAMETERS,
+  CONDUIT_MATERIALS_CATALOG,
+  CONDUCTOR_ROLE_OPTIONS,
+  CABLE_QUICK_SECTIONS,
+  BREAKER_AMPERAGE_PRESETS,
+  AEA_GRID_CONSTANTS
+} from '../../../config';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { WallJustification, WallType } from '../../../models/architecture/Wall';
@@ -164,9 +180,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [editingCircuitColorId, setEditingCircuitColorId] = useState<string | null>(null);
   const [newCircuitName, setNewCircuitName] = useState('');
   const [newCircuitType, setNewCircuitType] = useState<CircuitType>('IUG');
-  const [newCircuitWire, setNewCircuitWire] = useState(1.5);
-  const [newCircuitBreaker, setNewCircuitBreaker] = useState(10);
-  const [newCircuitColor, setNewCircuitColor] = useState('#2563eb');
+  const [newCircuitWire, setNewCircuitWire] = useState(AEA_MINIMUM_WIRE_SECTIONS_MM2.IUG);
+  const [newCircuitBreaker, setNewCircuitBreaker] = useState(CIRCUIT_TYPE_OPTIONS[0].defaultBreakerA);
+  const [newCircuitColor, setNewCircuitColor] = useState(DEFAULT_CIRCUIT_COLOR);
   const [newCircuitPanelId, setNewCircuitPanelId] = useState('');
   const [newCircuitTargetPanelId, setNewCircuitTargetPanelId] = useState('');
 
@@ -217,22 +233,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     selectedEntity?.type === 'beam' ? (project.beams || []).find((b) => b.id === selectedEntity.id) : null;
 
   // Estado rápido para inserción de abertura en escritorio
-  const [openingOffset, setOpeningOffset] = useState('0.60');
-  const [openingWidth, setOpeningWidth] = useState('0.80');
+  const [openingOffset, setOpeningOffset] = useState(ARCHITECTURAL_OPENING_CONFIG.DEFAULT_OFFSET_M.toFixed(2));
+  const [openingWidth, setOpeningWidth] = useState(ARCHITECTURAL_OPENING_CONFIG.DOOR_DEFAULT_WIDTH_M.toFixed(2));
   const [openingType, setOpeningType] = useState<'door' | 'window' | 'passage'>('door');
   const [openingRefSide, setOpeningRefSide] = useState<'start' | 'end'>('start');
   const [openingSwing, setOpeningSwing] = useState<OpeningSwing>('left_in');
 
   const handleSelectOpeningType = (type: 'door' | 'window' | 'passage') => {
     setOpeningType(type);
-    if (type === 'door') setOpeningWidth('0.80');
-    else if (type === 'window') setOpeningWidth('1.20');
-    else if (type === 'passage') setOpeningWidth('0.90');
+    if (type === 'door') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.DOOR_DEFAULT_WIDTH_M.toFixed(2));
+    else if (type === 'window') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.WINDOW_DEFAULT_WIDTH_M.toFixed(2));
+    else if (type === 'passage') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.PASSAGE_DEFAULT_WIDTH_M.toFixed(2));
   };
 
   // Estado rápido para empalme en T en escritorio
-  const [teeOffset, setTeeOffset] = useState('1.50');
-  const [teeLength, setTeeLength] = useState('2.50');
+  const [teeOffset, setTeeOffset] = useState(ARCHITECTURAL_WALL_CONFIG.TEE_DEFAULT_OFFSET_M.toFixed(2));
+  const [teeLength, setTeeLength] = useState(ARCHITECTURAL_WALL_CONFIG.TEE_DEFAULT_LENGTH_M.toFixed(2));
   const [teeSide, setTeeSide] = useState<'left' | 'right'>('left');
 
   const symbols = getSymbolsByCategory(activeCategory);
@@ -1006,7 +1022,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         className="w-20 px-2 py-1 bg-white border border-amber-300 rounded-lg font-mono font-bold text-xs"
                       />
                       <div className="flex-1 flex gap-1">
-                        {[0.70, 0.80, 0.90, 1.20, 1.50].map((w) => (
+                        {ARCHITECTURAL_OPENING_CONFIG.WIDTH_PRESETS.map((w) => (
                           <button
                             key={w}
                             type="button"
@@ -1125,7 +1141,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           className="w-20 px-2 py-1 bg-white border border-amber-300 rounded-lg font-mono font-bold text-xs"
                         />
                         <div className="flex-1 flex gap-1">
-                          {[0.80, 0.90, 1.00, 1.10].map((s) => (
+                          {ARCHITECTURAL_OPENING_CONFIG.SILL_PRESETS.map((s) => (
                             <button
                               key={s}
                               type="button"
@@ -1214,7 +1230,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 <div>
                   <label className="text-[10px] font-bold text-slate-600 block mb-1">ESPESOR DEL MURO</label>
                   <div className="grid grid-cols-4 gap-1">
-                    {[0.10, 0.15, 0.20, 0.30].map((th) => (
+                    {ARCHITECTURAL_WALL_CONFIG.THICKNESS_PRESETS.map((th) => (
                       <button
                         key={th}
                         type="button"
@@ -2041,15 +2057,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => setNewCircuitType(e.target.value as CircuitType)}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
                         >
-                          <option value="IUG">IUG (Iluminación Uso Gral)</option>
-                          <option value="IUE">IUE (Iluminación Especial)</option>
-                          <option value="TUG">TUG (Tomas Uso Gral)</option>
-                          <option value="TUE">TUE (Tomas Especiales)</option>
-                          <option value="ACU">ACU (Alimentador / Aire)</option>
-                          <option value="FM">FM (Fuerza Motriz / Bombas)</option>
-                          <option value="LP">LP (Línea Principal)</option>
-                          <option value="LS">LS (Línea Seccional)</option>
-                          <option value="OTRO">OTRO</option>
+                          {CIRCUIT_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -2100,11 +2112,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => setNewCircuitWire(parseFloat(e.target.value))}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
                         >
-                          <option value={1.5}>1.5 mm²</option>
-                          <option value={2.5}>2.5 mm²</option>
-                          <option value={4.0}>4.0 mm²</option>
-                          <option value={6.0}>6.0 mm²</option>
-                          <option value={10.0}>10.0 mm²</option>
+                          {CABLE_QUICK_SECTIONS.map((sec) => (
+                            <option key={sec} value={sec}>
+                              {sec.toFixed(1)} mm²
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -2115,14 +2127,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => setNewCircuitBreaker(parseInt(e.target.value, 10))}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold"
                         >
-                          <option value={10}>10 A</option>
-                          <option value={16}>16 A</option>
-                          <option value={20}>20 A</option>
-                          <option value={25}>25 A</option>
-                          <option value={32}>32 A</option>
-                          <option value={40}>40 A</option>
-                          <option value={50}>50 A</option>
-                          <option value={63}>63 A</option>
+                          {BREAKER_AMPERAGE_PRESETS.map((amp) => (
+                            <option key={amp} value={amp}>
+                              {amp} A
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -2399,21 +2408,25 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => setPanelType(e.target.value as any)}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
                         >
-                          <option value="principal">Principal (Cabecera TP)</option>
-                          <option value="seccional">Seccional (Subtablero TS)</option>
-                          <option value="auxiliar">Auxiliar / Bombas</option>
+                          {PANEL_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                          ))}
                         </select>
                       </div>
 
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 block mb-1">RED</label>
                         <select
-                          value={panelIsThreePhase ? '380' : '220'}
-                          onChange={(e) => setPanelIsThreePhase(e.target.value === '380')}
+                          value={panelIsThreePhase ? String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE) : String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE)}
+                          onChange={(e) => setPanelIsThreePhase(e.target.value === String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE))}
                           className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
                         >
-                          <option value="220">Monofásico (220V)</option>
-                          <option value="380">Trifásico (380V)</option>
+                          <option value={String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE)}>
+                            Monofásico ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE}V)
+                          </option>
+                          <option value={String(AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE)}>
+                            Trifásico ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE}V)
+                          </option>
                         </select>
                       </div>
                     </div>
@@ -2670,7 +2683,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-1">
-                          {[19, 22, 25, 32].map((diam) => (
+                          {CONDUIT_QUICK_DIAMETERS.map((diam) => (
                             <button
                               key={diam}
                               type="button"
@@ -2695,11 +2708,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           onChange={(e) => updateConduit(selectedConduit.id, { material: e.target.value as ConduitMaterial })}
                           className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-semibold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
-                          <option value="hierro_semipesado_rs">1. Caño Hierro Semipesado RS</option>
-                          <option value="hierro_liviano_rl">2. Hierro Liviano RL</option>
-                          <option value="pvc_rigido_metrico">3. Caño PVC Rígido (métrico)</option>
-                          <option value="corrugado_blanco_pvc">4. Corrugado Blanco PVC</option>
-                          <option value="bandeja_perforada_20">5. Bandeja Perforada de 20</option>
+                          {CONDUIT_MATERIALS_CATALOG.map((mat) => (
+                            <option key={mat.id} value={mat.id}>{mat.label}</option>
+                          ))}
                         </select>
                       </div>
 
@@ -2922,11 +2933,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 }}
                                 className="px-1 py-0.5 bg-slate-50 border rounded text-[11px] font-semibold"
                               >
-                                <option value="fase">Fase</option>
-                                <option value="neutro">Neutro</option>
-                                <option value="pe">Tierra (PE)</option>
-                                <option value="retorno">Retorno</option>
-                                <option value="comando">Comando</option>
+                                {CONDUCTOR_ROLE_OPTIONS.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                ))}
                               </select>
 
                               <select
@@ -2938,10 +2947,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 }}
                                 className="px-1 py-0.5 bg-slate-50 border rounded text-[11px] font-mono font-bold"
                               >
-                                <option value={1.5}>1.5 mm²</option>
-                                <option value={2.5}>2.5 mm²</option>
-                                <option value={4.0}>4.0 mm²</option>
-                                <option value={6.0}>6.0 mm²</option>
+                                {CABLE_QUICK_SECTIONS.map((sec) => (
+                                  <option key={sec} value={sec}>{sec} mm²</option>
+                                ))}
                               </select>
 
                               <input
@@ -3127,7 +3135,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           className="w-20 px-2 py-1 bg-white border border-blue-300 rounded-lg font-mono font-bold text-xs"
                         />
                         <div className="flex-1 flex gap-1">
-                          {[0.30, 1.20, 2.20, 2.70].map((hz) => (
+                          {AEA_MOUNTING_HEIGHTS.slice(0, 4).map((h) => h.heightM).map((hz) => (
                             <button
                               key={hz}
                               type="button"
@@ -3154,7 +3162,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                         </span>
                       </div>
                       <div className="grid grid-cols-4 gap-1">
-                        {[-90, -45, 45, 90].map((delta) => (
+                        {CAD_SNAP_CONFIG.DESKTOP_QUICK_ANGLES_DEG.map((delta) => (
                           <button
                             key={delta}
                             type="button"

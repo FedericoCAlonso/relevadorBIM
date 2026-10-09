@@ -16,6 +16,15 @@ import {
   createCableTraySizeOptions,
   createDefaultMaterialCatalog
 } from '../../../models/electrical/electricalStandards';
+import {
+  CAD_SNAP_CONFIG,
+  AEA_GRID_CONSTANTS,
+  AEA_VOLTAGE_DROP_LIMITS,
+  AEA_CONDUIT_OCCUPANCY_LIMITS,
+  AEA_MOUNTING_HEIGHTS,
+  OPENING_TYPE_OPTIONS,
+  OPENING_SWING_OPTIONS
+} from '../../../config';
 import { DEFAULT_OPENING_TYPES } from '../../../models/architecture/openingPresets';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
 import type {
@@ -24,7 +33,7 @@ import type {
   BoxCategory,
   BoxMaterialBase
 } from '../../../models/electrical/ElectricalModel';
-import { X, Building2, Sliders, Package, Plus, Trash2 } from 'lucide-react';
+import { X, Building2, Sliders, Package, Plus, Trash2, Compass, BookOpen, RotateCcw } from 'lucide-react';
 
 interface ProjectSettingsModalProps {
   isOpen: boolean;
@@ -45,7 +54,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
     removeOpeningType
   } = useProjectStore();
 
-  const [activeTab, setActiveTab] = useState<'obra' | 'catalogo'>('obra');
+  const [activeTab, setActiveTab] = useState<'obra' | 'cad' | 'normas' | 'catalogo'>('obra');
   const [catalogCategory, setCatalogCategory] = useState<'conduits' | 'cables' | 'boxes' | 'openings'>('conduits');
 
   // Formularios de alta
@@ -197,30 +206,54 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
         </div>
 
         {/* Selector de Solapas Principales */}
-        <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5 text-xs font-bold">
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 bg-slate-100 p-1.5 gap-1.5 text-xs font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('obra')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
               activeTab === 'obra'
                 ? 'bg-white text-blue-700 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-200/60'
             }`}
           >
             <Building2 size={15} />
-            <span>Datos de la Obra</span>
+            <span>Datos Obra</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('cad')}
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
+              activeTab === 'cad'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+          >
+            <Compass size={15} />
+            <span>Entorno CAD</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('normas')}
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
+              activeTab === 'normas'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+          >
+            <BookOpen size={15} />
+            <span>Normas AEA</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('catalogo')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl transition-all ${
               activeTab === 'catalogo'
                 ? 'bg-white text-blue-700 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-200/60'
             }`}
           >
             <Package size={15} />
-            <span>Catálogo de Materiales</span>
+            <span>Catálogo</span>
           </button>
         </div>
 
@@ -270,6 +303,199 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                   placeholder="Ej: Ing. / Téc. Relevador"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Tensión de Red Predeterminada:</label>
+                <select
+                  value={project.meta.defaultVoltageV || AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE}
+                  onChange={(e) => updateProjectMeta({ defaultVoltageV: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+                >
+                  <option value={AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE}>
+                    Monofásica ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_SINGLE_PHASE} V · Fase y Neutro)
+                  </option>
+                  <option value={AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE}>
+                    Trifásica ({AEA_GRID_CONSTANTS.NOMINAL_VOLTAGE_THREE_PHASE} V · 3 Fases y Neutro)
+                  </option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'cad' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+                <Compass size={18} className="text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-xs text-blue-900 block">Sensibilidad del Lienzo y Smart Grips</span>
+                  <span className="text-[11px] text-blue-800 leading-relaxed block">
+                    Ajuste la tolerancia de imantación magnética al dibujar muros, empalmes en T y canalizaciones.
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-slate-700 text-xs">Snap a Vértices y Esquinas:</label>
+                    <span className="font-mono text-xs font-bold text-blue-700">
+                      {(project.meta.cadSnapToleranceM ?? CAD_SNAP_CONFIG.VERTEX_TOLERANCE_METERS).toFixed(2)} m
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={0.80}
+                    step={0.05}
+                    value={project.meta.cadSnapToleranceM ?? CAD_SNAP_CONFIG.VERTEX_TOLERANCE_METERS}
+                    onChange={(e) => updateProjectMeta({ cadSnapToleranceM: parseFloat(e.target.value) })}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Distancia para fusionar automáticamente esquinas de muros.
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-slate-700 text-xs">Snap Deslizante a Muros (Empalmes T):</label>
+                    <span className="font-mono text-xs font-bold text-blue-700">
+                      {(project.meta.cadWallToleranceM ?? CAD_SNAP_CONFIG.WALL_TOLERANCE_METERS).toFixed(2)} m
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={0.80}
+                    step={0.05}
+                    value={project.meta.cadWallToleranceM ?? CAD_SNAP_CONFIG.WALL_TOLERANCE_METERS}
+                    onChange={(e) => updateProjectMeta({ cadWallToleranceM: parseFloat(e.target.value) })}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Distancia perpendicular para proyectar empalmes rectos sobre muros existentes.
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-bold text-slate-700 text-xs">Tolerancia Angular Ortogonal / Polar:</label>
+                    <span className="font-mono text-xs font-bold text-blue-700">
+                      {(project.meta.cadOrthogonalAngleToleranceDeg ?? CAD_SNAP_CONFIG.ORTHOGONAL_ANGLE_TOLERANCE_DEG).toFixed(1)}°
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={12.0}
+                    step={0.5}
+                    value={project.meta.cadOrthogonalAngleToleranceDeg ?? CAD_SNAP_CONFIG.ORTHOGONAL_ANGLE_TOLERANCE_DEG}
+                    onChange={(e) => updateProjectMeta({ cadOrthogonalAngleToleranceDeg: parseFloat(e.target.value) })}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Desvío máximo para fijar escuadra exacta a 0°, 45°, 90°, 135°, 180°, etc.
+                  </span>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => updateProjectMeta({
+                      cadSnapToleranceM: CAD_SNAP_CONFIG.VERTEX_TOLERANCE_METERS,
+                      cadWallToleranceM: CAD_SNAP_CONFIG.WALL_TOLERANCE_METERS,
+                      cadOrthogonalAngleToleranceDeg: CAD_SNAP_CONFIG.ORTHOGONAL_ANGLE_TOLERANCE_DEG
+                    })}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Restablecer Tolerancias por Defecto</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'normas' && (
+            <div className="space-y-3.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-2.5">
+                <BookOpen size={18} className="text-slate-700 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-xs text-slate-900 block">
+                    Reglamentación AEA 90364-771 / IRAM
+                  </span>
+                  <span className="text-[11px] text-slate-600 leading-relaxed block">
+                    Constantes físicas y referencias reglamentarias empleadas en los cómputos de caída de tensión, ocupación de cañerías y alturas de relevamiento.
+                  </span>
+                </div>
+              </div>
+
+              {/* Caídas de Tensión Admisibles */}
+              <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-2">
+                <span className="font-bold text-xs text-slate-800 block">
+                  Caída de Tensión Máxima Admisible (AEA 771.19)
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="font-bold text-slate-700 block">Iluminación (IUG / IUE):</span>
+                    <span className="font-mono text-xs font-bold text-blue-700">
+                      ≤ {AEA_VOLTAGE_DROP_LIMITS.LIGHTING_CIRCUITS_MAX_PERCENT}% (ΔV ≤ 6.6 V)
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="font-bold text-slate-700 block">Fuerza Motriz / Tomas:</span>
+                    <span className="font-mono text-xs font-bold text-blue-700">
+                      ≤ {AEA_VOLTAGE_DROP_LIMITS.POWER_CIRCUITS_MAX_PERCENT}% (ΔV ≤ 11.0 V)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ocupación Máxima de Cañerías */}
+              <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-2">
+                <span className="font-bold text-xs text-slate-800 block">
+                  Ocupación Máxima en Cañerías (AEA 771.12.3)
+                </span>
+                <div className="grid grid-cols-3 gap-2 text-[11px] text-center">
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">1 Conductor</span>
+                    <span className="font-mono text-xs font-bold text-slate-800">
+                      {AEA_CONDUIT_OCCUPANCY_LIMITS.SINGLE_CONDUCTOR_MAX_PERCENT}%
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">2 Conductores</span>
+                    <span className="font-mono text-xs font-bold text-slate-800">
+                      {AEA_CONDUIT_OCCUPANCY_LIMITS.TWO_CONDUCTORS_MAX_PERCENT}%
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[10px] text-slate-500 block">≥ 3 Conductores</span>
+                    <span className="font-mono text-xs font-bold text-slate-800">
+                      {AEA_CONDUIT_OCCUPANCY_LIMITS.THREE_OR_MORE_CONDUCTORS_MAX_PERCENT}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alturas de Montaje Sugeridas */}
+              <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-2">
+                <span className="font-bold text-xs text-slate-800 block">
+                  Alturas Típicas de Montaje sobre Nivel de Piso Terminado
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
+                  {AEA_MOUNTING_HEIGHTS.map((h) => (
+                    <div
+                      key={h.id}
+                      className="p-1.5 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center"
+                      title={h.description}
+                    >
+                      <span className="text-slate-600 truncate pr-1">{h.label.split('(')[0].trim()}:</span>
+                      <span className="font-mono font-bold text-slate-900 shrink-0">+{h.heightM.toFixed(2)} m</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -824,9 +1050,9 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                             }}
                             className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                           >
-                            <option value="door">Puerta</option>
-                            <option value="window">Ventana</option>
-                            <option value="passage">Vano Libre</option>
+                            {OPENING_TYPE_OPTIONS.map((opt) => (
+                              <option key={opt.id} value={opt.id}>{opt.label}</option>
+                            ))}
                           </select>
                         </div>
                         <div>
@@ -836,13 +1062,9 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ isOp
                             onChange={(e) => setNewOpeningSwing(e.target.value as OpeningSwing)}
                             className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                           >
-                            <option value="left_in">Izquierda (Hacia Adentro)</option>
-                            <option value="right_in">Derecha (Hacia Adentro)</option>
-                            <option value="left_out">Izquierda (Hacia Afuera)</option>
-                            <option value="right_out">Derecha (Hacia Afuera)</option>
-                            <option value="double">Doble Hoja</option>
-                            <option value="sliding">Corrediza</option>
-                            <option value="none">Sin Batiente / Fijo</option>
+                            {OPENING_SWING_OPTIONS.map((opt) => (
+                              <option key={opt.id} value={opt.id}>{opt.label}</option>
+                            ))}
                           </select>
                         </div>
                       </div>

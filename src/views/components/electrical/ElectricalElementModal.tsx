@@ -7,6 +7,11 @@
  */
 
 import React from 'react';
+import {
+  TERMINAL_REFERENCE_PRESETS,
+  TERMINAL_METERS_PRESETS,
+  CABLE_QUICK_SECTIONS
+} from '../../../config';
 import type {
   ElectricalElement,
   ElementPlacement,
@@ -265,7 +270,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-sky-500 outline-none text-xs"
                   />
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {['A Tablero General', 'A Tablero Seccional', 'Pase a Planta Alta', 'Pase a Planta Baja', 'Subida a Azotea', 'Acometida de Red'].map((preset) => (
+                    {TERMINAL_REFERENCE_PRESETS.map((preset) => (
                       <button
                         key={preset}
                         type="button"
@@ -382,7 +387,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {[5, 10, 15, 20, 25, 30].map((lenPreset) => (
+                  {TERMINAL_METERS_PRESETS.map((lenPreset) => (
                     <button
                       key={lenPreset}
                       type="button"
@@ -508,7 +513,7 @@ export const ElectricalElementModal: React.FC<ElectricalElementModalProps> = ({
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {[1.5, 2.5, 4.0, 6.0, 10.0, 16.0].map((sec) => (
+                    {CABLE_QUICK_SECTIONS.map((sec) => (
                       <button
                         key={sec}
                         type="button"

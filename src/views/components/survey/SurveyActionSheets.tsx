@@ -7,6 +7,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import {
+  ARCHITECTURAL_WALL_CONFIG,
+  ARCHITECTURAL_OPENING_CONFIG,
+  OPENING_TYPE_OPTIONS
+} from '../../../config';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { getWallLength, type WallType } from '../../../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
@@ -63,24 +68,24 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
   const [isEditingWallMobile, setIsEditingWallMobile] = useState(false);
 
   // Formulario de Empalme en T
-  const [teeOffset, setTeeOffset] = useState('1.50');
-  const [teeLength, setTeeLength] = useState('2.50');
+  const [teeOffset, setTeeOffset] = useState(ARCHITECTURAL_WALL_CONFIG.TEE_DEFAULT_OFFSET_M.toFixed(2));
+  const [teeLength, setTeeLength] = useState(ARCHITECTURAL_WALL_CONFIG.TEE_DEFAULT_LENGTH_M.toFixed(2));
   const [teeSide, setTeeSide] = useState<'left' | 'right'>('left');
   const [teeRefVertex, setTeeRefVertex] = useState<string>('');
 
   // Formulario de Abertura
   const [openingType, setOpeningType] = useState<OpeningType>('door');
-  const [openingWidth, setOpeningWidth] = useState('0.80');
-  const [openingOffset, setOpeningOffset] = useState('0.60');
+  const [openingWidth, setOpeningWidth] = useState(ARCHITECTURAL_OPENING_CONFIG.DOOR_DEFAULT_WIDTH_M.toFixed(2));
+  const [openingOffset, setOpeningOffset] = useState(ARCHITECTURAL_OPENING_CONFIG.DEFAULT_OFFSET_M.toFixed(2));
 
   useEffect(() => {
     const handleOpeningEvent = (e: any) => {
       const type = e.detail?.type;
       if (type) {
         setOpeningType(type);
-        if (type === 'door') setOpeningWidth('0.80');
-        else if (type === 'window') setOpeningWidth('1.20');
-        else if (type === 'passage') setOpeningWidth('0.90');
+        if (type === 'door') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.DOOR_DEFAULT_WIDTH_M.toFixed(2));
+        else if (type === 'window') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.WINDOW_DEFAULT_WIDTH_M.toFixed(2));
+        else if (type === 'passage') setOpeningWidth(ARCHITECTURAL_OPENING_CONFIG.PASSAGE_DEFAULT_WIDTH_M.toFixed(2));
       }
     };
     const handleTeeEvent = (e: any) => {
@@ -178,7 +183,7 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">ESPESOR DEL MURO</label>
                 <div className="grid grid-cols-4 gap-1">
-                  {[0.10, 0.15, 0.20, 0.30].map((th) => (
+                  {ARCHITECTURAL_WALL_CONFIG.THICKNESS_PRESETS.map((th) => (
                     <button
                       key={th}
                       type="button"
@@ -376,24 +381,24 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE ABERTURA</label>
                 <div className="grid grid-cols-3 gap-1">
-                  {(['door', 'window', 'passage'] as OpeningType[]).map((t) => (
+                  {OPENING_TYPE_OPTIONS.map((opt) => (
                     <button
-                      key={t}
+                      key={opt.id}
                       type="button"
                       onClick={() => {
-                        const updates: Partial<typeof selectedOpening> = { type: t };
-                        if (t === 'window' && (!selectedOpening.sill || selectedOpening.sill === 0)) {
-                          updates.sill = 0.90;
+                        const updates: Partial<typeof selectedOpening> = { type: opt.id };
+                        if (opt.id === 'window' && (!selectedOpening.sill || selectedOpening.sill === 0)) {
+                          updates.sill = ARCHITECTURAL_OPENING_CONFIG.WINDOW_DEFAULT_SILL_M;
                         }
                         updateOpening(selectedOpening.id, updates);
                       }}
                       className={`py-1.5 rounded-lg font-semibold text-xs border transition-all ${
-                        selectedOpening.type === t
+                        selectedOpening.type === opt.id
                           ? 'bg-amber-600 border-amber-700 text-white shadow-sm'
                           : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {t === 'door' ? 'Puerta' : t === 'window' ? 'Ventana' : 'Vano'}
+                      {opt.label}
                     </button>
                   ))}
                 </div>
@@ -410,7 +415,7 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                       min="0.40"
                       max={hostWallLength}
                       value={selectedOpening.width}
-                      onChange={(e) => handleAdjustWidth(parseFloat(e.target.value) || 0.80)}
+                      onChange={(e) => handleAdjustWidth(parseFloat(e.target.value) || ARCHITECTURAL_OPENING_CONFIG.DOOR_DEFAULT_WIDTH_M)}
                       className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none pr-6"
                     />
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
@@ -418,7 +423,7 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     </span>
                   </div>
                   <div className="flex-1 grid grid-cols-4 gap-1">
-                    {[0.70, 0.80, 0.90, 1.20].map((w) => (
+                    {ARCHITECTURAL_OPENING_CONFIG.WIDTH_PRESETS.slice(0, 4).map((w) => (
                       <button
                         key={w}
                         type="button"
@@ -665,18 +670,21 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     className="w-full px-2.5 py-1.5 border rounded-lg font-mono font-bold"
                   />
                   <div className="flex gap-1 mt-1">
-                    {['0.70', '0.80', '0.90', '1.20'].map((w) => (
-                      <button
-                        key={w}
-                        type="button"
-                        onClick={() => setOpeningWidth(w)}
-                        className={`flex-1 py-0.5 rounded text-[10px] font-mono border ${
-                          openingWidth === w ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-50'
-                        }`}
-                      >
-                        {w}
-                      </button>
-                    ))}
+                    {ARCHITECTURAL_OPENING_CONFIG.WIDTH_PRESETS.slice(0, 4).map((w) => {
+                      const wStr = w.toFixed(2);
+                      return (
+                        <button
+                          key={wStr}
+                          type="button"
+                          onClick={() => setOpeningWidth(wStr)}
+                          className={`flex-1 py-0.5 rounded text-[10px] font-mono border ${
+                            openingWidth === wStr ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-50'
+                          }`}
+                        >
+                          {wStr}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

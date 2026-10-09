@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { DEFAULT_CONDUIT_MATERIAL } from '../../../config';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { getSizesForConduitType } from '../../../models/electrical/electricalStandards';
 import type { ConduitMaterial } from '../../../models/electrical/ElectricalModel';
@@ -235,7 +236,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
           <div>
             <span className="text-[10px] text-slate-500 block mb-0.5">Tipo / Material de Caño</span>
             <select
-              value={sampleConduit?.material || 'hierro_semipesado_rs'}
+              value={sampleConduit?.material || DEFAULT_CONDUIT_MATERIAL}
               onChange={(e) => handleBatchChangeMaterial(e.target.value as ConduitMaterial)}
               className="w-full px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-800 text-xs cursor-pointer"
             >

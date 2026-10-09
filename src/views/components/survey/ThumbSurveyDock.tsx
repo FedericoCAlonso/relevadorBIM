@@ -10,6 +10,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import {
+  CAD_SNAP_CONFIG,
+  CONDUIT_ROUTING_PLANE_OPTIONS,
+  CONDUIT_ROUTING_MODE_OPTIONS
+} from '../../../config';
 import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
@@ -306,9 +311,11 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
             onChange={(e) => onChangeSequenceRoutingPlane?.(e.target.value as any)}
             className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-amber-500 focus:outline-none shrink-0"
           >
-            <option value="ceiling_slab">☁ Losa</option>
-            <option value="floor_slab">👣 Piso</option>
-            <option value="wall">🧱 Pared</option>
+            {CONDUIT_ROUTING_PLANE_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.iconSymbol} {opt.label}
+              </option>
+            ))}
           </select>
 
           {/* Deshacer último quiebre en modo ortogonal */}
@@ -413,17 +420,22 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 onChange={(e) => onChangeSequenceRoutingPlane?.(e.target.value as any)}
                 className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
               >
-                <option value="ceiling_slab">☁ Losa</option>
-                <option value="floor_slab">👣 Piso</option>
-                <option value="wall">🧱 Pared</option>
+                {CONDUIT_ROUTING_PLANE_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.iconSymbol} {opt.label}
+                  </option>
+                ))}
               </select>
               <select
                 value={sequenceRoutingMode}
                 onChange={(e) => onChangeSequenceRoutingMode?.(e.target.value as any)}
                 className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-slate-200 text-xs focus:border-sky-500 focus:outline-none shrink-0"
               >
-                <option value="schematic_arc">⌒ Arco</option>
-                <option value="orthogonal">📐 90°</option>
+                {CONDUIT_ROUTING_MODE_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.iconSymbol} {opt.label}
+                  </option>
+                ))}
               </select>
             </>
           )}
@@ -1317,7 +1329,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                 <span className="font-mono text-slate-400 text-xs">°</span>
               </div>
               <div className="flex gap-1">
-                {[45, 135, 30, 60].map((quickDeg) => (
+                {CAD_SNAP_CONFIG.MOBILE_QUICK_ANGLES_DEG.map((quickDeg) => (
                   <button
                     key={quickDeg}
                     type="button"
