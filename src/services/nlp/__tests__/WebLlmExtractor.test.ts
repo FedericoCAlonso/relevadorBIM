@@ -22,4 +22,11 @@ describe('WebLlmExtractor — Orquestador de Extracción Híbrida On-Device', ()
     expect(webLlmService.getStatus()).toBeDefined();
     unsubscribe();
   });
+
+  it('hace fallback seguro a fast_pattern cuando se fuerza LLM en entorno sin WebGPU', async () => {
+    const res = await extractNaturalLanguageIntent('Living de 4x6', true);
+    // En Node.js no hay GPU, por lo que cae en fallback fast_pattern
+    expect(res.intent).not.toBeNull();
+    expect(res.intent?.action).toBe('create_space');
+  });
 });

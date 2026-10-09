@@ -31,7 +31,7 @@ export interface WebLlmProgress {
 
 export const RECOMMENDED_NLP_MODEL = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
 
-// System prompt técnico especializado en español de obra
+// System prompt técnico especializado en español de obra con Few-Shot Examples canónicos
 const SYSTEM_PROMPT = `Eres un asistente de relevamiento electromecánico y arquitectónico de obra para RelevadorBIM.
 Tu única tarea es extraer la intención del usuario a partir del texto en español y responder ÚNICAMENTE con un objeto JSON válido según el esquema definido.
 
@@ -41,9 +41,37 @@ Reglas obligatorias:
 3. Si pide colocar una boca, toma, llave, centro de luz o tablero, usa action: "place_element".
 4. Si pide conectar caños o conductos, usa action: "connect_conduit".
 5. Si menciona mediciones de PAT, jabalina o tensión, usa action: "record_measurement".
-6. No agregues explicaciones, markdown ni texto fuera del JSON.`;
+6. No agregues explicaciones, markdown ni texto fuera del JSON.
 
-// JSON Schema derivado para XGrammar
+Ejemplos canónicos:
+Usuario: "living de 4 por 10.3"
+JSON: {"action":"create_space","name":"Living","dimensions":{"widthM":4,"lengthM":10.3}}
+
+Usuario: "balcón pegado a pared sur de 4.5 por 1"
+JSON: {"action":"create_space","name":"Balcon","dimensions":{"widthM":4.5,"lengthM":1},"relativeTo":{"sharedWall":"sur"}}
+
+Usuario: "dormitorio de 3.5x4 pegado a pared este del living"
+JSON: {"action":"create_space","name":"Dormitorio","dimensions":{"widthM":3.5,"lengthM":4},"relativeTo":{"sharedWall":"este","targetSpaceName":"Living"}}
+
+Usuario: "puerta en pared norte a 0.2m de pared este"
+JSON: {"action":"place_opening","openingType":"door","wallReference":"norte","referenceCornerWall":"este","distanceM":0.2}
+
+Usuario: "ventana centrada en pared sur de 1.20"
+JSON: {"action":"place_opening","openingType":"window","wallReference":"sur","centered":true,"widthM":1.2}
+
+Usuario: "pone un toma doble a 1.20 en pared derecha"
+JSON: {"action":"place_element","elementCategory":"toma","mountType":"wall","heightZM":1.2,"wallReference":"derecha"}
+
+Usuario: "boca de iluminacion centrada en el techo con circuito 1"
+JSON: {"action":"place_element","elementCategory":"iluminacion_techo","mountType":"ceiling","centeredInRoom":true,"circuitNumber":"1"}
+
+Usuario: "conecta este toma con la boca de techo por losa con caño de 19"
+JSON: {"action":"connect_conduit","routingPlane":"ceiling_slab","diameterMM":19,"toElementRef":"ceiling"}
+
+Usuario: "medición PAT 12.5 ohms"
+JSON: {"action":"record_measurement","measurementType":"pat_resistance","value":12.5,"unit":"Ω"}`;
+
+// JSON Schema completo para XGrammar Constrained Decoding
 const INTENT_JSON_SCHEMA = {
   type: 'object',
   properties: {
@@ -51,9 +79,36 @@ const INTENT_JSON_SCHEMA = {
       type: 'string',
       enum: ['create_space', 'place_opening', 'place_element', 'connect_conduit', 'record_measurement']
     },
+    name: { type: 'string' },
+    category: {
+      type: 'string',
+      enum: ['living_comedor', 'dormitorio', 'cocina', 'bano', 'circulacion', 'balcon', 'otro']
+    },
+    dimensions: {
+      type: 'object',
+      properties: {
+        widthM: { type: 'number' },
+        lengthM: { type: 'number' }
+      },
+      required: ['widthM', 'lengthM']
+    },
+    relativeTo: {
+      type: 'object',
+      properties: {
+        sharedWall: {
+          type: 'string',
+          enum: ['norte', 'sur', 'este', 'oeste', 'derecha', 'izquierda', 'frente', 'fondo']
+        },
+        targetSpaceName: { type: 'string' }
+      }
+    },
     openingType: {
       type: 'string',
       enum: ['door', 'window', 'passage']
+    },
+    wallReference: {
+      type: 'string',
+      enum: ['norte', 'sur', 'este', 'oeste', 'derecha', 'izquierda', 'frente', 'fondo']
     },
     referenceCornerWall: {
       type: 'string',
@@ -61,14 +116,7 @@ const INTENT_JSON_SCHEMA = {
     },
     distanceM: { type: 'number' },
     centered: { type: 'boolean' },
-    name: { type: 'string' },
-    dimensions: {
-      type: 'object',
-      properties: {
-        widthM: { type: 'number' },
-        lengthM: { type: 'number' }
-      }
-    },
+    widthM: { type: 'number' },
     elementCategory: {
       type: 'string',
       enum: ['toma', 'llave', 'iluminacion_techo', 'aplique_pared', 'tablero', 'caja_paso']
@@ -76,12 +124,10 @@ const INTENT_JSON_SCHEMA = {
     mountType: { type: 'string', enum: ['wall', 'ceiling'] },
     heightZM: { type: 'number' },
     circuitNumber: { type: 'string' },
-    wallReference: {
-      type: 'string',
-      enum: ['norte', 'sur', 'este', 'oeste', 'derecha', 'izquierda', 'frente', 'fondo']
-    },
+    centeredInRoom: { type: 'boolean' },
     routingPlane: { type: 'string', enum: ['ceiling_slab', 'floor_slab', 'wall'] },
     diameterMM: { type: 'number' },
+    toElementRef: { type: 'string' },
     measurementType: {
       type: 'string',
       enum: ['pat_resistance', 'voltage_fn', 'voltage_ft', 'voltage_nt', 'insulation', 'current']
@@ -218,26 +264,39 @@ class WebLlmService {
 export const webLlmService = new WebLlmService();
 
 /**
- * Orquestador principal de extracción híbrida:
- * 1. Primero intenta con FastPatternParser (<1ms, 0MB, sin WebGPU).
- * 2. Si no encaja, recurre al modelo on-device WebLLM con XGrammar.
+ * Orquestador principal de extracción semántica:
+ * @param text Frase en lenguaje natural
+ * @param forceLlm Si es true, prioriza directamente el modelo WebLLM sobre el parser determinista.
  */
-export async function extractNaturalLanguageIntent(text: string): Promise<{
+export async function extractNaturalLanguageIntent(
+  text: string,
+  forceLlm: boolean = false
+): Promise<{
   intent: NaturalLanguageIntent | null;
   source: 'fast_pattern' | 'web_llm' | 'none';
 }> {
-  // Nivel 0: Parser determinístico ultrarrápido
-  const fastResult = parseNaturalLanguageFast(text);
-  if (fastResult) {
-    return { intent: fastResult, source: 'fast_pattern' };
+  // Nivel 0: Parser determinístico ultrarrápido (<1ms, 0MB, sin WebGPU) si no se fuerza LLM
+  if (!forceLlm) {
+    const fastResult = parseNaturalLanguageFast(text);
+    if (fastResult) {
+      return { intent: fastResult, source: 'fast_pattern' };
+    }
   }
 
-  // Nivel 1: Inferencia con modelo local WebLLM
+  // Nivel 1: Inferencia con modelo local WebLLM on-device
   const isGpuReady = await webLlmService.isWebGpuSupported();
   if (isGpuReady) {
     const llmResult = await webLlmService.extractWithLlm(text);
     if (llmResult) {
       return { intent: llmResult, source: 'web_llm' };
+    }
+  }
+
+  // Fallback de contingencia si forceLlm falló por WebGPU o timeout
+  if (forceLlm) {
+    const fallback = parseNaturalLanguageFast(text);
+    if (fallback) {
+      return { intent: fallback, source: 'fast_pattern' };
     }
   }
 

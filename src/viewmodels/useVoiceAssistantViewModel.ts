@@ -23,6 +23,8 @@ import {
   type NaturalLanguageExecutionResult
 } from '../services/nlp/naturalLanguageTranslator';
 
+export type NlpEngineMode = 'hybrid' | 'llm_only';
+
 export interface PendingConfirmationState {
   message: string;
   source: 'fast_pattern' | 'web_llm';
@@ -33,6 +35,7 @@ export function useVoiceAssistantViewModel() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [engineMode, setEngineMode] = useState<NlpEngineMode>('hybrid');
   const [llmStatus, setLlmStatus] = useState<WebLlmStatus>(webLlmService.getStatus());
   const [llmProgress, setLlmProgress] = useState<WebLlmProgress>({ text: '', progress: 0 });
   const [lastResult, setLastResult] = useState<NaturalLanguageExecutionResult | null>(null);
@@ -96,13 +99,16 @@ export function useVoiceAssistantViewModel() {
     setLastResult(null);
 
     try {
-      // 1. Extraer intención con orquestador híbrido
-      const extraction = await extractNaturalLanguageIntent(trimmed);
+      // 1. Extraer intención con orquestador (híbrido o forzando WebLLM según engineMode)
+      const isForceLlm = engineMode === 'llm_only';
+      const extraction = await extractNaturalLanguageIntent(trimmed, isForceLlm);
 
       if (!extraction.intent) {
         setLastResult({
           success: false,
-          message: 'No se pudo interpretar la intención del comando. Probá con una frase más directa.'
+          message: isForceLlm
+            ? 'La IA local no pudo extraer una acción válida para esta frase. Probá reescribirla o usar el modo Híbrido.'
+            : 'No se pudo interpretar la intención del comando. Probá con una frase más directa.'
         });
         setIsProcessing(false);
         return;
@@ -132,7 +138,7 @@ export function useVoiceAssistantViewModel() {
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [engineMode]);
 
   // Integración de reconocimiento de voz
   const speech = useSpeechRecognition({
@@ -172,6 +178,8 @@ export function useVoiceAssistantViewModel() {
     inputText,
     setInputText,
     isProcessing,
+    engineMode,
+    setEngineMode,
     llmStatus,
     llmProgress,
     lastResult,

@@ -1092,6 +1092,8 @@ export function App() {
         inputText={voiceAssistant.inputText}
         setInputText={voiceAssistant.setInputText}
         isProcessing={voiceAssistant.isProcessing}
+        engineMode={voiceAssistant.engineMode}
+        setEngineMode={voiceAssistant.setEngineMode}
         llmStatus={voiceAssistant.llmStatus}
         llmProgress={voiceAssistant.llmProgress}
         lastResult={voiceAssistant.lastResult}

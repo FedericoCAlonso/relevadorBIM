@@ -19,6 +19,8 @@ interface VoiceAssistantModalProps {
   inputText: string;
   setInputText: (text: string) => void;
   isProcessing: boolean;
+  engineMode: 'hybrid' | 'llm_only';
+  setEngineMode: (mode: 'hybrid' | 'llm_only') => void;
   llmStatus: WebLlmStatus;
   llmProgress: WebLlmProgress;
   lastResult: NaturalLanguageExecutionResult | null;
@@ -43,6 +45,8 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
   inputText,
   setInputText,
   isProcessing,
+  engineMode,
+  setEngineMode,
   llmStatus,
   llmProgress,
   lastResult,
@@ -96,6 +100,40 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
           >
             <X className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* Selector de Modo de Interpretación */}
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-950/60 p-1.5 border border-slate-800">
+          <span className="text-[11px] font-medium text-slate-400 px-2">Motor:</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setEngineMode('hybrid')}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                engineMode === 'hybrid'
+                  ? 'bg-cyan-600/90 text-white shadow-sm shadow-cyan-600/30'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+              title="Prioriza el motor instantáneo (<1ms) y usa IA como fallback"
+            >
+              ⚡ Híbrido (Rápido + IA)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEngineMode('llm_only');
+                if (llmStatus === 'idle') onInitLocalModel();
+              }}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                engineMode === 'llm_only'
+                  ? 'bg-cyan-600/90 text-white shadow-sm shadow-cyan-600/30'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+              title="Interpreta todas las órdenes directamente con la IA local WebLLM (Qwen 0.5B)"
+            >
+              🧠 Solo IA (WebLLM)
+            </button>
+          </div>
         </div>
 
         {/* Zona Central: Micrófono y Ondas */}
@@ -192,26 +230,43 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
         </div>
 
         {/* Footer: Estado del Motor Local */}
-        <div className="mt-5 flex items-center justify-between pt-3 border-t border-slate-800/80 text-[11px] text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5 text-cyan-400" />
-            <span>
-              {llmStatus === 'ready'
-                ? 'IA Local lista (Qwen 0.5B)'
-                : llmStatus === 'downloading'
-                ? `Descargando IA local (${Math.round(llmProgress.progress * 100)}%)`
-                : 'Motor instantáneo activo (<1ms)'}
-            </span>
+        <div className="mt-5 flex flex-col gap-2 pt-3 border-t border-slate-800/80 text-[11px] text-slate-400">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5 text-cyan-400" />
+              <span>
+                {llmStatus === 'ready'
+                  ? 'IA Local lista en GPU (Qwen 0.5B)'
+                  : llmStatus === 'downloading'
+                  ? `Descargando IA local (${Math.round(llmProgress.progress * 100)}%)`
+                  : llmStatus === 'inferring'
+                  ? 'Inferencia WebLLM en curso...'
+                  : llmStatus === 'unsupported'
+                  ? 'WebGPU no soportado (usando motor rápido)'
+                  : engineMode === 'llm_only'
+                  ? 'IA Local no inicializada'
+                  : 'Motor rápido activo (<1ms)'}
+              </span>
+            </div>
+
+            {llmStatus === 'idle' && (
+              <button
+                type="button"
+                onClick={onInitLocalModel}
+                className="text-cyan-400 hover:underline hover:text-cyan-300 font-medium"
+              >
+                Descargar IA Local (Offline)
+              </button>
+            )}
           </div>
 
-          {llmStatus === 'idle' && (
-            <button
-              type="button"
-              onClick={onInitLocalModel}
-              className="text-cyan-400 hover:underline hover:text-cyan-300"
-            >
-              Habilitar IA Local Offline
-            </button>
+          {llmStatus === 'downloading' && (
+            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-cyan-500 h-full transition-all duration-300"
+                style={{ width: `${Math.max(5, Math.round(llmProgress.progress * 100))}%` }}
+              />
+            </div>
           )}
         </div>
       </div>
