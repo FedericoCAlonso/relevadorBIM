@@ -36,11 +36,15 @@ import { usePatternDetectorViewModel } from './viewmodels/usePatternDetectorView
 import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCalibrationModal';
 import { UnderlayAdjustModal } from './views/components/underlay/UnderlayAdjustModal';
 import { useElectricalViewModel } from './viewmodels/useElectricalViewModel';
+import { useVoiceAssistantViewModel } from './viewmodels/useVoiceAssistantViewModel';
+import { VoiceAssistantModal } from './views/components/nlp/VoiceAssistantModal';
+import { VoiceConfirmationToast } from './views/components/nlp/VoiceConfirmationToast';
 import { getSymbolById } from './models/electrical/symbolsLib';
-import { X } from 'lucide-react';
+import { X, Mic } from 'lucide-react';
 
 export function App() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const voiceAssistant = useVoiceAssistantViewModel();
 
   const {
     project,
@@ -956,6 +960,7 @@ export function App() {
         onOpenCircuits={() => setShowCircuitsModal(true)}
         onOpenElectricalReport={() => setShowElectricalReportModal(true)}
         onOpenBatchSelect={() => setShowBatchSelectModal(true)}
+        onOpenVoiceAssistant={() => voiceAssistant.setIsModalOpen(true)}
         hasUnderlay={Boolean(activeUnderlay)}
         onLoadUnderlay={handleLoadUnderlayFile}
         onStartUnderlayCalibration={startUnderlayCalibration}
@@ -1068,6 +1073,38 @@ export function App() {
 
       {/* 14. Modal de Plano de Cielorraso Reflejado (RCP) */}
       <CeilingPlanModal />
+
+      {/* 15. Botón Flotante del Asistente de Voz / Dictado (Ctrl+K) */}
+      <button
+        type="button"
+        onClick={() => voiceAssistant.setIsModalOpen(true)}
+        className="fixed bottom-24 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-600 to-sky-500 text-white shadow-xl shadow-cyan-500/25 hover:scale-105 active:scale-95 transition-all border border-cyan-400/40 cursor-pointer"
+        title="Asistente de Voz y Dictado (Ctrl+K)"
+        aria-label="Abrir Asistente de Voz"
+      >
+        <Mic className="h-6 w-6" />
+      </button>
+
+      {/* 16. Modal y Toast de Voz en Lenguaje Natural */}
+      <VoiceAssistantModal
+        isOpen={voiceAssistant.isModalOpen}
+        onClose={() => voiceAssistant.setIsModalOpen(false)}
+        inputText={voiceAssistant.inputText}
+        setInputText={voiceAssistant.setInputText}
+        isProcessing={voiceAssistant.isProcessing}
+        llmStatus={voiceAssistant.llmStatus}
+        llmProgress={voiceAssistant.llmProgress}
+        lastResult={voiceAssistant.lastResult}
+        speech={voiceAssistant.speech}
+        onExecute={voiceAssistant.executeCommand}
+        onInitLocalModel={voiceAssistant.initLocalModel}
+      />
+
+      <VoiceConfirmationToast
+        pending={voiceAssistant.pendingConfirmation}
+        onConfirm={voiceAssistant.confirmPending}
+        onDiscard={voiceAssistant.discardPending}
+      />
     </div>
   );
 }

@@ -24,7 +24,8 @@ import {
   Trash2,
   Layers,
   Sliders,
-  Filter
+  Filter,
+  Mic
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -36,6 +37,7 @@ interface MainMenuModalProps {
   onOpenCircuits?: () => void;
   onOpenElectricalReport?: () => void;
   onOpenBatchSelect?: () => void;
+  onOpenVoiceAssistant?: () => void;
   hasUnderlay?: boolean;
   onLoadUnderlay?: (file: File) => void;
   onStartUnderlayCalibration?: () => void;
@@ -52,6 +54,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onOpenCircuits,
   onOpenElectricalReport,
   onOpenBatchSelect,
+  onOpenVoiceAssistant,
   hasUnderlay = false,
   onLoadUnderlay,
   onStartUnderlayCalibration,
@@ -395,6 +398,30 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                     <div className="font-bold text-slate-800">Filtro y Edición en Lote</div>
                     <div className="text-[11px] text-slate-500">
                       Selección masiva por circuito, caño o boca
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-slate-400" />
+              </button>
+            )}
+
+            {onOpenVoiceAssistant && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenVoiceAssistant();
+                }}
+                className="w-full flex items-center justify-between p-3 bg-cyan-50/70 hover:bg-cyan-100/80 rounded-2xl border border-cyan-200 transition-all text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white text-cyan-600 rounded-xl border border-cyan-200 shadow-xs">
+                    <Mic size={16} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">Asistente de Voz y Dictado</div>
+                    <div className="text-[11px] text-slate-500">
+                      Comandos en lenguaje natural (Ctrl+K)
                     </div>
                   </div>
                 </div>
