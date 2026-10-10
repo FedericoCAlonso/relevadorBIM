@@ -8,14 +8,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { Menu, Maximize, Minimize, Filter } from 'lucide-react';
+import { Menu, Maximize, Minimize, Filter, Mic } from 'lucide-react';
 
 interface TopStatusBarProps {
   onOpenMenu: () => void;
   onOpenBatchSelect?: () => void;
+  onOpenVoiceAssistant?: () => void;
 }
 
-export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBatchSelect }) => {
+export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBatchSelect, onOpenVoiceAssistant }) => {
   const { project, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -134,6 +135,20 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBa
             <span className="hidden sm:inline">
               {selectedEntities.length > 0 ? `Lote` : 'Filtro'}
             </span>
+          </button>
+        )}
+
+        {/* Botón Asistente de Voz / Dictado (1 Toque) */}
+        {onOpenVoiceAssistant && (
+          <button
+            type="button"
+            onClick={onOpenVoiceAssistant}
+            className="flex items-center justify-center p-1.5 sm:px-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 transition-colors cursor-pointer shrink-0"
+            title="Asistente de Voz / Comandos (Ctrl+K)"
+            aria-label="Abrir Asistente de Voz"
+          >
+            <Mic size={14} />
+            <span className="hidden sm:inline font-bold text-[11px] ml-1">IA</span>
           </button>
         )}
 

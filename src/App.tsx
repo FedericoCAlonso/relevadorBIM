@@ -400,6 +400,7 @@ export function App() {
       <TopStatusBar
         onOpenMenu={() => setShowMainMenu(true)}
         onOpenBatchSelect={() => setShowBatchSelectModal(true)}
+        onOpenVoiceAssistant={() => voiceAssistant.setIsModalOpen(true)}
       />
 
       {/* 2. Cuerpo Principal: Responsive Desktop vs Mobile */}
@@ -1078,11 +1079,15 @@ export function App() {
       <button
         type="button"
         onClick={() => voiceAssistant.setIsModalOpen(true)}
-        className="fixed bottom-24 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-600 to-sky-500 text-white shadow-xl shadow-cyan-500/25 hover:scale-105 active:scale-95 transition-all border border-cyan-400/40 cursor-pointer"
+        className={`fixed z-30 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-600 to-sky-500 text-white shadow-xl shadow-cyan-500/25 hover:scale-105 active:scale-95 transition-all border border-cyan-400/40 cursor-pointer ${
+          isDesktop
+            ? 'bottom-6 right-6'
+            : 'bottom-[calc(14.5rem+env(safe-area-inset-bottom,0px))] right-3.5'
+        }`}
         title="Asistente de Voz y Dictado (Ctrl+K)"
         aria-label="Abrir Asistente de Voz"
       >
-        <Mic className="h-6 w-6" />
+        <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
       </button>
 
       {/* 16. Modal y Toast de Voz en Lenguaje Natural */}

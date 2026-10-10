@@ -27,7 +27,7 @@ export const VoiceConfirmationToast: React.FC<VoiceConfirmationToastProps> = ({
   const isFast = pending.source === 'fast_pattern';
 
   return (
-    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-md animate-slide-up">
+    <div className="fixed bottom-[calc(15rem+env(safe-area-inset-bottom,0px))] sm:bottom-8 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-md animate-slide-up">
       <div className="relative overflow-hidden rounded-2xl border border-cyan-500/40 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md text-slate-100">
         <div className="flex items-center justify-between gap-3">
           {/* Icono e Info */}
