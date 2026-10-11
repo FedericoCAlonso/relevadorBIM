@@ -8,10 +8,11 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, X, Sparkles, Loader2, Cpu } from 'lucide-react';
+import { Mic, MicOff, Send, X, Sparkles, Loader2, Cpu, Building2 } from 'lucide-react';
 import type { UseSpeechRecognitionReturn } from '../../../viewmodels/useSpeechRecognition';
 import type { WebLlmStatus, WebLlmProgress } from '../../../services/nlp/WebLlmExtractor';
 import type { NaturalLanguageExecutionResult } from '../../../services/nlp/naturalLanguageTranslator';
+import type { Space } from '../../../models/architecture/Space';
 
 interface VoiceAssistantModalProps {
   isOpen: boolean;
@@ -25,6 +26,9 @@ interface VoiceAssistantModalProps {
   llmProgress: WebLlmProgress;
   lastResult: NaturalLanguageExecutionResult | null;
   speech: UseSpeechRecognitionReturn;
+  spaces?: Space[];
+  targetSpaceId?: string | null;
+  onSelectSpace?: (id: string | null) => void;
   onExecute: (text: string) => void;
   onInitLocalModel: () => void;
 }
@@ -51,6 +55,9 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
   llmProgress,
   lastResult,
   speech,
+  spaces,
+  targetSpaceId,
+  onSelectSpace,
   onExecute,
   onInitLocalModel
 }) => {
@@ -102,8 +109,31 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
           </button>
         </div>
 
+        {/* Selector de Ambiente de Trabajo Activo */}
+        {spaces && spaces.length > 0 && onSelectSpace && (
+          <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-950/60 px-3 py-1.5 border border-slate-800">
+            <div className="flex items-center gap-2 text-slate-300">
+              <Building2 className="h-4 w-4 text-cyan-400 shrink-0" />
+              <span className="text-xs font-medium">Ambiente activo:</span>
+            </div>
+            <select
+              value={targetSpaceId || ''}
+              onChange={(e) => onSelectSpace(e.target.value ? e.target.value : null)}
+              className="bg-slate-900 text-xs text-cyan-200 border border-slate-700 rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer max-w-[210px] sm:max-w-[240px] truncate"
+              title="Ambiente sobre el que aplicarán las órdenes (aberturas, bocas, adosados)"
+            >
+              <option value="">✨ Auto (o según comando)</option>
+              {spaces.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Selector de Modo de Interpretación */}
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-950/60 p-1.5 border border-slate-800">
+        <div className="mt-2.5 flex items-center justify-between rounded-xl bg-slate-950/60 p-1.5 border border-slate-800">
           <span className="text-[11px] font-medium text-slate-400 px-2">Motor:</span>
           <div className="flex gap-1">
             <button

@@ -175,6 +175,16 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
         expect(intent.widthM).toBeCloseTo(1.20, 2);
       }
     });
+
+    it('detecta nombre de ambiente destino en abertura (ej: "puerta al este en la cocina")', () => {
+      const intent = parseNaturalLanguageFast('puerta en pared este de la cocina a 0.3m');
+      expect(intent).not.toBeNull();
+      expect(intent?.action).toBe('place_opening');
+      if (intent?.action === 'place_opening') {
+        expect(intent.targetSpaceName).toBe('cocina');
+        expect(intent.wallReference).toBe('este');
+      }
+    });
   });
 
   describe('Emplazamiento de Elementos Eléctricos', () => {
@@ -220,6 +230,17 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
         expect(intent.elementCategory).toBe('tablero');
         expect(intent.wallReference).toBe('norte');
         expect(intent.heightZM).toBe(1.50);
+      }
+    });
+
+    it('detecta nombre de ambiente destino en boca (ej: "toma en pared norte de la cocina")', () => {
+      const intent = parseNaturalLanguageFast('poné un toma en pared norte de la cocina');
+      expect(intent).not.toBeNull();
+      expect(intent?.action).toBe('place_element');
+      if (intent?.action === 'place_element') {
+        expect(intent.spaceName).toBe('cocina');
+        expect(intent.elementCategory).toBe('toma');
+        expect(intent.wallReference).toBe('norte');
       }
     });
   });

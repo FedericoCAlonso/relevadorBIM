@@ -323,5 +323,81 @@ describe('naturalLanguageTranslator — Traductor Determinístico CAD/BIM', () =
     const livingArea = calculatePolygonArea(livingPoly);
     expect(livingArea).toBeCloseTo(24.0, 1);
   });
+
+  it('10. Respeta el ambiente activo seleccionado (activeSpaceId) en vez de aplicar en el último agregado', () => {
+    // 1. Crear Living (4x4) de (0,0) a (4,4)
+    executeNaturalLanguageIntent({
+      action: 'create_space',
+      name: 'Living',
+      dimensions: { widthM: 4.0, lengthM: 4.0 }
+    });
+
+    // 2. Crear Cocina (4x4) aislada (queda a la derecha de X=4)
+    executeNaturalLanguageIntent({
+      action: 'create_space',
+      name: 'Cocina',
+      dimensions: { widthM: 4.0, lengthM: 4.0 }
+    });
+
+    const store = useProjectStore.getState();
+    const living = store.project.spaces.find((s) => s.name === 'Living')!;
+    const cocina = store.project.spaces.find((s) => s.name === 'Cocina')!;
+    expect(living).toBeDefined();
+    expect(cocina).toBeDefined();
+
+    // 3. Colocar boca cenital pasando activeSpaceId = living.id
+    const lightRes = executeNaturalLanguageIntent(
+      {
+        action: 'place_element',
+        elementCategory: 'iluminacion_techo',
+        mountType: 'ceiling',
+        centeredInRoom: true
+      },
+      { activeSpaceId: living.id }
+    );
+    expect(lightRes.success).toBe(true);
+
+    const projectAfterLight = useProjectStore.getState().project;
+    const light = projectAfterLight.electricalElements[0];
+    expect(light).toBeDefined();
+    // Centroide de Living está en (2, 2). Si hubiera usado Cocina (el último agregado) estaría en X > 5
+    expect(light.x).toBeCloseTo(2.0, 1);
+    expect(light.y).toBeCloseTo(2.0, 1);
+
+    // 4. Colocar puerta pasando activeSpaceId = living.id
+    const doorRes = executeNaturalLanguageIntent(
+      {
+        action: 'place_opening',
+        openingType: 'door',
+        wallReference: 'sur',
+        centered: true
+      },
+      { activeSpaceId: living.id }
+    );
+    expect(doorRes.success).toBe(true);
+
+    const projectAfterDoor = useProjectStore.getState().project;
+    const door = projectAfterDoor.openings[0];
+    expect(door).toBeDefined();
+    const doorWall = projectAfterDoor.walls.find((w) => w.id === door.wallId)!;
+    // El muro de la puerta debe pertenecer a los vértices del Living
+    expect(living.boundaryVertexIds).toContain(doorWall.startVertexId);
+    expect(living.boundaryVertexIds).toContain(doorWall.endVertexId);
+
+    // 5. Crear un ambiente adosado sin targetSpaceName explícito, pero con activeSpaceId = living.id
+    const porchRes = executeNaturalLanguageIntent(
+      {
+        action: 'create_space',
+        name: 'Porche',
+        dimensions: { widthM: 3.0, lengthM: 2.0 },
+        relativeTo: {
+          sharedWall: 'norte'
+        }
+      },
+      { activeSpaceId: living.id }
+    );
+    expect(porchRes.success).toBe(true);
+    expect(porchRes.message).toContain('Living');
+  });
 });
 

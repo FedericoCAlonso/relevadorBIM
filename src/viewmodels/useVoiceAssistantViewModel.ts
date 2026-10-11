@@ -40,8 +40,32 @@ export function useVoiceAssistantViewModel() {
   const [llmProgress, setLlmProgress] = useState<WebLlmProgress>({ text: '', progress: 0 });
   const [lastResult, setLastResult] = useState<NaturalLanguageExecutionResult | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmationState | null>(null);
+  const [targetSpaceId, setTargetSpaceId] = useState<string | null>(null);
+
+  const spaces = useProjectStore((s) => s.project.spaces);
+  const selectedEntity = useProjectStore((s) => s.selectedEntity);
 
   const timerRef = useRef<any>(null);
+  const prevIsOpenRef = useRef(false);
+  const targetSpaceIdRef = useRef<string | null>(targetSpaceId);
+
+  useEffect(() => {
+    targetSpaceIdRef.current = targetSpaceId;
+  }, [targetSpaceId]);
+
+  // Sincronizar ambiente activo al abrir el modal
+  useEffect(() => {
+    const justOpened = isModalOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isModalOpen;
+
+    if (justOpened) {
+      if (selectedEntity?.type === 'space' && spaces.some((s) => s.id === selectedEntity.id)) {
+        setTargetSpaceId(selectedEntity.id);
+      } else if (!targetSpaceId || !spaces.some((s) => s.id === targetSpaceId)) {
+        setTargetSpaceId(spaces.length > 0 ? spaces[spaces.length - 1].id : null);
+      }
+    }
+  }, [isModalOpen, selectedEntity, spaces, targetSpaceId]);
 
   // Escuchar cambios de estado y progreso del modelo local
   useEffect(() => {
@@ -115,10 +139,16 @@ export function useVoiceAssistantViewModel() {
       }
 
       // 2. Ejecutar traducción determinística
-      const result = executeNaturalLanguageIntent(extraction.intent);
+      const result = executeNaturalLanguageIntent(extraction.intent, {
+        activeSpaceId: targetSpaceIdRef.current
+      });
       setLastResult(result);
 
       if (result.success) {
+        if (result.createdType === 'space' && result.affectedEntityIds?.spaceId) {
+          setTargetSpaceId(result.affectedEntityIds.spaceId);
+        }
+
         // Cerrar modal de dictado si estaba abierto
         setIsModalOpen(false);
         setInputText('');
@@ -185,6 +215,9 @@ export function useVoiceAssistantViewModel() {
     lastResult,
     pendingConfirmation,
     speech,
+    spaces,
+    targetSpaceId,
+    setTargetSpaceId,
     executeCommand,
     confirmPending,
     discardPending,

@@ -358,6 +358,13 @@ function tryParsePlaceOpening(text: string): PlaceOpeningIntent | null {
     if (pw && pw > 0 && pw < 10) widthM = pw;
   }
 
+  // Detección opcional de nombre de ambiente destino: ej: "en cocina", "del living", "en el dormitorio"
+  let targetSpaceName: string | undefined = undefined;
+  const spaceMatch = text.match(/\b(?:en|del?)\s+(?:el\s+|la\s+)?(living(?:\s+comedor)?|cocina|dormitorio|pieza|habitacion|baño|bano|toilette|pasillo|hall|balcon|terraza|lavadero|comedor)\b/i);
+  if (spaceMatch) {
+    targetSpaceName = spaceMatch[1].trim();
+  }
+
   return {
     action: 'place_opening',
     openingType,
@@ -365,7 +372,8 @@ function tryParsePlaceOpening(text: string): PlaceOpeningIntent | null {
     referenceCornerWall,
     distanceM,
     centered: isCentered,
-    widthM
+    widthM,
+    targetSpaceName
   };
 }
 
@@ -433,6 +441,12 @@ function tryParsePlaceElement(text: string): PlaceElementIntent | null {
   // 4. Detectar centrado en techo / ambiente
   if (text.includes('centrad') || text.includes('en el centro') || text.includes('al medio')) {
     intent.centeredInRoom = true;
+  }
+
+  // 5. Detección opcional de nombre de ambiente destino: ej: "en cocina", "del living", "en el dormitorio"
+  const spaceMatch = text.match(/\b(?:en|del?)\s+(?:el\s+|la\s+)?(living(?:\s+comedor)?|cocina|dormitorio|pieza|habitacion|baño|bano|toilette|pasillo|hall|balcon|terraza|lavadero|comedor)\b/i);
+  if (spaceMatch) {
+    intent.spaceName = spaceMatch[1].trim();
   }
 
   return intent;

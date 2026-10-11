@@ -64,7 +64,7 @@ export function executeNaturalLanguageIntent(
     case 'connect_conduit':
       return executeConnectConduit(intent, store);
     case 'record_measurement':
-      return executeRecordMeasurement(intent, store);
+      return executeRecordMeasurement(intent, store, context.activeSpaceId);
     default: {
       const _exhaustive: never = intent;
       return { success: false, message: `Acción no soportada: ${JSON.stringify(_exhaustive)}` };
@@ -79,7 +79,7 @@ export function executeNaturalLanguageIntent(
 function executeCreateSpace(
   intent: CreateSpaceIntent,
   store: ReturnType<typeof useProjectStore.getState>,
-  _activeSpaceId?: string | null
+  activeSpaceId?: string | null
 ): NaturalLanguageExecutionResult {
   const { name, dimensions, relativeTo, openings = [] } = intent;
   const { widthM, lengthM } = dimensions;
@@ -105,13 +105,7 @@ function executeCreateSpace(
 
   // Caso A: Ambiente adosado a un espacio existente (Muro Compartido)
   if (relativeTo?.sharedWall && (relativeTo?.targetSpaceName || currentProject.spaces.length > 0)) {
-    let targetSpace = relativeTo.targetSpaceName
-      ? currentProject.spaces.find((s) => s.name.toLowerCase().includes(relativeTo.targetSpaceName!.toLowerCase()))
-      : undefined;
-
-    if (!targetSpace && currentProject.spaces.length > 0) {
-      targetSpace = currentProject.spaces[currentProject.spaces.length - 1];
-    }
+    const targetSpace = resolveTargetSpace(currentProject.spaces, activeSpaceId, relativeTo.targetSpaceName);
 
     if (targetSpace && relativeTo.sharedWall) {
       const res = createAttachedSpace({
@@ -395,20 +389,20 @@ function executePlaceOpening(
   const { openingType, wallReference, referenceCornerWall, distanceM, centered, widthM, heightM, sillM, targetSpaceName } = intent;
 
   // 1. Identificar espacio destino si existe
-  let targetSpace: Space | undefined = undefined;
-  if (targetSpaceName) {
-    targetSpace = project.spaces.find((s) => s.name.toLowerCase().includes(targetSpaceName.toLowerCase()));
-  } else if (activeSpaceId) {
-    targetSpace = project.spaces.find((s) => s.id === activeSpaceId);
-  } else if (project.spaces.length > 0) {
-    targetSpace = project.spaces[project.spaces.length - 1];
-  }
+  const targetSpace = resolveTargetSpace(project.spaces, activeSpaceId, targetSpaceName);
 
   // 2. Determinar muros candidatos
   let candidateWalls = project.walls;
   if (targetSpace) {
     const spaceWallIds = new Set(targetSpace.wallIds);
     candidateWalls = project.walls.filter((w) => spaceWallIds.has(w.id));
+    if (candidateWalls.length === 0) {
+      candidateWalls = project.walls.filter(
+        (w) =>
+          targetSpace.boundaryVertexIds.includes(w.startVertexId) &&
+          targetSpace.boundaryVertexIds.includes(w.endVertexId)
+      );
+    }
     if (candidateWalls.length === 0) {
       candidateWalls = project.walls;
     }
@@ -575,11 +569,15 @@ function executePlaceElement(
   const targetSpace = resolveTargetSpace(project.spaces, activeSpaceId, spaceName);
 
   if (targetSpace && wallReference) {
-    const spaceWalls = project.walls.filter(
+    let spaceWalls = project.walls.filter(
       (w) =>
         targetSpace.boundaryVertexIds.includes(w.startVertexId) &&
         targetSpace.boundaryVertexIds.includes(w.endVertexId)
     );
+    if (spaceWalls.length === 0 && targetSpace.wallIds && targetSpace.wallIds.length > 0) {
+      const idSet = new Set(targetSpace.wallIds);
+      spaceWalls = project.walls.filter((w) => idSet.has(w.id));
+    }
     targetWall = resolveWallForOrientation(spaceWalls, wallReference, store);
   }
 
@@ -714,7 +712,8 @@ function executeConnectConduit(
 
 function executeRecordMeasurement(
   intent: RecordMeasurementIntent,
-  store: ReturnType<typeof useProjectStore.getState>
+  store: ReturnType<typeof useProjectStore.getState>,
+  activeSpaceId?: string | null
 ): NaturalLanguageExecutionResult {
   const { measurementType, value, unit } = intent;
   const project = store.project;
@@ -745,9 +744,15 @@ function executeRecordMeasurement(
     };
   }
 
-  // De lo contrario, registrar en el último elemento eléctrico
+  // De lo contrario, registrar en el elemento eléctrico (priorizando el ambiente activo si existe)
   if (project.electricalElements.length > 0) {
-    const elem = project.electricalElements[project.electricalElements.length - 1];
+    let elem = project.electricalElements[project.electricalElements.length - 1];
+    if (activeSpaceId) {
+      const spaceElements = project.electricalElements.filter((e) => e.spaceId === activeSpaceId);
+      if (spaceElements.length > 0) {
+        elem = spaceElements[spaceElements.length - 1];
+      }
+    }
     const prevAttrs = elem.attributes ?? [];
     const updatedAttrs = [...prevAttrs.filter((a) => a.key !== key), { key, value: valString }];
     store.updateElectricalElement(elem.id, { attributes: updatedAttrs });

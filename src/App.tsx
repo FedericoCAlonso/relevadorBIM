@@ -1123,6 +1123,9 @@ export function App() {
         llmProgress={voiceAssistant.llmProgress}
         lastResult={voiceAssistant.lastResult}
         speech={voiceAssistant.speech}
+        spaces={voiceAssistant.spaces}
+        targetSpaceId={voiceAssistant.targetSpaceId}
+        onSelectSpace={voiceAssistant.setTargetSpaceId}
         onExecute={voiceAssistant.executeCommand}
         onInitLocalModel={voiceAssistant.initLocalModel}
       />
