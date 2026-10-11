@@ -77,10 +77,10 @@ export function getSpaceAnchorPresets(
   }
 
   return {
-    sw: { x: Number(minX.toFixed(3)), y: Number(minY.toFixed(3)) },
-    nw: { x: Number(minX.toFixed(3)), y: Number(maxY.toFixed(3)) },
-    se: { x: Number(maxX.toFixed(3)), y: Number(minY.toFixed(3)) },
-    ne: { x: Number(maxX.toFixed(3)), y: Number(maxY.toFixed(3)) },
+    nw: { x: Number(minX.toFixed(3)), y: Number(minY.toFixed(3)) },
+    ne: { x: Number(maxX.toFixed(3)), y: Number(minY.toFixed(3)) },
+    sw: { x: Number(minX.toFixed(3)), y: Number(maxY.toFixed(3)) },
+    se: { x: Number(maxX.toFixed(3)), y: Number(maxY.toFixed(3)) },
     center: {
       x: Number(((minX + maxX) / 2).toFixed(3)),
       y: Number(((minY + maxY) / 2).toFixed(3))

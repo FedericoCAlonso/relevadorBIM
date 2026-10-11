@@ -114,10 +114,10 @@ describe('SpaceMoveEngine', () => {
     const project = createMockProjectWithTwoRooms();
     const presets = getSpaceAnchorPresets('sp-living', project);
 
-    expect(presets.sw).toEqual({ x: 0, y: 0 });
-    expect(presets.nw).toEqual({ x: 0, y: 4 });
-    expect(presets.se).toEqual({ x: 6, y: 0 });
-    expect(presets.ne).toEqual({ x: 6, y: 4 });
+    expect(presets.nw).toEqual({ x: 0, y: 0 });
+    expect(presets.ne).toEqual({ x: 6, y: 0 });
+    expect(presets.sw).toEqual({ x: 0, y: 4 });
+    expect(presets.se).toEqual({ x: 6, y: 4 });
     expect(presets.center).toEqual({ x: 3, y: 2 });
   });
 

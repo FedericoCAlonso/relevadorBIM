@@ -85,14 +85,14 @@ describe('SpaceMoveViewModel — Reubicación de Ambientes con Punto Base y Sopo
     const project = useProjectStore.getState().project;
     const presets = getSpaceAnchorPresets('sp-1', project);
 
-    expect(presets.sw).toEqual({ x: 0, y: 0 });
-    expect(presets.nw).toEqual({ x: 0, y: 4 });
-    expect(presets.se).toEqual({ x: 4, y: 0 });
-    expect(presets.ne).toEqual({ x: 4, y: 4 });
+    expect(presets.nw).toEqual({ x: 0, y: 0 });
+    expect(presets.ne).toEqual({ x: 4, y: 0 });
+    expect(presets.sw).toEqual({ x: 0, y: 4 });
+    expect(presets.se).toEqual({ x: 4, y: 4 });
     expect(presets.center).toEqual({ x: 2, y: 2 });
 
-    // Simular flujo de anclaje: tomando la esquina SW (0, 0) y ubicándola en el destino (10, 5)
-    const basePoint = presets.sw;
+    // Simular flujo de anclaje: tomando la esquina NW (0, 0) y ubicándola en el destino (10, 5)
+    const basePoint = presets.nw;
     const destination = { x: 10, y: 5 };
     const delta = {
       x: destination.x - basePoint.x,

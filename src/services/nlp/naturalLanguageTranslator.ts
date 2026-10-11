@@ -322,12 +322,12 @@ function createAttachedSpace(params: {
     extAngleDeg = 180;     // Hacia -X (izquierda)
     returnAngleDeg = 0;    // Hacia +X
   } else if (sharedWallOrientation === 'norte' || sharedWallOrientation === 'frente') {
-    extAngleDeg = 90;      // Hacia +Y (norte)
-    returnAngleDeg = 270;  // Hacia -Y
+    extAngleDeg = 270;     // Hacia -Y (norte / arriba en pantalla)
+    returnAngleDeg = 90;   // Hacia +Y
   } else {
     // sur / fondo
-    extAngleDeg = 270;     // Hacia -Y (sur)
-    returnAngleDeg = 90;   // Hacia +Y
+    extAngleDeg = 90;      // Hacia +Y (sur / abajo en pantalla)
+    returnAngleDeg = 270;  // Hacia -Y
   }
 
   // Trazar los 3 muros nuevos en "C" anclados a vStart y vEnd del tramo compartido
@@ -501,10 +501,10 @@ function isVertexAtOrientation(
       return vTarget.x <= vOther.x;
     case 'norte':
     case 'frente':
-      return vTarget.y >= vOther.y; // Mayor Y (+Y, 90°)
+      return vTarget.y <= vOther.y; // Menor Y (arriba / norte en pantalla)
     case 'sur':
     case 'fondo':
-      return vTarget.y <= vOther.y; // Menor Y (-Y, 270°)
+      return vTarget.y >= vOther.y; // Mayor Y (abajo / sur en pantalla)
   }
 }
 
@@ -794,10 +794,10 @@ function resolveWallForOrientation(
         return ma.x - mb.x; // Menor X primero (-X, 180°)
       case 'norte':
       case 'frente':
-        return mb.y - ma.y; // Mayor Y primero (+Y, 90°)
+        return ma.y - mb.y; // Menor Y primero (arriba / norte en pantalla)
       case 'sur':
       case 'fondo':
-        return ma.y - mb.y; // Menor Y primero (-Y, 270°)
+        return mb.y - ma.y; // Mayor Y primero (abajo / sur en pantalla)
     }
   });
 
