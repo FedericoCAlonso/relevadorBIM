@@ -18,6 +18,7 @@ export interface SplitWallResult {
   splitVertexId: string;
   wall1: Wall;
   wall2: Wall;
+  segmentNearFromVertex: Wall;
 }
 
 function generateId(prefix: string): string {
@@ -187,10 +188,14 @@ export function splitWallAtDistance(params: {
     meta: { ...project.meta, updatedAt: Date.now() }
   };
 
+  const segmentNearFromVertex =
+    fromVertexId === hostWall.startVertexId ? wall1 : wall2;
+
   return {
     project: updatedProject,
     splitVertexId,
     wall1,
-    wall2
+    wall2,
+    segmentNearFromVertex
   };
 }

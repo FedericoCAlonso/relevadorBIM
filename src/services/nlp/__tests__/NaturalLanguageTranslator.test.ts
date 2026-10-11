@@ -286,7 +286,8 @@ describe('naturalLanguageTranslator — Traductor Determinístico CAD/BIM', () =
       name: 'Living',
       dimensions: { widthM: 6.0, lengthM: 4.0 }
     };
-    executeNaturalLanguageIntent(livingIntent);
+    const resLiving = executeNaturalLanguageIntent(livingIntent);
+    expect(resLiving.success).toBe(true);
 
     // 2. Crear Balcón pegado a pared sur de 4.5 por 1
     const balconIntent: CreateSpaceIntent = {

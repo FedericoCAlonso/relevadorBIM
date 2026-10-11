@@ -484,6 +484,23 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       setIsStencilSnapped(false);
     }
 
+    // 4. Snap magnético a vértices/esquinas existentes al mover un ambiente
+    if (isMovingSpace && snapAllowed) {
+      let bestVertex: WallVertex | null = null;
+      let minD = 0.35;
+      for (const v of project.vertices) {
+        const d = Math.hypot(v.x - wx, v.y - wy);
+        if (d < minD) {
+          minD = d;
+          bestVertex = v;
+        }
+      }
+      if (bestVertex) {
+        wx = bestVertex.x;
+        wy = bestVertex.y;
+      }
+    }
+
     setHoverWorldPos({ x: wx, y: wy });
     setHoverRotationDeg(rot);
     setActiveSnapInfo(snapInfo);
@@ -930,7 +947,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     }
 
     if (isMovingSpace) {
-      onMoveSpaceCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      const targetX = hoverWorldPos ? hoverWorldPos.x : wx;
+      const targetY = hoverWorldPos ? hoverWorldPos.y : wy;
+      onMoveSpaceCanvasClick?.(Number(targetX.toFixed(3)), Number(targetY.toFixed(3)));
       return;
     }
 
@@ -977,6 +996,16 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   useEffect(() => {
     triggerPlacementRef.current = triggerPlacement;
   });
+
+  const isInteractionInterceptedRef = useRef(false);
+  isInteractionInterceptedRef.current = Boolean(
+    selectedSymbolId ||
+    isConnectingConduit ||
+    isCalibratingUnderlay ||
+    isAddingDimension ||
+    isDrawingOverhang ||
+    isMovingSpace
+  );
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (wasDraggingRecentlyRef.current()) return;
@@ -1053,7 +1082,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={space.id}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isDrawingOverhang || isMovingSpace) {
+              if (isInteractionInterceptedRef.current) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -1303,8 +1332,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             onMouseLeave={() => setHoveredWallId(null)}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
-                // Modo inserción de elemento eléctrico o conexión de cañerías
+              if (isInteractionInterceptedRef.current) {
+                // Modo inserción de elemento eléctrico o conexión de cañerías / mover espacio
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -1588,7 +1617,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
           onClick={(e) => {
             if (wasDraggingRecentlyRef.current()) return;
-            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+            if (isInteractionInterceptedRef.current) {
               triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
@@ -1881,7 +1910,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           transform={`translate(${pxX}, ${pxY})`}
           onClick={(e) => {
             if (wasDraggingRecentlyRef.current()) return;
-            if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+            if (isInteractionInterceptedRef.current) {
               triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
@@ -2040,7 +2069,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           key={conduit.id}
           onClick={(e) => {
             if (wasDraggingRecentlyRef.current()) return;
-            if (isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+            if (isInteractionInterceptedRef.current) {
               triggerPlacementRef.current(e.clientX, e.clientY);
               return;
             }
@@ -2417,7 +2446,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (isCalibratingUnderlay || isAddingDimension) {
+              if (isInteractionInterceptedRef.current) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -2744,7 +2773,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             }}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (isCalibratingUnderlay || isAddingDimension) {
+              if (isInteractionInterceptedRef.current && !isConnectingConduit) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -2943,7 +2972,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={dim.id}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) {
+              if (isInteractionInterceptedRef.current) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }

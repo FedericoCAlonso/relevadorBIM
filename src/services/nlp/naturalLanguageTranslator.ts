@@ -97,11 +97,21 @@ function executeCreateSpace(
   let originX = 0;
   let originY = 0;
 
+  // 0. Sincronizar recintos si ya hay muros cerrados pero no detectados
+  if (project.walls.length >= 3 && project.spaces.length === 0) {
+    store.autoDetectSpaces();
+  }
+  const currentProject = store.project;
+
   // Caso A: Ambiente adosado a un espacio existente (Muro Compartido)
-  if (relativeTo?.targetSpaceName || (relativeTo?.sharedWall && project.spaces.length > 0)) {
-    const targetSpace = relativeTo.targetSpaceName
-      ? project.spaces.find((s) => s.name.toLowerCase().includes(relativeTo.targetSpaceName!.toLowerCase()))
-      : project.spaces[project.spaces.length - 1];
+  if (relativeTo?.sharedWall && (relativeTo?.targetSpaceName || currentProject.spaces.length > 0)) {
+    let targetSpace = relativeTo.targetSpaceName
+      ? currentProject.spaces.find((s) => s.name.toLowerCase().includes(relativeTo.targetSpaceName!.toLowerCase()))
+      : undefined;
+
+    if (!targetSpace && currentProject.spaces.length > 0) {
+      targetSpace = currentProject.spaces[currentProject.spaces.length - 1];
+    }
 
     if (targetSpace && relativeTo.sharedWall) {
       const res = createAttachedSpace({
@@ -125,16 +135,16 @@ function executeCreateSpace(
     originY = 0;
   }
 
-  // Trazar los 4 muros ortogonales encadenados
-  // Muro 1 (Sur): hacia el Este (0°)
+  // Trazar los 4 muros ortogonales encadenados (en sentido horario desde la esquina noroeste)
+  // Muro 1 (Norte): de (originX, originY) hacia el Este (0°)
   const wall1 = store.addWallFromAnchor({
     startCoord: { x: originX, y: originY },
     lengthM: widthM,
     angleDeg: 0
   });
-  if (!wall1) return { success: false, message: 'No se pudo trazar la pared sur del recinto.' };
+  if (!wall1) return { success: false, message: 'No se pudo trazar la pared norte del recinto.' };
 
-  // Muro 2 (Este): hacia el Norte (90°)
+  // Muro 2 (Este): hacia el Sur (90° en coordenadas de pantalla, +Y hacia abajo)
   const wall2 = store.addWallFromAnchor({
     startVertexId: wall1.endVertexId,
     lengthM: lengthM,
@@ -142,15 +152,15 @@ function executeCreateSpace(
   });
   if (!wall2) return { success: false, message: 'No se pudo trazar la pared este del recinto.' };
 
-  // Muro 3 (Norte): hacia el Oeste (180°)
+  // Muro 3 (Sur): hacia el Oeste (180°)
   const wall3 = store.addWallFromAnchor({
     startVertexId: wall2.endVertexId,
     lengthM: widthM,
     angleDeg: 180
   });
-  if (!wall3) return { success: false, message: 'No se pudo trazar la pared norte del recinto.' };
+  if (!wall3) return { success: false, message: 'No se pudo trazar la pared sur del recinto.' };
 
-  // Muro 4 (Oeste): hacia el Sur (270°), cerrando en el inicio de Muro 1
+  // Muro 4 (Oeste): hacia el Norte (270° en coordenadas de pantalla, -Y hacia arriba), cerrando en Muro 1
   const wall4 = store.addWallFromAnchor({
     startVertexId: wall3.endVertexId,
     lengthM: lengthM,
@@ -248,33 +258,27 @@ function createAttachedSpace(params: {
 
   const hostWallLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
 
-  // Determinar dimensión paralela (a lo largo del muro) y perpendicular (profundidad)
-  let parallelDim = widthM;
-  let perpLengthM = lengthM;
-
   const isNorthSouth =
     sharedWallOrientation === 'norte' ||
     sharedWallOrientation === 'sur' ||
     sharedWallOrientation === 'frente' ||
     sharedWallOrientation === 'fondo';
 
-  if (isNorthSouth) {
-    // Si lengthM calza mejor en el muro host que widthM (ej: "1 por 4.5" en pared de 6m)
-    if (widthM > hostWallLength + 0.05 && lengthM <= hostWallLength + 0.05) {
-      parallelDim = lengthM;
-      perpLengthM = widthM;
+  // Si el muro corre en sentido Este-Oeste (norte/sur), la dimensión paralela al muro es widthM.
+  // Si el muro corre en sentido Norte-Sur (este/oeste), la dimensión paralela al muro es lengthM.
+  let parallelDim = isNorthSouth ? widthM : lengthM;
+  let perpLengthM = isNorthSouth ? lengthM : widthM;
+
+  // Si la dimensión paralela excede la longitud del muro pero la otra dimensión calza:
+  if (parallelDim > hostWallLength + 0.05) {
+    const altParallel = isNorthSouth ? lengthM : widthM;
+    const altPerp = isNorthSouth ? widthM : lengthM;
+    if (altParallel <= hostWallLength + 0.05) {
+      parallelDim = altParallel;
+      perpLengthM = altPerp;
     } else {
-      parallelDim = widthM;
-      perpLengthM = lengthM;
-    }
-  } else {
-    // Este / Oeste
-    if (lengthM > hostWallLength + 0.05 && widthM <= hostWallLength + 0.05) {
-      parallelDim = widthM;
-      perpLengthM = lengthM;
-    } else {
-      parallelDim = lengthM;
-      perpLengthM = widthM;
+      // Clampear al largo disponible del muro host
+      parallelDim = hostWallLength;
     }
   }
 
@@ -292,7 +296,7 @@ function createAttachedSpace(params: {
 
     if (splitRes) {
       store.loadProject(splitRes.project);
-      effectiveSharedWall = splitRes.wall1;
+      effectiveSharedWall = splitRes.segmentNearFromVertex;
 
       // Actualizar referencias locales tras el split con el estado más reciente del store
       project = useProjectStore.getState().project;
@@ -306,22 +310,23 @@ function createAttachedSpace(params: {
   const wallSharedAngleRad = Math.atan2(vEnd.y - vStart.y, vEnd.x - vStart.x);
   const wallSharedAngleDeg = Math.round((wallSharedAngleRad * 180) / Math.PI);
 
-  // Determinar dirección de expansión según la orientación del muro compartido
+  // Determinar dirección de expansión según la orientación del muro compartido:
+  // Este (0° = +X), Norte (90° = +Y), Oeste (180° = -X), Sur (270° = -Y)
   let extAngleDeg = 0;
   let returnAngleDeg = 180;
 
   if (sharedWallOrientation === 'este' || sharedWallOrientation === 'derecha') {
-    extAngleDeg = 0;       // Hacia +X
+    extAngleDeg = 0;       // Hacia +X (derecha)
     returnAngleDeg = 180;  // Hacia -X
   } else if (sharedWallOrientation === 'oeste' || sharedWallOrientation === 'izquierda') {
-    extAngleDeg = 180;     // Hacia -X
+    extAngleDeg = 180;     // Hacia -X (izquierda)
     returnAngleDeg = 0;    // Hacia +X
   } else if (sharedWallOrientation === 'norte' || sharedWallOrientation === 'frente') {
-    extAngleDeg = 90;      // Hacia +Y
+    extAngleDeg = 90;      // Hacia +Y (norte)
     returnAngleDeg = 270;  // Hacia -Y
   } else {
     // sur / fondo
-    extAngleDeg = 270;     // Hacia -Y
+    extAngleDeg = 270;     // Hacia -Y (sur)
     returnAngleDeg = 90;   // Hacia +Y
   }
 
@@ -496,10 +501,10 @@ function isVertexAtOrientation(
       return vTarget.x <= vOther.x;
     case 'norte':
     case 'frente':
-      return vTarget.y >= vOther.y;
+      return vTarget.y >= vOther.y; // Mayor Y (+Y, 90°)
     case 'sur':
     case 'fondo':
-      return vTarget.y <= vOther.y;
+      return vTarget.y <= vOther.y; // Menor Y (-Y, 270°)
   }
 }
 
@@ -783,16 +788,16 @@ function resolveWallForOrientation(
     switch (orientation) {
       case 'este':
       case 'derecha':
-        return mb.x - ma.x; // Mayor X primero
+        return mb.x - ma.x; // Mayor X primero (+X, 0°)
       case 'oeste':
       case 'izquierda':
-        return ma.x - mb.x; // Menor X primero
+        return ma.x - mb.x; // Menor X primero (-X, 180°)
       case 'norte':
       case 'frente':
-        return mb.y - ma.y; // Mayor Y primero
+        return mb.y - ma.y; // Mayor Y primero (+Y, 90°)
       case 'sur':
       case 'fondo':
-        return ma.y - mb.y; // Menor Y primero
+        return ma.y - mb.y; // Menor Y primero (-Y, 270°)
     }
   });
 

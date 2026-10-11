@@ -224,7 +224,12 @@ export function translateSpace(params: {
   const targetSpace = detachedProject.spaces.find((s) => s.id === spaceId);
   if (!targetSpace) return detachedProject;
 
-  const spaceVertexIdsSet = new Set(targetSpace.boundaryVertexIds);
+  const spaceWalls = detachedProject.walls.filter((w) => targetSpace.wallIds.includes(w.id));
+  const spaceVertexIdsSet = new Set([
+    ...targetSpace.boundaryVertexIds,
+    ...spaceWalls.map((w) => w.startVertexId),
+    ...spaceWalls.map((w) => w.endVertexId)
+  ]);
 
   // 2. Mapear y trasladar los vértices del espacio
   const updatedVertices = detachedProject.vertices.map((v) => {
