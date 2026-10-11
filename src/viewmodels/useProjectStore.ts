@@ -19,6 +19,7 @@ import { getWallVector, getWallLength, getWallLeftNormal } from '../models/archi
 import type { Opening, OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { Space } from '../models/architecture/Space';
 import { findEnclosedCycles } from '../models/architecture/Space';
+import { translateSpace } from '../models/architecture/SpaceMoveEngine';
 import { adjustOpeningOnWallResize } from '../models/architecture/WallSnapEngine';
 import type {
   ElectricalElement,
@@ -185,6 +186,7 @@ interface ProjectStoreState {
   // Acciones de Ambientes / Espacios
   updateSpace: (spaceId: string, updates: Partial<Space>) => void;
   autoDetectSpaces: () => void;
+  moveSpace: (spaceId: string, delta: Vector2D) => void;
 
   // Acciones Electromecánicas y Circuitos (Norma AEA 90364-771)
   addElectricalElement: (element: ElectricalElement) => void;
@@ -1379,6 +1381,11 @@ export const useProjectStore = create<ProjectStoreState>((rawSet, get) => {
       _skipHistory: true
     } as any);
   },
+
+  moveSpace: (spaceId, delta) =>
+    set((state) => ({
+      project: translateSpace({ spaceId, delta, project: state.project })
+    })),
 
   addElectricalElement: (element) =>
     set((state) => ({

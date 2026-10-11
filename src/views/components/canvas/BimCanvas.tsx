@@ -78,6 +78,11 @@ interface BimCanvasProps {
   overhangP1?: { x: number; y: number } | null;
   onOverhangCanvasClick?: (worldX: number, worldY: number) => void;
   onCancelDrawingOverhang?: () => void;
+  isMovingSpace?: boolean;
+  movingSpaceId?: string | null;
+  movingBasePoint?: { x: number; y: number } | null;
+  onMoveSpaceCanvasClick?: (worldX: number, worldY: number) => void;
+  onCancelMovingSpace?: () => void;
   isSamplingPattern?: boolean;
   positiveExemplarsCount?: number;
   stencilSizeWorld?: { width: number; height: number } | null;
@@ -161,6 +166,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   overhangP1 = null,
   onOverhangCanvasClick,
   onCancelDrawingOverhang,
+  isMovingSpace = false,
+  movingSpaceId = null,
+  movingBasePoint = null,
+  onMoveSpaceCanvasClick,
+  onCancelMovingSpace,
   isSamplingPattern = false,
   positiveExemplarsCount = 0,
   stencilSizeWorld = null,
@@ -919,6 +929,11 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       return;
     }
 
+    if (isMovingSpace) {
+      onMoveSpaceCanvasClick?.(Number(wx.toFixed(3)), Number(wy.toFixed(3)));
+      return;
+    }
+
     // Si la arquitectura está bloqueada y no se está emplazando una boca ni conectando cañería, ignorar clics de fondo
     if (isArchitectureLocked && !selectedSymbolId && !isConnectingConduit) {
       return;
@@ -1038,7 +1053,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             key={space.id}
             onClick={(e) => {
               if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isDrawingOverhang) {
+              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isDrawingOverhang || isMovingSpace) {
                 triggerPlacementRef.current(e.clientX, e.clientY);
                 return;
               }
@@ -3795,6 +3810,93 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             </g>
           )}
 
+          {/* Vista previa elástica y contorno fantasma al mover ambiente (punto base + destino) */}
+          {isMovingSpace && movingSpaceId && (() => {
+            const movingSpace = project.spaces.find((s) => s.id === movingSpaceId);
+            if (!movingSpace) return null;
+            const movingPoly = resolveSpacePolygon(movingSpace, verticesMap);
+            if (movingPoly.length < 3) return null;
+
+            return (
+              <g pointerEvents="none">
+                {/* Punto base marcado */}
+                {movingBasePoint && (
+                  <g>
+                    <circle
+                      cx={movingBasePoint.x * zoom}
+                      cy={movingBasePoint.y * zoom}
+                      r={6}
+                      fill="#2563eb"
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                    />
+                    <circle
+                      cx={movingBasePoint.x * zoom}
+                      cy={movingBasePoint.y * zoom}
+                      r={10}
+                      fill="none"
+                      stroke="#2563eb"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                    />
+                  </g>
+                )}
+
+                {/* Polígono fantasma desplazado hacia el cursor */}
+                {movingBasePoint && hoverWorldPos && (() => {
+                  const dx = hoverWorldPos.x - movingBasePoint.x;
+                  const dy = hoverWorldPos.y - movingBasePoint.y;
+                  const ghostPoints = movingPoly
+                    .map((p) => `${(p.x + dx) * zoom},${(p.y + dy) * zoom}`)
+                    .join(' ');
+
+                  return (
+                    <g>
+                      {/* Contorno fantasma traslúcido */}
+                      <polygon
+                        points={ghostPoints}
+                        fill="rgba(59, 130, 246, 0.18)"
+                        stroke="#2563eb"
+                        strokeWidth={2}
+                        strokeDasharray="6 3"
+                      />
+
+                      {/* Vector elástico desde punto base hasta cursor */}
+                      <line
+                        x1={movingBasePoint.x * zoom}
+                        y1={movingBasePoint.y * zoom}
+                        x2={hoverWorldPos.x * zoom}
+                        y2={hoverWorldPos.y * zoom}
+                        stroke="#2563eb"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 2"
+                      />
+
+                      {/* Marcador en la posición destino proyectada */}
+                      <circle
+                        cx={hoverWorldPos.x * zoom}
+                        cy={hoverWorldPos.y * zoom}
+                        r={5}
+                        fill="#1d4ed8"
+                      />
+
+                      {/* Rótulo de desplazamiento delta */}
+                      <text
+                        x={((movingBasePoint.x + hoverWorldPos.x) / 2) * zoom}
+                        y={((movingBasePoint.y + hoverWorldPos.y) / 2) * zoom - 8}
+                        textAnchor="middle"
+                        fontSize={11}
+                        className="font-mono font-bold fill-blue-800 bg-white"
+                      >
+                        ΔX: {dx >= 0 ? '+' : ''}{dx.toFixed(2)}m, ΔY: {dy >= 0 ? '+' : ''}{dy.toFixed(2)}m ({Math.hypot(dx, dy).toFixed(2)}m)
+                      </text>
+                    </g>
+                  );
+                })()}
+              </g>
+            );
+          })()}
+
           {/* Línea elástica y marcas de calibración métrica del plano de fondo */}
           {isCalibratingUnderlay && calibrationP1 && (
             <g pointerEvents="none">
@@ -4115,6 +4217,31 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
               }}
               className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
               title="Cancelar trazado de alero"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Banner / Píldora superior durante reubicación de ambiente */}
+      {isMovingSpace && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-blue-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping" />
+          <span>
+            {movingBasePoint
+              ? `⚓ Punto Base: (${movingBasePoint.x.toFixed(2)}, ${movingBasePoint.y.toFixed(2)}) m · Clic en el destino para reubicar`
+              : '⚓ Mover Ambiente: Clic en el plano para definir el Punto Base'}
+          </span>
+          {onCancelMovingSpace && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelMovingSpace();
+              }}
+              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
+              title="Cancelar movimiento (Esc)"
             >
               ✕
             </button>

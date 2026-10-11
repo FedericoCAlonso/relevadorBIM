@@ -278,4 +278,49 @@ describe('naturalLanguageTranslator — Traductor Determinístico CAD/BIM', () =
     // Extremo este está en X=4.0
     expect(closestToEast).toBeCloseTo(3.80, 2); // 4.0 - 0.20 = 3.80
   });
+
+  it('9. Crea un balcón adosado con dimensiones menores al muro anfitrión (partición colineal)', () => {
+    // 1. Crear Living de 6x4 (Muro sur mide 6m)
+    const livingIntent: CreateSpaceIntent = {
+      action: 'create_space',
+      name: 'Living',
+      dimensions: { widthM: 6.0, lengthM: 4.0 }
+    };
+    executeNaturalLanguageIntent(livingIntent);
+
+    // 2. Crear Balcón pegado a pared sur de 4.5 por 1
+    const balconIntent: CreateSpaceIntent = {
+      action: 'create_space',
+      name: 'Balcón',
+      dimensions: { widthM: 4.5, lengthM: 1.0 },
+      relativeTo: {
+        targetSpaceName: 'Living',
+        sharedWall: 'sur'
+      }
+    };
+
+    const res = executeNaturalLanguageIntent(balconIntent);
+    expect(res.success).toBe(true);
+
+    const project = useProjectStore.getState().project;
+    expect(project.spaces).toHaveLength(2);
+
+    const living = project.spaces.find((s) => s.name === 'Living')!;
+    const balcon = project.spaces.find((s) => s.name === 'Balcón')!;
+    expect(living).toBeDefined();
+    expect(balcon).toBeDefined();
+
+    const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+    // Balcón debe tener área de 4.5m x 1m = 4.5 m²
+    const balconPoly = resolveSpacePolygon(balcon, verticesMap);
+    const balconArea = calculatePolygonArea(balconPoly);
+    expect(balconArea).toBeCloseTo(4.5, 1);
+
+    // Living debe conservar su área de 6m x 4m = 24.0 m²
+    const livingPoly = resolveSpacePolygon(living, verticesMap);
+    const livingArea = calculatePolygonArea(livingPoly);
+    expect(livingArea).toBeCloseTo(24.0, 1);
+  });
 });
+

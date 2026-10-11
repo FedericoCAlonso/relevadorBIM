@@ -19,6 +19,10 @@ import {
   computeCeilingProjection,
   type SpaceCoverType
 } from '../../../models/architecture/Space';
+import {
+  SPACE_ANCHOR_OPTIONS,
+  type SpaceAnchorPreset
+} from '../../../models/architecture/SpaceMoveEngine';
 import { getRecommendedIPForCover } from '../../../models/electrical/electricalStandards';
 import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
 import {
@@ -34,16 +38,23 @@ import {
   SquareDashed,
   Cloud,
   PenTool,
-  Repeat
+  Repeat,
+  Move
 } from 'lucide-react';
 
 interface SpaceEditModalProps {
   spaceId: string | null;
   onClose: () => void;
   onStartDrawingOverhang?: (spaceId: string) => void;
+  onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
 }
 
-export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose, onStartDrawingOverhang }) => {
+export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
+  spaceId,
+  onClose,
+  onStartDrawingOverhang,
+  onStartMovingSpace
+}) => {
   const { project, updateSpace } = useProjectStore();
 
   const space = useMemo(() => {
@@ -488,6 +499,35 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({ spaceId, onClose
             <p className="text-[11px] text-slate-600 leading-snug">
               Hueco de losa o patio técnico de ventilación. No computa para superficie habitable ni límite.
             </p>
+          </div>
+        )}
+
+        {/* Reubicación / Mover Ambiente */}
+        {onStartMovingSpace && (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+              <span className="flex items-center gap-1.5">
+                <Move size={14} className="text-blue-600" />
+                <span>Mover Ambiente (Punto Base)</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Reubicar en plano</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {SPACE_ANCHOR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onStartMovingSpace(space.id, opt.id);
+                  }}
+                  className="py-1.5 px-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center"
+                  title={`Mover tomando como punto base ${opt.label}`}
+                >
+                  {opt.shortLabel}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

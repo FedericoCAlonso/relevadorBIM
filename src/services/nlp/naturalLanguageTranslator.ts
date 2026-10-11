@@ -11,6 +11,7 @@
 import { useProjectStore } from '../../viewmodels/useProjectStore';
 import { placeElectricalElementInStore } from '../../viewmodels/useElectricalViewModel';
 import { calculateWallSnap, type Wall } from '../../models/architecture/Wall';
+import { splitWallAtDistance } from '../../models/architecture/WallSplitEngine';
 import {
   resolveSpacePolygon,
   calculatePolygonCentroid,
@@ -225,8 +226,8 @@ function createAttachedSpace(params: {
 }): NaturalLanguageExecutionResult {
   const { intent, targetSpace, sharedWallOrientation, store } = params;
   const { widthM, lengthM } = intent.dimensions;
-  const project = store.project;
-  const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+  let project = store.project;
+  let verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
 
   // Identificar los muros que delimitan el targetSpace
   const spaceWalls = project.walls.filter((w) =>
@@ -239,37 +240,92 @@ function createAttachedSpace(params: {
     return { success: false, message: `No se encontró el muro ${sharedWallOrientation} en ${targetSpace.name}.` };
   }
 
-  const vStart = verticesMap.get(sharedWall.startVertexId);
-  const vEnd = verticesMap.get(sharedWall.endVertexId);
+  let vStart = verticesMap.get(sharedWall.startVertexId);
+  let vEnd = verticesMap.get(sharedWall.endVertexId);
   if (!vStart || !vEnd) {
     return { success: false, message: 'Vértices del muro compartido no encontrados.' };
   }
 
+  const hostWallLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
+
+  // Determinar dimensión paralela (a lo largo del muro) y perpendicular (profundidad)
+  let parallelDim = widthM;
+  let perpLengthM = lengthM;
+
+  const isNorthSouth =
+    sharedWallOrientation === 'norte' ||
+    sharedWallOrientation === 'sur' ||
+    sharedWallOrientation === 'frente' ||
+    sharedWallOrientation === 'fondo';
+
+  if (isNorthSouth) {
+    // Si lengthM calza mejor en el muro host que widthM (ej: "1 por 4.5" en pared de 6m)
+    if (widthM > hostWallLength + 0.05 && lengthM <= hostWallLength + 0.05) {
+      parallelDim = lengthM;
+      perpLengthM = widthM;
+    } else {
+      parallelDim = widthM;
+      perpLengthM = lengthM;
+    }
+  } else {
+    // Este / Oeste
+    if (lengthM > hostWallLength + 0.05 && widthM <= hostWallLength + 0.05) {
+      parallelDim = widthM;
+      perpLengthM = lengthM;
+    } else {
+      parallelDim = lengthM;
+      perpLengthM = widthM;
+    }
+  }
+
+  // Si la dimensión paralela requerida es menor que la longitud del muro host,
+  // particionar el muro host colinealmente para obtener el segmento exacto
+  let effectiveSharedWall = sharedWall;
+
+  if (parallelDim < hostWallLength - 0.05) {
+    const splitRes = splitWallAtDistance({
+      hostWallId: sharedWall.id,
+      distanceM: parallelDim,
+      fromVertexId: vStart.id,
+      project: store.project
+    });
+
+    if (splitRes) {
+      store.loadProject(splitRes.project);
+      effectiveSharedWall = splitRes.wall1;
+
+      // Actualizar referencias locales tras el split con el estado más reciente del store
+      project = useProjectStore.getState().project;
+      verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+      vStart = verticesMap.get(effectiveSharedWall.startVertexId)!;
+      vEnd = verticesMap.get(effectiveSharedWall.endVertexId)!;
+    }
+  }
+
+  const effectiveSharedLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
+  const wallSharedAngleRad = Math.atan2(vEnd.y - vStart.y, vEnd.x - vStart.x);
+  const wallSharedAngleDeg = Math.round((wallSharedAngleRad * 180) / Math.PI);
+
   // Determinar dirección de expansión según la orientación del muro compartido
   let extAngleDeg = 0;
   let returnAngleDeg = 180;
-  let perpLengthM = widthM;
 
   if (sharedWallOrientation === 'este' || sharedWallOrientation === 'derecha') {
     extAngleDeg = 0;       // Hacia +X
     returnAngleDeg = 180;  // Hacia -X
-    perpLengthM = widthM;
   } else if (sharedWallOrientation === 'oeste' || sharedWallOrientation === 'izquierda') {
     extAngleDeg = 180;     // Hacia -X
     returnAngleDeg = 0;    // Hacia +X
-    perpLengthM = widthM;
   } else if (sharedWallOrientation === 'norte' || sharedWallOrientation === 'frente') {
     extAngleDeg = 90;      // Hacia +Y
     returnAngleDeg = 270;  // Hacia -Y
-    perpLengthM = lengthM;
   } else {
     // sur / fondo
     extAngleDeg = 270;     // Hacia -Y
     returnAngleDeg = 90;   // Hacia +Y
-    perpLengthM = lengthM;
   }
 
-  // Trazar los 3 muros nuevos en "C" anclados a vStart y vEnd del muro compartido
+  // Trazar los 3 muros nuevos en "C" anclados a vStart y vEnd del tramo compartido
   const w1 = store.addWallFromAnchor({
     startVertexId: vStart.id,
     lengthM: perpLengthM,
@@ -277,14 +333,9 @@ function createAttachedSpace(params: {
   });
   if (!w1) return { success: false, message: 'No se pudo trazar el primer muro lateral.' };
 
-  // El muro frontal conecta hacia la línea de vEnd
-  const wallSharedLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
-  const wallSharedAngleRad = Math.atan2(vEnd.y - vStart.y, vEnd.x - vStart.x);
-  const wallSharedAngleDeg = Math.round((wallSharedAngleRad * 180) / Math.PI);
-
   const w2 = store.addWallFromAnchor({
     startVertexId: w1.endVertexId,
-    lengthM: wallSharedLength,
+    lengthM: effectiveSharedLength,
     angleDeg: wallSharedAngleDeg
   });
   if (!w2) return { success: false, message: 'No se pudo trazar el muro frontal.' };
@@ -298,7 +349,7 @@ function createAttachedSpace(params: {
 
   // Inyectar aberturas si se especificaron
   for (const op of intent.openings ?? []) {
-    const targetWall = op.wall === sharedWallOrientation ? sharedWall : w2.wall;
+    const targetWall = op.wall === sharedWallOrientation ? effectiveSharedWall : w2.wall;
     const opWidth = op.widthM ?? (op.type === 'window' ? 1.20 : 0.80);
     store.addOpeningDirect({
       wallId: targetWall.id,
@@ -322,7 +373,7 @@ function createAttachedSpace(params: {
     success: true,
     message: `Ambiente "${intent.name}" adosado a "${targetSpace.name}" creado con éxito.`,
     createdType: 'space',
-    affectedEntityIds: { spaceId: newSpace?.id, wallIds: [w1.wall.id, w2.wall.id, w3.wall.id] }
+    affectedEntityIds: { spaceId: newSpace?.id, wallIds: [w1.wall.id, w2.wall.id, w3.wall.id, effectiveSharedWall.id] }
   };
 }
 

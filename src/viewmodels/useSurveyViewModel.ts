@@ -19,6 +19,10 @@ import {
 import type { Conduit, ConduitWaypoint, ElectricalElement } from '../models/electrical/ElectricalModel';
 import { deriveConduitConductors } from '../models/electrical/electricalConductorDerivation';
 import { resolveDefaultRoutingPlane } from '../models/electrical/conduitRouting';
+import {
+  getSpaceAnchorPresets,
+  type SpaceAnchorPreset
+} from '../models/architecture/SpaceMoveEngine';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -53,6 +57,7 @@ export function useSurveyViewModel() {
     addConduit,
     updateConduit,
     updateSpace,
+    moveSpace,
     addDimensionLine,
     setShowDimensions
   } = useProjectStore();
@@ -371,6 +376,79 @@ export function useSurveyViewModel() {
     [isDrawingOverhang, overhangSpaceId, overhangP1, project.spaces, updateSpace]
   );
 
+  // ─── ESTADO DE REUBICACIÓN INTERACTIVA DE AMBIENTE (PUNTO BASE + DESTINO) ───
+  const [isMovingSpace, setIsMovingSpace] = useState(false);
+  const [movingSpaceId, setMovingSpaceId] = useState<string | null>(null);
+  const [movingBasePoint, setMovingBasePoint] = useState<{ x: number; y: number } | null>(null);
+  const [movingAnchorPreset, setMovingAnchorPreset] = useState<SpaceAnchorPreset | 'custom' | null>(null);
+
+  const startMovingSpace = useCallback(
+    (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => {
+      setIsMovingSpace(true);
+      setMovingSpaceId(spaceId);
+
+      if (initialAnchorPreset) {
+        const presets = getSpaceAnchorPresets(spaceId, project);
+        setMovingBasePoint(presets[initialAnchorPreset]);
+        setMovingAnchorPreset(initialAnchorPreset);
+      } else {
+        setMovingBasePoint(null);
+        setMovingAnchorPreset(null);
+      }
+
+      // Desactivar otros modos interactivos concurrentes
+      setIsAddingDimension(false);
+      setDimensionP1(null);
+      setIsDrawingOverhang(false);
+      setOverhangSpaceId(null);
+      setOverhangP1(null);
+      setIsConnectingConduit(false);
+      setPendingConduitStartId(null);
+      setPendingConduitWaypoints([]);
+      setSelectedSymbolId(null);
+      setSelectedEntity(null);
+    },
+    [project, setSelectedEntity]
+  );
+
+  const selectMovingAnchorPreset = useCallback(
+    (preset: SpaceAnchorPreset) => {
+      if (!isMovingSpace || !movingSpaceId) return;
+      const presets = getSpaceAnchorPresets(movingSpaceId, project);
+      setMovingBasePoint(presets[preset]);
+      setMovingAnchorPreset(preset);
+    },
+    [isMovingSpace, movingSpaceId, project]
+  );
+
+  const cancelMovingSpace = useCallback(() => {
+    setIsMovingSpace(false);
+    setMovingSpaceId(null);
+    setMovingBasePoint(null);
+    setMovingAnchorPreset(null);
+  }, []);
+
+  const handleMoveSpaceCanvasClick = useCallback(
+    (worldX: number, worldY: number) => {
+      if (!isMovingSpace || !movingSpaceId) return;
+
+      if (!movingBasePoint) {
+        // Primer clic fija el punto base libre
+        setMovingBasePoint({ x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) });
+        setMovingAnchorPreset('custom');
+      } else {
+        // Segundo clic fija la posición de destino y aplica la traslación
+        const delta = {
+          x: Number((worldX - movingBasePoint.x).toFixed(3)),
+          y: Number((worldY - movingBasePoint.y).toFixed(3))
+        };
+        moveSpace(movingSpaceId, delta);
+        cancelMovingSpace();
+      }
+    },
+    [isMovingSpace, movingSpaceId, movingBasePoint, moveSpace, cancelMovingSpace]
+  );
+
   /**
    * Conexión de cañerías entre bocas eléctricas y tableros distribuidores.
    */
@@ -634,6 +712,14 @@ export function useSurveyViewModel() {
     overhangP1,
     startDrawingOverhang,
     cancelDrawingOverhang,
-    handleOverhangCanvasClick
+    handleOverhangCanvasClick,
+    isMovingSpace,
+    movingSpaceId,
+    movingBasePoint,
+    movingAnchorPreset,
+    startMovingSpace,
+    selectMovingAnchorPreset,
+    cancelMovingSpace,
+    handleMoveSpaceCanvasClick
   };
 }

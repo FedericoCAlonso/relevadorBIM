@@ -111,7 +111,13 @@ export function App() {
     handleOverhangCanvasClick,
     commitConduitWithTerminalReference,
     wallJustification,
-    setWallJustification
+    setWallJustification,
+    isMovingSpace,
+    movingSpaceId,
+    movingBasePoint,
+    startMovingSpace,
+    cancelMovingSpace,
+    handleMoveSpaceCanvasClick
   } = useSurveyViewModel();
 
   const {
@@ -251,6 +257,10 @@ export function App() {
       if (e.key === 'Escape') {
         if (isAdjustingSampleBox) {
           cancelProvisionalSampleBox();
+          return;
+        }
+        if (isMovingSpace) {
+          cancelMovingSpace();
           return;
         }
         if (isConnectingConduit) {
@@ -443,6 +453,7 @@ export function App() {
             wallJustification={wallJustification}
             onChangeJustification={setWallJustification}
             onStartDrawingOverhang={startDrawingOverhang}
+            onStartMovingSpace={startMovingSpace}
           />
         )}
 
@@ -601,6 +612,11 @@ export function App() {
             overhangP1={overhangP1}
             onOverhangCanvasClick={handleOverhangCanvasClick}
             onCancelDrawingOverhang={cancelDrawingOverhang}
+            isMovingSpace={isMovingSpace}
+            movingSpaceId={movingSpaceId}
+            movingBasePoint={movingBasePoint}
+            onMoveSpaceCanvasClick={handleMoveSpaceCanvasClick}
+            onCancelMovingSpace={cancelMovingSpace}
             isSamplingPattern={isSamplingPattern}
             positiveExemplarsCount={positiveExemplars.length}
             stencilSizeWorld={stencilSizeWorld}
@@ -945,6 +961,10 @@ export function App() {
         onStartDrawingOverhang={(spaceId) => {
           setEditingSpaceId(null);
           startDrawingOverhang(spaceId);
+        }}
+        onStartMovingSpace={(spaceId, anchorPreset) => {
+          setEditingSpaceId(null);
+          startMovingSpace(spaceId, anchorPreset);
         }}
       />
 

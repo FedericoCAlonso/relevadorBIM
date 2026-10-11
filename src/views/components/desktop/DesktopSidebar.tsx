@@ -78,8 +78,13 @@ import {
   Umbrella,
   Sun,
   PenTool,
-  Repeat
+  Repeat,
+  Move
 } from 'lucide-react';
+import {
+  SPACE_ANCHOR_OPTIONS,
+  type SpaceAnchorPreset
+} from '../../../models/architecture/SpaceMoveEngine';
 import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
 import { BulkEditPanel } from '../electrical/BulkEditPanel';
@@ -106,6 +111,7 @@ interface DesktopSidebarProps {
   wallJustification?: WallJustification;
   onChangeJustification?: (j: WallJustification) => void;
   onStartDrawingOverhang?: (spaceId: string) => void;
+  onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
 }
 
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
@@ -129,7 +135,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onUndoEditingConduitWaypoint,
   wallJustification = 'interior',
   onChangeJustification,
-  onStartDrawingOverhang
+  onStartDrawingOverhang,
+  onStartMovingSpace
 }) => {
   const {
     project,
@@ -2039,6 +2046,32 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                                 }`}
                               >
                                 {hp.toFixed(2)}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Reubicar / Mover Ambiente */}
+                      {onStartMovingSpace && (
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <Move size={12} className="text-blue-600" />
+                              <span>Mover con Punto Base</span>
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-normal">Reubicar</span>
+                          </div>
+                          <div className="grid grid-cols-5 gap-1">
+                            {SPACE_ANCHOR_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => onStartMovingSpace(space.id, opt.id)}
+                                className="py-1 px-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center"
+                                title={`Mover tomando como punto base ${opt.label}`}
+                              >
+                                {opt.shortLabel}
                               </button>
                             ))}
                           </div>
