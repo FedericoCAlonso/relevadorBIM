@@ -53,6 +53,9 @@ describe('SpeechRecognitionService — Driver Web Speech API', () => {
     const mockStart = vi.fn();
     const mockStop = vi.fn();
     let instanceHolder: any = null;
+    const captureInstance = (inst: unknown) => {
+      instanceHolder = inst;
+    };
 
     class MockSpeechRecognition {
       continuous = false;
@@ -65,7 +68,7 @@ describe('SpeechRecognitionService — Driver Web Speech API', () => {
 
       start() {
         mockStart();
-        instanceHolder = this;
+        captureInstance(this);
         this.onstart?.();
       }
       stop() {
@@ -113,6 +116,9 @@ describe('SpeechRecognitionService — Driver Web Speech API', () => {
 
   it('traduce errores de permiso denegado, red y sin voz a mensajes amigables en español', () => {
     let instanceHolder: any = null;
+    const captureInstance = (inst: unknown) => {
+      instanceHolder = inst;
+    };
 
     class MockSpeechRecognition {
       onstart: any = null;
@@ -120,7 +126,7 @@ describe('SpeechRecognitionService — Driver Web Speech API', () => {
       onend: any = null;
 
       start() {
-        instanceHolder = this;
+        captureInstance(this);
         this.onstart?.();
       }
       abort() {}

@@ -46,26 +46,24 @@ export function useVoiceAssistantViewModel() {
   const selectedEntity = useProjectStore((s) => s.selectedEntity);
 
   const timerRef = useRef<any>(null);
-  const prevIsOpenRef = useRef(false);
+  const [prevIsOpen, setPrevIsOpen] = useState(false);
   const targetSpaceIdRef = useRef<string | null>(targetSpaceId);
 
   useEffect(() => {
     targetSpaceIdRef.current = targetSpaceId;
   }, [targetSpaceId]);
 
-  // Sincronizar ambiente activo al abrir el modal
-  useEffect(() => {
-    const justOpened = isModalOpen && !prevIsOpenRef.current;
-    prevIsOpenRef.current = isModalOpen;
-
-    if (justOpened) {
+  // Sincronizar ambiente activo al abrir el modal (ajuste de estado en fase de render recomendado por React)
+  if (isModalOpen !== prevIsOpen) {
+    setPrevIsOpen(isModalOpen);
+    if (isModalOpen) {
       if (selectedEntity?.type === 'space' && spaces.some((s) => s.id === selectedEntity.id)) {
         setTargetSpaceId(selectedEntity.id);
       } else if (!targetSpaceId || !spaces.some((s) => s.id === targetSpaceId)) {
         setTargetSpaceId(spaces.length > 0 ? spaces[spaces.length - 1].id : null);
       }
     }
-  }, [isModalOpen, selectedEntity, spaces, targetSpaceId]);
+  }
 
   // Escuchar cambios de estado y progreso del modelo local
   useEffect(() => {
@@ -179,11 +177,12 @@ export function useVoiceAssistantViewModel() {
   });
 
   // Detener el micrófono si se cierra el modal
+  const { isListening, stopListening } = speech;
   useEffect(() => {
-    if (!isModalOpen && speech.isListening) {
-      speech.stopListening();
+    if (!isModalOpen && isListening) {
+      stopListening();
     }
-  }, [isModalOpen, speech.isListening, speech.stopListening]);
+  }, [isModalOpen, isListening, stopListening]);
 
   const confirmPending = useCallback(() => {
     setPendingConfirmation(null);

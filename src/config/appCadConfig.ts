@@ -10,10 +10,22 @@ export const CAD_VIEWPORT_CONFIG = {
   DEFAULT_PIXELS_PER_METER: 60, // 60 píxeles equivalen a 1 metro
   MIN_ZOOM_PIXELS_PER_METER: 15,
   MAX_ZOOM_PIXELS_PER_METER: 300,
+  FIT_MIN_ZOOM_PIXELS_PER_METER: 20,
+  FIT_MAX_ZOOM_PIXELS_PER_METER: 120,
+  FIT_MIN_SPAN_METERS: 1.5,
+  FIT_PADDING_X_PX: 60,
+  FIT_PADDING_Y_PX: 220,
+  WHEEL_ZOOM_IN_FACTOR: 1.15,
+  WHEEL_ZOOM_OUT_FACTOR: 0.85,
   ZOOM_STEP_FACTOR: 1.25,
   DEFAULT_PAN: { x: 150, y: 150 },
   DRAG_RECENT_THRESHOLD_MS: 200,
-  PINCH_ZOOM_SENSITIVITY: 1.0
+  PINCH_ZOOM_SENSITIVITY: 1.0,
+  SAMPLE_BOX_MIN_SIZE_M: 0.10,
+  PATTERN_MATCH_SNAP_TOLERANCE_M: 0.50,
+  WALL_PLACEMENT_SNAP_TOLERANCE_M: 0.45,
+  SPACE_CENTROID_SNAP_TOLERANCE_M: 0.60,
+  SPACE_MOVE_VERTEX_SNAP_TOLERANCE_M: 0.35
 } as const;
 
 export const CAD_SNAP_CONFIG = {
@@ -266,4 +278,16 @@ export const CAD_INTERACTION_OVERLAY_STYLES = {
   ghostSnapPatternStroke: '#06b6d4',
   ghostSnapWallStroke: '#2563eb',
   white: '#ffffff'
+} as const;
+
+/** Parámetros de tramas y cuadrícula de fondo SVG del lienzo CAD. */
+export const CAD_CANVAS_PATTERN_STYLES = {
+  gridStroke: '#e2e8f0',
+  gridStrokeWidth: 0.75,
+  openAirHatchSizePx: 14,
+  openAirHatchRotateDeg: 45,
+  openAirHatchFill: 'rgba(254, 252, 232, 0.45)',
+  openAirHatchStroke: '#d97706',
+  openAirHatchStrokeWidth: 1.2,
+  openAirHatchStrokeOpacity: 0.35
 } as const;
