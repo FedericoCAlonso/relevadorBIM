@@ -128,3 +128,27 @@ describe('Opening - Geometría de Jambas y Aberturas de Cara a Cara', () => {
     });
   });
 });
+
+import { getDoorSwingGeometry } from '../Opening';
+import { getWallSideOffsets } from '../Wall';
+
+describe('Opening - Simbología de puertas y justificación de muro', () => {
+  it('getWallSideOffsets respeta la justificación del muro', () => {
+    expect(getWallSideOffsets({ thickness: 0.2 })).toEqual({ leftOffset: 0.1, rightOffset: -0.1 });
+    expect(getWallSideOffsets({ thickness: 0.2, justification: 'interior' })).toEqual({ leftOffset: 0, rightOffset: -0.2 });
+    expect(getWallSideOffsets({ thickness: 0.2, justification: 'exterior' })).toEqual({ leftOffset: 0.2, rightOffset: 0 });
+  });
+
+  it('getDoorSwingGeometry ubica bisagra y hoja según el sentido de apertura', () => {
+    const leftIn = getDoorSwingGeometry('left_in', 0.8, 0.1, -0.1);
+    expect(leftIn).toMatchObject({ hingeX: 0, hingeY: 0.1, sweep: 1 });
+    expect(leftIn.leafY).toBeCloseTo(-0.7);
+    expect(leftIn.arcPath).toBe('M 0 -0.7 A 0.8 0.8 0 0 1 0.8 0.1');
+
+    const rightOut = getDoorSwingGeometry('right_out', 0.8, 0.1, -0.1);
+    expect(rightOut).toMatchObject({ hingeX: 0.8, hingeY: -0.1, sweep: 1 });
+    expect(rightOut.leafY).toBeCloseTo(0.7);
+
+    expect(getDoorSwingGeometry('right_in', 0.8, 0.1, -0.1).sweep).toBe(0);
+  });
+});

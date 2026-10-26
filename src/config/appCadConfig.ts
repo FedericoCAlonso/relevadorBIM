@@ -127,3 +127,20 @@ export const CAD_STRUCTURE_METRICS = {
   previewRayMarkerRadius: 5,
   previewRayLabelOffsetPx: 8
 } as const;
+
+/** Paleta y métricas de aberturas (puertas, ventanas y vanos) en planta. */
+export const CAD_OPENING_STYLES = {
+  wallCutFill: '#ffffff',
+  selected: '#2563eb',
+  selectedDark: '#1d4ed8',
+  cutStroke: '#94a3b8',
+  jambStroke: '#334155',
+  doorLeaf: '#475569',
+  doorArc: '#94a3b8',
+  windowSill: '#475569',
+  windowGlass: '#0284c7',
+  labelText: '#ffffff',
+  hitAreaPaddingPx: 14,
+  selectionHaloPaddingPx: 4,
+  labelOffsetPx: 16
+} as const;

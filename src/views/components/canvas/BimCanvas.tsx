@@ -12,7 +12,6 @@ import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
 import { computeResolvedWallPolygons } from '../../../models/architecture/WallCornerEngine';
-import { getOpeningJambs } from '../../../models/architecture/Opening';
 import {
   resolveSpacePolygon,
   calculatePolygonArea,
@@ -43,6 +42,7 @@ import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
 import { SmartGuidesLayer } from './layers/SmartGuidesLayer';
 import { PatternMatchesLayer } from './layers/PatternMatchesLayer';
 import { BeamsLayer, ColumnsLayer } from './layers/StructuralLayers';
+import { OpeningsLayer } from './layers/OpeningsLayer';
 import { VerticesLayer } from './layers/VerticesLayer';
 import { PreviewRayLayer } from './layers/PreviewRayLayer';
 
@@ -1577,184 +1577,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     handleGripPointerUp
   ]);
 
-  // 3. Aberturas con zona de clic amplia y gestión visual
-  const renderedOpenings = useMemo(() => {
-    return project.openings.map((opening) => {
-      const wall = wallsMap.get(opening.wallId);
-      if (!wall || wall.levelId !== project.activeLevelId) return null;
-
-      const jambs = getOpeningJambs(opening, wall, verticesMap);
-      if (!jambs) return null;
-
-      const isSelected = selectedEntity?.type === 'opening' && selectedEntity.id === opening.id;
-      const j1 = { x: jambs.jamb1.x * zoom, y: jambs.jamb1.y * zoom };
-      const j2 = { x: jambs.jamb2.x * zoom, y: jambs.jamb2.y * zoom };
-
-      const dx = j2.x - j1.x;
-      const dy = j2.y - j1.y;
-      const wPx = Math.hypot(dx, dy);
-      const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-      const T = wall.thickness;
-      const just = wall.justification ?? 'center';
-
-      let leftOffset = T / 2;
-      let rightOffset = -T / 2;
-
-      if (just === 'interior') {
-        leftOffset = 0;
-        rightOffset = -T;
-      } else if (just === 'exterior') {
-        leftOffset = T;
-        rightOffset = 0;
-      }
-
-      const yLeftPx = leftOffset * zoom;
-      const yRightPx = rightOffset * zoom;
-      const yMinPx = Math.min(yLeftPx, yRightPx);
-      const yMaxPx = Math.max(yLeftPx, yRightPx);
-      const wallThickPx = Math.abs(yMaxPx - yMinPx);
-
-      return (
-        <g
-          key={opening.id}
-          transform={`translate(${j1.x}, ${j1.y}) rotate(${angleDeg})`}
-          onClick={(e) => {
-            if (wasDraggingRecentlyRef.current()) return;
-            if (isInteractionInterceptedRef.current) {
-              triggerPlacementRef.current(e.clientX, e.clientY);
-              return;
-            }
-            e.stopPropagation();
-            onOpeningClick?.(opening.id);
-          }}
-          className="cursor-pointer group"
-        >
-          {/* Zona táctil y de clic amplia para fácil selección en pantalla */}
-          <rect
-            x={0}
-            y={yMinPx - 14}
-            width={wPx}
-            height={wallThickPx + 28}
-            fill="transparent"
-            pointerEvents="all"
-          />
-
-          {/* Calado del muro de cara a cara física */}
-          <rect
-            x={0}
-            y={yMinPx}
-            width={wPx}
-            height={wallThickPx}
-            fill="#ffffff"
-            stroke={isSelected ? '#2563eb' : '#94a3b8'}
-            strokeWidth={isSelected ? 2.5 : 1.5}
-          />
-
-          {/* Jambas físicas que cortan el muro a los lados */}
-          <line
-            x1={0}
-            y1={yMinPx}
-            x2={0}
-            y2={yMaxPx}
-            stroke={isSelected ? '#2563eb' : '#334155'}
-            strokeWidth={1.5}
-          />
-          <line
-            x1={wPx}
-            y1={yMinPx}
-            x2={wPx}
-            y2={yMaxPx}
-            stroke={isSelected ? '#2563eb' : '#334155'}
-            strokeWidth={1.5}
-          />
-
-          {/* Halo de selección activa */}
-          {isSelected && (
-            <rect
-              x={-2}
-              y={yMinPx - 4}
-              width={wPx + 4}
-              height={wallThickPx + 8}
-              fill="none"
-              stroke="#2563eb"
-              strokeWidth={2}
-              strokeDasharray="4 2"
-              rx={3}
-            />
-          )}
-
-          {opening.type === 'door' && (() => {
-            const swing = opening.swing || 'left_in';
-            const hingeX = swing.startsWith('left') ? 0 : wPx;
-            const targetX = swing.startsWith('left') ? wPx : 0;
-            // La bisagra apoya sobre la cara hacia donde abre la puerta
-            const hingeY = swing.endsWith('in') ? yLeftPx : yRightPx;
-            const leafY = swing.endsWith('in') ? hingeY - wPx : hingeY + wPx;
-            const sweep = swing === 'left_in' || swing === 'right_out' ? 1 : 0;
-            const arcPath = `M ${hingeX} ${leafY} A ${wPx} ${wPx} 0 0 ${sweep} ${targetX} ${hingeY}`;
-
-            return (
-              <>
-                <line
-                  x1={hingeX}
-                  y1={hingeY}
-                  x2={hingeX}
-                  y2={leafY}
-                  stroke={isSelected ? '#2563eb' : '#475569'}
-                  strokeWidth={2}
-                />
-                <path
-                  d={arcPath}
-                  fill="none"
-                  stroke={isSelected ? '#2563eb' : '#94a3b8'}
-                  strokeWidth={1.5}
-                  strokeDasharray="3 3"
-                />
-              </>
-            );
-          })()}
-
-          {opening.type === 'window' && (
-            <>
-              {/* Antepecho exterior e interior de cara a cara */}
-              <line x1={0} y1={yMinPx} x2={wPx} y2={yMinPx} stroke={isSelected ? '#2563eb' : '#475569'} strokeWidth={1.5} />
-              <line x1={0} y1={yMaxPx} x2={wPx} y2={yMaxPx} stroke={isSelected ? '#2563eb' : '#475569'} strokeWidth={1.5} />
-              {/* Vidrio central */}
-              <line x1={0} y1={(yMinPx + yMaxPx) / 2} x2={wPx} y2={(yMinPx + yMaxPx) / 2} stroke={isSelected ? '#2563eb' : '#0284c7'} strokeWidth={2} />
-            </>
-          )}
-
-          {/* Cota / Identificador flotante al estar seleccionada */}
-          {isSelected && (
-            <g transform={`translate(${wPx / 2}, ${yMinPx - 16})`}>
-              <rect
-                x={-28}
-                y={-10}
-                width={56}
-                height={16}
-                rx={4}
-                fill="#2563eb"
-                stroke="#1d4ed8"
-                strokeWidth={0.5}
-              />
-              <text
-                x={0}
-                y={2}
-                textAnchor="middle"
-                fontSize={9}
-                className="font-mono font-bold fill-white select-none pointer-events-none"
-              >
-                {opening.type === 'door' ? 'Puerta' : opening.type === 'window' ? 'Ventana' : 'Vano'}{' '}
-                {opening.width.toFixed(2)}m
-              </text>
-            </g>
-          )}
-        </g>
-      );
-    });
-  }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onOpeningClick]);
-
   const isInteractionBlocked = Boolean(selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension);
   const activeLevelBeams = useMemo(() => (project.beams || []).filter((b) => b.levelId === project.activeLevelId), [project.beams, project.activeLevelId]);
   const activeLevelColumns = useMemo(() => (project.columns || []).filter((c) => c.levelId === project.activeLevelId), [project.columns, project.activeLevelId]);
@@ -2921,7 +2743,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           {renderedSpaces}
           <BeamsLayer beams={activeLevelBeams} zoom={zoom} selectedBeamId={selectedEntity?.type === 'beam' ? selectedEntity.id : null} onBeamClick={onBeamClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           {renderedWalls}
-          {renderedOpenings}
+          <OpeningsLayer openings={project.openings} wallsMap={wallsMap} verticesMap={verticesMap} activeLevelId={project.activeLevelId} zoom={zoom} selectedOpeningId={selectedEntity?.type === 'opening' ? selectedEntity.id : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onOpeningClick={onOpeningClick} />
           <ColumnsLayer columns={activeLevelColumns} zoom={zoom} selectedColumnId={selectedEntity?.type === 'column' ? selectedEntity.id : null} onColumnClick={onColumnClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           <PreviewRayLayer anchorVertex={activeAnchorVertex ?? null} distanceM={previewDistanceM} directionDeg={currentDirectionDeg} zoom={zoom} />
           {renderedConduits}

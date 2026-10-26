@@ -103,3 +103,34 @@ export function getOpeningPhysicalJambs(
     rightJamb2: { x: jambs.jamb2.x + normal.x * rightOffset, y: jambs.jamb2.y + normal.y * rightOffset }
   };
 }
+
+/** Geometría local (unidades del llamador) de la hoja y el arco de una puerta batiente. */
+export interface DoorSwingGeometry {
+  hingeX: number;
+  hingeY: number;
+  leafY: number;
+  sweep: 0 | 1;
+  arcPath: string;
+}
+
+/**
+ * Calcula bisagra, extremo de hoja y arco de barrido de una puerta en el sistema local de la abertura
+ * (origen en la jamba 1, eje X a lo largo del muro).
+ * La bisagra apoya sobre la cara hacia donde abre la puerta.
+ */
+export function getDoorSwingGeometry(
+  swing: OpeningSwing,
+  widthLocal: number,
+  yLeftLocal: number,
+  yRightLocal: number
+): DoorSwingGeometry {
+  const isLeft = swing.startsWith('left');
+  const isIn = swing.endsWith('in');
+  const hingeX = isLeft ? 0 : widthLocal;
+  const targetX = isLeft ? widthLocal : 0;
+  const hingeY = isIn ? yLeftLocal : yRightLocal;
+  const leafY = isIn ? hingeY - widthLocal : hingeY + widthLocal;
+  const sweep = swing === 'left_in' || swing === 'right_out' ? 1 : 0;
+  const arcPath = `M ${hingeX} ${leafY} A ${widthLocal} ${widthLocal} 0 0 ${sweep} ${targetX} ${hingeY}`;
+  return { hingeX, hingeY, leafY, sweep, arcPath };
+}

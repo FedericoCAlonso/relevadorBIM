@@ -236,3 +236,18 @@ export function calculateWallSnap(
   return bestResult;
 }
 
+
+/**
+ * Desplazamientos perpendiculares (m) de las caras izquierda y derecha respecto al eje de trazo,
+ * según la justificación del muro.
+ */
+export function getWallSideOffsets(wall: Pick<Wall, 'thickness' | 'justification'>): {
+  leftOffset: number;
+  rightOffset: number;
+} {
+  const T = wall.thickness;
+  const just = wall.justification ?? 'center';
+  if (just === 'interior') return { leftOffset: 0, rightOffset: -T };
+  if (just === 'exterior') return { leftOffset: T, rightOffset: 0 };
+  return { leftOffset: T / 2, rightOffset: -T / 2 };
+}
