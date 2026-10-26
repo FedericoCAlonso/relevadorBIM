@@ -85,6 +85,15 @@ import {
 import { getPlantaSymbols, type ElectricalSymbolDefinition } from '../models/electrical/symbolsLib';
 
 export type { CabinetSizePreset, BoxTypeDefinition, OpeningTypeDefinition };
+export type {
+  ElevationBox,
+  ElevationConduit,
+  ElevationFace,
+  ElevationPoint,
+  NodeElevationMove,
+  OpeningElevationPatch,
+  WallElevation
+};
 
 export type ElevationSelection =
   | { type: 'box'; id: string }
