@@ -12,20 +12,11 @@ import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
 import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
 import { computeResolvedWallPolygons } from '../../../models/architecture/WallCornerEngine';
-import {
-  resolveSpacePolygon,
-  calculatePolygonArea,
-  calculatePolygonCentroid,
-  isSpaceVoid,
-  isSpaceShaft,
-  isSpaceOpenAir,
-  isSpaceSemiCovered,
-  computeCeilingProjection
-} from '../../../models/architecture/Space';
+import { resolveSpacePolygon, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
-import { CAD_VIEWPORT_CONFIG, ARCHITECTURAL_SPACE_STYLES } from '../../../config';
+import { CAD_VIEWPORT_CONFIG } from '../../../config';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
@@ -42,6 +33,7 @@ import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
 import { SmartGuidesLayer } from './layers/SmartGuidesLayer';
 import { PatternMatchesLayer } from './layers/PatternMatchesLayer';
 import { BeamsLayer, ColumnsLayer } from './layers/StructuralLayers';
+import { SpacesLayer } from './layers/SpacesLayer';
 import { OpeningsLayer } from './layers/OpeningsLayer';
 import { VerticesLayer } from './layers/VerticesLayer';
 import { PreviewRayLayer } from './layers/PreviewRayLayer';
@@ -1040,276 +1032,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   // ─── RENDERIZADORES DE CAPAS ─────────────────────────────────────────────
 
-  // 1. Ambientes detectados
-  const renderedSpaces = useMemo(() => {
-    return project.spaces
-      .filter((s) => s.levelId === project.activeLevelId)
-      .map((space) => {
-        const poly = resolveSpacePolygon(space, verticesMap);
-        if (poly.length < 3) return null;
-
-        const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
-        const area = calculatePolygonArea(poly);
-        const centroid = calculatePolygonCentroid(poly);
-
-        const isVoid = isSpaceVoid(space);
-        const isShaft = isSpaceShaft(space);
-        const isOpenAir = isSpaceOpenAir(space);
-        const isSemi = isSpaceSemiCovered(space);
-
-        let ceilingProjResult: ReturnType<typeof computeCeilingProjection> | null = null;
-        if (isSemi && space.ceilingProjection?.mode === 'alero') {
-          ceilingProjResult = computeCeilingProjection(space, verticesMap, wallsMap);
-        }
-
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        if (isVoid) {
-          for (const p of poly) {
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
-          }
-        }
-
-        const isPartialSemi =
-          isSemi &&
-          ceilingProjResult?.isPartial &&
-          ceilingProjResult.coveredPolygon &&
-          ceilingProjResult.coveredPolygon.length >= 3;
-
-        const isSelected = selectedEntity?.type === 'space' && selectedEntity.id === space.id;
-        const isDrawingTarget = isDrawingOverhang && overhangSpaceId === space.id;
-
-        return (
-          <g
-            key={space.id}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isInteractionInterceptedRef.current) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              onSpaceClick?.(space.id);
-            }}
-            className="cursor-pointer"
-          >
-            {/* 1. Relleno y Tramas de Superficie */}
-            {isPartialSemi && ceilingProjResult ? (
-              <>
-                {/* Porción bajo alero (semicubierta) */}
-                <polygon
-                  points={ceilingProjResult.coveredPolygon!.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
-                  fill={space.color || ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUnderRoof}
-                  stroke="none"
-                />
-                {/* Porción descubierta remanente (trama arquitectónica de patio) */}
-                {ceilingProjResult.uncoveredPolygon && ceilingProjResult.uncoveredPolygon.length >= 3 && (
-                  <polygon
-                    points={ceilingProjResult.uncoveredPolygon.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
-                    fill={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUncovered}
-                    stroke="none"
-                  />
-                )}
-                {/* Contorno perimetral semicubierto */}
-                <polygon
-                  points={pointsStr}
-                  fill="none"
-                  stroke={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.stroke}
-                  strokeWidth={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth}
-                  strokeDasharray={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeDasharray}
-                />
-              </>
-            ) : (
-              <polygon
-                points={pointsStr}
-                fill={
-                  isVoid
-                    ? ARCHITECTURAL_SPACE_STYLES.VOID.fill
-                    : isShaft
-                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.fill
-                    : isOpenAir
-                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.fill
-                    : isSemi
-                    ? space.color || ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.fillUnderRoof
-                    : space.color || ARCHITECTURAL_SPACE_STYLES.COVERED.fill
-                }
-                stroke={
-                  isVoid
-                    ? ARCHITECTURAL_SPACE_STYLES.VOID.stroke
-                    : isShaft
-                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.stroke
-                    : isOpenAir
-                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.stroke
-                    : isSemi
-                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.stroke
-                    : ARCHITECTURAL_SPACE_STYLES.COVERED.stroke
-                }
-                strokeWidth={
-                  isVoid
-                    ? ARCHITECTURAL_SPACE_STYLES.VOID.strokeWidth
-                    : isShaft
-                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.strokeWidth
-                    : isOpenAir
-                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.strokeWidth
-                    : isSemi
-                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth
-                    : ARCHITECTURAL_SPACE_STYLES.COVERED.strokeWidth
-                }
-                strokeDasharray={
-                  isVoid
-                    ? ARCHITECTURAL_SPACE_STYLES.VOID.strokeDasharray
-                    : isShaft
-                    ? ARCHITECTURAL_SPACE_STYLES.SHAFT.strokeDasharray
-                    : isOpenAir
-                    ? ARCHITECTURAL_SPACE_STYLES.OPEN_AIR.strokeDasharray
-                    : isSemi
-                    ? ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeDasharray
-                    : ARCHITECTURAL_SPACE_STYLES.COVERED.strokeDasharray
-                }
-              />
-            )}
-
-            {/* Resaltado de selección activa del ambiente */}
-            {isSelected && (
-              <polygon
-                points={pointsStr}
-                fill="none"
-                stroke="#2563eb"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                className="pointer-events-none"
-              />
-            )}
-
-            {/* Resaltado durante trazado interactivo de alero */}
-            {isDrawingTarget && (
-              <polygon
-                points={pointsStr}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth={2.5}
-                strokeDasharray="6 3"
-                className="pointer-events-none animate-pulse"
-              />
-            )}
-
-            {/* Cruz diagonal reglamentaria para vacíos de losa / patio de aire y luz */}
-            {isVoid && (
-              <g className="pointer-events-none select-none opacity-40">
-                <line
-                  x1={minX * zoom}
-                  y1={minY * zoom}
-                  x2={maxX * zoom}
-                  y2={maxY * zoom}
-                  stroke="#64748b"
-                  strokeWidth={1}
-                />
-                <line
-                  x1={minX * zoom}
-                  y1={maxY * zoom}
-                  x2={maxX * zoom}
-                  y2={minY * zoom}
-                  stroke="#64748b"
-                  strokeWidth={1}
-                />
-              </g>
-            )}
-
-            {/* Línea de proyección técnica de alero / voladizo (-- - -- - --) */}
-            {ceilingProjResult?.projectionLine && (
-              <g className="pointer-events-none select-none">
-                <line
-                  x1={ceilingProjResult.projectionLine[0].x * zoom}
-                  y1={ceilingProjResult.projectionLine[0].y * zoom}
-                  x2={ceilingProjResult.projectionLine[1].x * zoom}
-                  y2={ceilingProjResult.projectionLine[1].y * zoom}
-                  stroke={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.lineStroke}
-                  strokeWidth={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.strokeWidth}
-                  strokeDasharray={ARCHITECTURAL_SPACE_STYLES.SEMI_COVERED.lineDasharray}
-                />
-                <rect
-                  x={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom - 65}
-                  y={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom - 15}
-                  width={130}
-                  height={14}
-                  rx={3}
-                  fill="rgba(255, 255, 255, 0.9)"
-                  stroke="#0284c7"
-                  strokeWidth={0.5}
-                />
-                <text
-                  x={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom}
-                  y={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom - 4}
-                  textAnchor="middle"
-                  fontSize={9}
-                  fill="#0284c7"
-                  fontWeight="bold"
-                  className="font-mono select-none"
-                >
-                  Proy. Alero ({ceilingProjResult.coveredAreaM2.toFixed(2)} m²)
-                </text>
-                {/* Grip de punto medio visible al seleccionar */}
-                {isSelected && (
-                  <circle
-                    cx={((ceilingProjResult.projectionLine[0].x + ceilingProjResult.projectionLine[1].x) / 2) * zoom}
-                    cy={((ceilingProjResult.projectionLine[0].y + ceilingProjResult.projectionLine[1].y) / 2) * zoom}
-                    r={5}
-                    fill="#0284c7"
-                    stroke="#ffffff"
-                    strokeWidth={1.5}
-                  />
-                )}
-              </g>
-            )}
-
-            <text
-              x={centroid.x * zoom}
-              y={centroid.y * zoom - 6}
-              textAnchor="middle"
-              className="text-xs font-bold fill-slate-700 pointer-events-none select-none"
-              fontSize={12}
-            >
-              {space.name}
-            </text>
-            <text
-              x={centroid.x * zoom}
-              y={centroid.y * zoom + 12}
-              textAnchor="middle"
-              className="text-[10px] font-mono fill-slate-500 pointer-events-none select-none"
-              fontSize={10}
-            >
-              {isVoid
-                ? `${area.toFixed(2)} m² · VACÍO / AIRE Y LUZ`
-                : isShaft
-                ? `${area.toFixed(2)} m² · PLENO TÉCNICO`
-                : isOpenAir
-                ? `${area.toFixed(2)} m² · DESCUBIERTO (A cielo abierto · 0% AEA)`
-                : isSemi
-                ? isPartialSemi && ceilingProjResult
-                  ? `${area.toFixed(2)} m² · SEMICUBIERTO (Techado: ${ceilingProjResult.coveredAreaM2.toFixed(2)} m² · 50% AEA: ${(ceilingProjResult.coveredAreaM2 * 0.5).toFixed(2)} m² | Libre: ${ceilingProjResult.uncoveredAreaM2.toFixed(2)} m²)`
-                  : `${area.toFixed(2)} m² · SEMICUBIERTO · h: ${space.ceilingHeight.toFixed(2)}m (50% AEA: ${(area * 0.5).toFixed(2)} m²)`
-                : `${area.toFixed(2)} m² · h: ${space.ceilingHeight.toFixed(2)}m`}
-            </text>
-          </g>
-        );
-      });
-  }, [
-    project.spaces,
-    project.activeLevelId,
-    verticesMap,
-    wallsMap,
-    zoom,
-    selectedEntity,
-    selectedSymbolId,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    isDrawingOverhang,
-    overhangSpaceId,
-    onSpaceClick
-  ]);
+  const activeLevelSpaces = useMemo(() => project.spaces.filter((s) => s.levelId === project.activeLevelId), [project.spaces, project.activeLevelId]);
 
   // 2. Muros físicos con espesor y esquinas resueltas en inglete (CAD Miter Joins)
   const renderedWalls = useMemo(() => {
@@ -2740,7 +2463,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             />
           )}
 
-          {renderedSpaces}
+          <SpacesLayer spaces={activeLevelSpaces} verticesMap={verticesMap} wallsMap={wallsMap} zoom={zoom} selectedSpaceId={selectedEntity?.type === 'space' ? selectedEntity.id : null} overhangTargetSpaceId={isDrawingOverhang ? overhangSpaceId : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onSpaceClick={onSpaceClick} />
           <BeamsLayer beams={activeLevelBeams} zoom={zoom} selectedBeamId={selectedEntity?.type === 'beam' ? selectedEntity.id : null} onBeamClick={onBeamClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           {renderedWalls}
           <OpeningsLayer openings={project.openings} wallsMap={wallsMap} verticesMap={verticesMap} activeLevelId={project.activeLevelId} zoom={zoom} selectedOpeningId={selectedEntity?.type === 'opening' ? selectedEntity.id : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onOpeningClick={onOpeningClick} />

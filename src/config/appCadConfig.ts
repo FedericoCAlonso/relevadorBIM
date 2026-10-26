@@ -144,3 +144,15 @@ export const CAD_OPENING_STYLES = {
   selectionHaloPaddingPx: 4,
   labelOffsetPx: 16
 } as const;
+
+/** Paleta de rótulos y resaltados de ambientes en planta. */
+export const CAD_SPACE_OVERLAY_COLORS = {
+  selection: '#2563eb',
+  overhangDrawing: '#0284c7',
+  voidCross: '#64748b',
+  projectionLabelBackground: 'rgba(255, 255, 255, 0.9)',
+  projectionLabelStroke: '#0284c7',
+  projectionLabelText: '#0284c7',
+  projectionGripFill: '#0284c7',
+  projectionGripStroke: '#ffffff'
+} as const;
