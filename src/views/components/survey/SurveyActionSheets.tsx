@@ -10,10 +10,12 @@ import React, { useState, useEffect } from 'react';
 import {
   ARCHITECTURAL_WALL_CONFIG,
   ARCHITECTURAL_OPENING_CONFIG,
-  OPENING_TYPE_OPTIONS
+  OPENING_TYPE_OPTIONS,
+  WALL_TYPE_OPTIONS,
+  WALL_JUSTIFICATION_OPTIONS
 } from '../../../config';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
-import { getWallLength, type WallType } from '../../../models/architecture/Wall';
+import { getWallLength, type WallJustification } from '../../../models/architecture/Wall';
 import type { OpeningType, OpeningSwing } from '../../../models/architecture/Opening';
 import {
   X,
@@ -203,12 +205,8 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
               {/* Tipo de Cerramiento */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE CERRAMIENTO</label>
-                <div className="grid grid-cols-3 gap-1">
-                  {[
-                    { id: 'standard' as WallType, label: 'Estándar' },
-                    { id: 'low_wall' as WallType, label: 'Muro Bajo' },
-                    { id: 'railing' as WallType, label: 'Baranda' }
-                  ].map((wt) => (
+                <div className="grid grid-cols-2 gap-1">
+                  {WALL_TYPE_OPTIONS.map((wt) => (
                     <button
                       key={wt.id}
                       type="button"
@@ -219,19 +217,20 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                             wt.id === 'low_wall'
                               ? selectedWall.height < 2.0
                                 ? selectedWall.height
-                                : 1.00
+                                : ARCHITECTURAL_WALL_CONFIG.DEFAULT_LOW_WALL_HEIGHT_M
                               : wt.id === 'railing'
                               ? selectedWall.height < 2.0
                                 ? selectedWall.height
-                                : 0.90
-                              : 2.80
+                                : ARCHITECTURAL_WALL_CONFIG.DEFAULT_RAILING_HEIGHT_M
+                              : ARCHITECTURAL_WALL_CONFIG.DEFAULT_HEIGHT_M
                         })
                       }
-                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center truncate ${
                         (selectedWall.wallType || 'standard') === wt.id
                           ? 'bg-blue-600 text-white border-blue-700 font-bold'
                           : 'bg-white border-slate-200 text-slate-700'
                       }`}
+                      title={wt.label}
                     >
                       {wt.label}
                     </button>
@@ -246,7 +245,7 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                         step="0.05"
                         min="0.20"
                         max="2.50"
-                        value={selectedWall.height ?? 1.00}
+                        value={selectedWall.height ?? ARCHITECTURAL_WALL_CONFIG.DEFAULT_LOW_WALL_HEIGHT_M}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
                           if (val > 0) updateWall(selectedWall.id, { height: val });
@@ -257,6 +256,28 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Referencia / Justificación */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">REFERENCIA / JUSTIFICACIÓN</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {WALL_JUSTIFICATION_OPTIONS.map((j) => (
+                    <button
+                      key={j.id}
+                      type="button"
+                      onClick={() => updateWall(selectedWall.id, { justification: j.id as WallJustification })}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all text-center truncate ${
+                        (selectedWall.justification || 'center') === j.id
+                          ? 'bg-blue-600 text-white border-blue-700 font-bold'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                      title={j.title}
+                    >
+                      {j.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Giro y Sentido */}

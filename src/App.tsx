@@ -896,6 +896,8 @@ export function App() {
           onChangeCustomAngle={setCustomAngleDeg}
           currentDistance={currentDistanceInput}
           onChangeDistance={setCurrentDistanceInput}
+          wallJustification={wallJustification}
+          onChangeJustification={setWallJustification}
           onCommitWall={() => commitWall()}
           selectedSymbolId={selectedSymbolId}
           onSelectSymbol={(symId) => {

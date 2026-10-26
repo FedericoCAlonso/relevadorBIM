@@ -13,7 +13,8 @@ import React, { useState, useCallback } from 'react';
 import {
   CAD_SNAP_CONFIG,
   CONDUIT_ROUTING_PLANE_OPTIONS,
-  CONDUIT_ROUTING_MODE_OPTIONS
+  CONDUIT_ROUTING_MODE_OPTIONS,
+  WALL_JUSTIFICATION_OPTIONS
 } from '../../../config';
 import { useLaserViewModel } from '../../../viewmodels/useLaserViewModel';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
@@ -21,7 +22,7 @@ import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { OpeningSwing } from '../../../models/architecture/Opening';
 import { type DimensionLine, calculateDimensionDistance } from '../../../models/architecture/DimensionLine';
 import type { ConduitRoutingMode, ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
-import { getWallLength, flipWallMountedNodeSide } from '../../../models/architecture/Wall';
+import { getWallLength, flipWallMountedNodeSide, type WallJustification } from '../../../models/architecture/Wall';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
@@ -57,6 +58,8 @@ interface ThumbSurveyDockProps {
   onChangeCustomAngle: (deg: number) => void;
   currentDistance: string;
   onChangeDistance: (val: string) => void;
+  wallJustification?: WallJustification;
+  onChangeJustification?: (j: WallJustification) => void;
   onCommitWall: () => void;
   selectedSymbolId?: string | null;
   onSelectSymbol?: (symbolId: string | null) => void;
@@ -96,6 +99,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   onChangeCustomAngle,
   currentDistance,
   onChangeDistance,
+  wallJustification = 'interior',
+  onChangeJustification,
   onCommitWall,
   selectedSymbolId,
   onSelectSymbol,
@@ -147,7 +152,9 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     deleteDimensionLine,
     deleteColumn,
     deleteBeam,
-    updateColumn
+    updateColumn,
+    addColumn,
+    addBeam
   } = useProjectStore();
 
   const { conduitOccupancy } = useElectricalViewModel();
@@ -190,6 +197,36 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     : project.vertices.length === 0
     ? '(0, 0)'
     : 'Tocá esquina';
+
+  const anchorX = anchorVertex?.x ?? 0;
+  const anchorY = anchorVertex?.y ?? 0;
+
+  const handleQuickAddColumn = () => {
+    const id = addColumn({
+      levelId: project.activeLevelId,
+      x: anchorX,
+      y: anchorY,
+      width: 0.20,
+      depth: 0.20,
+      rotationDeg: 0,
+      shape: 'rectangular',
+      material: 'concrete'
+    });
+    setSelectedEntity({ type: 'column', id });
+  };
+
+  const handleQuickAddBeam = () => {
+    const id = addBeam({
+      levelId: project.activeLevelId,
+      startX: anchorX,
+      startY: anchorY,
+      endX: anchorX + 2.0,
+      endY: anchorY,
+      width: 0.20,
+      dropHeightM: 0.40
+    });
+    setSelectedEntity({ type: 'beam', id });
+  };
 
   // ═════════════════════════════════════════════════════════════════════════
   // CASO 0A: EDICIÓN ACTIVA DE QUIEBRES DE CAÑERÍA (MODO EDICIÓN AVANZADA)
@@ -1217,10 +1254,32 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
       {/* ════════════ MODO 1: LEVANTAMIENTO DE MUROS ════════════ */}
       {dockMode === 'survey' && (
         <>
-          {/* Anclaje */}
-          <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500 px-1 truncate">
-            <span className="text-blue-600 font-bold">📍 Anclaje:</span>
-            <span className="font-mono text-slate-800 font-semibold truncate">{anchorLabel}</span>
+          {/* Anclaje y Estructura Rápida */}
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 px-0.5 truncate">
+            <div className="flex items-center gap-1 truncate">
+              <span className="text-blue-600 font-bold">📍 Anclaje:</span>
+              <span className="font-mono text-slate-800 font-semibold truncate">{anchorLabel}</span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 ml-1">
+              <button
+                type="button"
+                onClick={handleQuickAddColumn}
+                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-0.5 transition-all cursor-pointer"
+                title="Insertar columna de H°A° en el punto de anclaje"
+              >
+                <Building2 size={11} className="text-slate-600" />
+                <span>+ Col</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickAddBeam}
+                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-0.5 transition-all cursor-pointer"
+                title="Insertar viga saliente bajo losa en el punto de anclaje"
+              >
+                <Layers size={11} className="text-slate-600" />
+                <span>+ Viga</span>
+              </button>
+            </div>
           </div>
 
           {/* Fila Métrica y Giros Relativos (Sin desborde) */}
@@ -1289,6 +1348,30 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
               >
                 <SlidersHorizontal size={13} />
               </button>
+            </div>
+          </div>
+
+          {/* Fila de Referencia de Medida (Cara Interior / Eje Medio / Cara Exterior) */}
+          <div className="flex items-center gap-1.5 w-full">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight shrink-0">
+              Ref:
+            </span>
+            <div className="flex-1 grid grid-cols-3 gap-0.5 bg-slate-100 p-0.5 rounded-xl border border-slate-300">
+              {WALL_JUSTIFICATION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onChangeJustification?.(opt.id)}
+                  className={`py-1 rounded-lg text-[11px] transition-all text-center truncate ${
+                    wallJustification === opt.id
+                      ? 'bg-blue-600 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900 font-medium'
+                  }`}
+                  title={opt.title}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
