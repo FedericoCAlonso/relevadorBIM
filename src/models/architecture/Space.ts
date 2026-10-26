@@ -584,6 +584,48 @@ export function calculateSpaceMetrics(
 }
 
 
+// Distancia de un punto a un segmento rectilíneo 2D
+function pointToSegmentDistance(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number }
+): { dist: number; t: number; proj: { x: number; y: number } } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-8) {
+    return { dist: Math.hypot(p.x - a.x, p.y - a.y), t: 0, proj: { x: a.x, y: a.y } };
+  }
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const proj = { x: a.x + t * dx, y: a.y + t * dy };
+  return { dist: Math.hypot(p.x - proj.x, p.y - proj.y), t, proj };
+}
+
+// Punto de corte entre dos segmentos rectilíneos 2D
+function segmentSegmentIntersection(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number }
+): { x: number; y: number } | null {
+  const dx1 = b.x - a.x;
+  const dy1 = b.y - a.y;
+  const dx2 = d.x - c.x;
+  const dy2 = d.y - c.y;
+
+  const det = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(det) < 1e-8) return null;
+
+  const s = ((c.x - a.x) * dy2 - (c.y - a.y) * dx2) / det;
+  const t = ((c.x - a.x) * dy1 - (c.y - a.y) * dx1) / det;
+
+  if (s > 0.001 && s < 0.999 && t > 0.001 && t < 0.999) {
+    return { x: a.x + s * dx1, y: a.y + s * dy1 };
+  }
+  return null;
+}
+
 /**
  * Detecta las caras interiores de un grafo plano de muros (Planar Straight-Line Graph)
  * utilizando el recorrido angular de semiaristas (Half-Edges / Left-hand rule).
@@ -591,6 +633,7 @@ export function calculateSpaceMetrics(
  * 1. Cada recinto interior sea detectado exactamente una vez.
  * 2. NO se generen ambientes fantasma por uniones de ambientes adyacentes ni el perímetro exterior.
  * 3. Los vértices del ambiente queden estrictamente ordenados a lo largo de su perímetro.
+ * 4. Soporta muros duplicados, superpuestos parcialmente, empalmes en T y cruces sin vértices previos.
  */
 export function findEnclosedCycles(
   walls: Array<{ id: string; startVertexId: string; endVertexId: string }>,
@@ -604,68 +647,154 @@ export function findEnclosedCycles(
     return findCyclesTopologicalFallback(walls);
   }
 
-  // 1. Clonar mapa de coordenadas para permitir inserción de puntos de cruce virtuales si fuera necesario
+  // 1. Mapa de coordenadas
   const vMap = new Map<string, { x: number; y: number }>();
   if (verticesMap instanceof Map) {
     for (const [id, coord] of verticesMap.entries()) {
-      vMap.set(id, { x: coord.x, y: coord.y });
+      vMap.set(id, { x: Number(coord.x.toFixed(4)), y: Number(coord.y.toFixed(4)) });
     }
   } else {
     for (const v of verticesMap) {
-      vMap.set(v.id, { x: v.x, y: v.y });
+      vMap.set(v.id, { x: Number(v.x.toFixed(4)), y: Number(v.y.toFixed(4)) });
     }
   }
 
-  // 2. Planarización: para cada muro, detectar todos los vértices colineales interiores
-  // que caigan sobre su segmento (T-junctions, empalmes parciales o tabiques adosados).
-  interface IntermediatePoint {
-    id: string;
-    t: number;
+  // Helper para registrar o reutilizar un vértice existente dentro de tolerancia
+  let virtualVertexCounter = 0;
+  function getOrCreateVertexId(pt: { x: number; y: number }): string {
+    for (const [id, coord] of vMap.entries()) {
+      if (Math.hypot(coord.x - pt.x, coord.y - pt.y) < 0.03) {
+        return id;
+      }
+    }
+    const newId = `v_node_${++virtualVertexCounter}`;
+    const rounded = { x: Number(pt.x.toFixed(4)), y: Number(pt.y.toFixed(4)) };
+    vMap.set(newId, rounded);
+    if (verticesMap instanceof Map) {
+      verticesMap.set(newId, rounded);
+    }
+    return newId;
   }
 
-  const wallSubdivisions = new Map<string, IntermediatePoint[]>();
-
+  // 2. Recolectar segmentos válidos
+  interface Segment {
+    wallId: string;
+    p1: { x: number; y: number };
+    p2: { x: number; y: number };
+    v1Id: string;
+    v2Id: string;
+  }
+  const segments: Segment[] = [];
   for (const w of walls) {
     if (w.startVertexId === w.endVertexId) continue;
-    const v1 = vMap.get(w.startVertexId);
-    const v2 = vMap.get(w.endVertexId);
-    if (!v1 || !v2) continue;
+    const p1 = vMap.get(w.startVertexId);
+    const p2 = vMap.get(w.endVertexId);
+    if (!p1 || !p2) continue;
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.01) continue;
+    segments.push({ wallId: w.id, p1, p2, v1Id: w.startVertexId, v2Id: w.endVertexId });
+  }
 
-    const dx = v2.x - v1.x;
-    const dy = v2.y - v1.y;
-    const len = Math.hypot(dx, dy);
-    if (len <= 0.01) continue;
+  // 3. Planarización: Detectar puntos de corte e intersecciones
+  const splitPointsPerSegment = new Map<number, { x: number; y: number }[]>();
+  for (let i = 0; i < segments.length; i++) {
+    splitPointsPerSegment.set(i, []);
+  }
 
-    const ux = dx / len;
-    const uy = dy / len;
-    const nx = -uy;
-    const ny = ux;
+  // a) Intersecciones X entre segmentos de pared
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const s1 = segments[i];
+      const s2 = segments[j];
+      const inter = segmentSegmentIntersection(s1.p1, s1.p2, s2.p1, s2.p2);
+      if (inter) {
+        splitPointsPerSegment.get(i)!.push(inter);
+        splitPointsPerSegment.get(j)!.push(inter);
+      }
+    }
+  }
 
-    const intermediates: IntermediatePoint[] = [];
-
-    // Comprobar todos los vértices existentes en el nivel
+  // b) T-junctions y empalmes parciales (tolerancia de hasta 15 cm para absorber espesores y desfasajes en obra)
+  const T_JUNCTION_TOLERANCE = 0.15;
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
     for (const [vId, pt] of vMap.entries()) {
-      if (vId === w.startVertexId || vId === w.endVertexId) continue;
+      if (vId === s.v1Id || vId === s.v2Id) continue;
+      const { dist, t, proj } = pointToSegmentDistance(pt, s.p1, s.p2);
+      const len = Math.hypot(s.p2.x - s.p1.x, s.p2.y - s.p1.y);
+      const distFromEnds = Math.min(t * len, (1 - t) * len);
+      if (dist <= T_JUNCTION_TOLERANCE && distFromEnds >= 0.02) {
+        pt.x = Number(proj.x.toFixed(4));
+        pt.y = Number(proj.y.toFixed(4));
+        if (verticesMap instanceof Map && verticesMap.has(vId)) {
+          const orig = verticesMap.get(vId)!;
+          orig.x = pt.x;
+          orig.y = pt.y;
+        }
+        splitPointsPerSegment.get(i)!.push(proj);
+      }
+    }
+  }
 
-      const vx = pt.x - v1.x;
-      const vy = pt.y - v1.y;
-      const t = vx * ux + vy * uy;
-      const distNormal = Math.abs(vx * nx + vy * ny);
+  // 4. Subdividir segmentos en aristas atómicas y fusionar aristas superpuestas/coincidentes
+  interface AtomicEdge {
+    v1: string;
+    v2: string;
+    wallIds: string[];
+  }
+  const atomicEdgesMap = new Map<string, AtomicEdge>();
 
-      // Si el vértice está sobre la línea del muro (tolerancia 2.5 cm) y estrictamente dentro del tramo
-      if (distNormal <= 0.025 && t >= 0.025 && t <= len - 0.025) {
-        intermediates.push({ id: vId, t });
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    const pts = splitPointsPerSegment.get(i) || [];
+
+    const dx = s.p2.x - s.p1.x;
+    const dy = s.p2.y - s.p1.y;
+    const lenSq = dx * dx + dy * dy;
+
+    const uniquePoints: { pt: { x: number; y: number }; t: number; id: string }[] = [
+      { pt: s.p1, t: 0, id: s.v1Id },
+      { pt: s.p2, t: 1, id: s.v2Id }
+    ];
+
+    for (const p of pts) {
+      const t = ((p.x - s.p1.x) * dx + (p.y - s.p1.y) * dy) / lenSq;
+      if (t > 0.005 && t < 0.995) {
+        const id = getOrCreateVertexId(p);
+        uniquePoints.push({ pt: p, t, id });
       }
     }
 
-    intermediates.sort((a, b) => a.t - b.t);
-    wallSubdivisions.set(w.id, intermediates);
+    uniquePoints.sort((a, b) => a.t - b.t);
+
+    const cleanChain: string[] = [];
+    for (const item of uniquePoints) {
+      if (cleanChain.length === 0 || cleanChain[cleanChain.length - 1] !== item.id) {
+        cleanChain.push(item.id);
+      }
+    }
+
+    for (let k = 0; k < cleanChain.length - 1; k++) {
+      const idA = cleanChain[k];
+      const idB = cleanChain[k + 1];
+      if (idA === idB) continue;
+
+      const key = idA < idB ? `${idA}--${idB}` : `${idB}--${idA}`;
+      const existing = atomicEdgesMap.get(key);
+      if (existing) {
+        if (!existing.wallIds.includes(s.wallId)) {
+          existing.wallIds.push(s.wallId);
+        }
+      } else {
+        atomicEdgesMap.set(key, { v1: idA, v2: idB, wallIds: [s.wallId] });
+      }
+    }
   }
 
+  // 5. Construir Half-Edges en el Grafo Plano
   interface HalfEdge {
     from: string;
     to: string;
-    wallId: string;
+    wallIds: string[];
     angle: number;
     visited: boolean;
   }
@@ -673,38 +802,23 @@ export function findEnclosedCycles(
   const outgoing = new Map<string, HalfEdge[]>();
   const halfEdges: HalfEdge[] = [];
 
-  for (const w of walls) {
-    if (w.startVertexId === w.endVertexId) continue;
-    const v1 = vMap.get(w.startVertexId);
-    const v2 = vMap.get(w.endVertexId);
-    if (!v1 || !v2) continue;
+  for (const edge of atomicEdgesMap.values()) {
+    const p1 = vMap.get(edge.v1);
+    const p2 = vMap.get(edge.v2);
+    if (!p1 || !p2) continue;
 
-    const intermediates = wallSubdivisions.get(w.id) || [];
-    // Cadena de nodos a lo largo del muro: vStart -> p1 -> p2 -> ... -> vEnd
-    const chainIds = [w.startVertexId, ...intermediates.map((p) => p.id), w.endVertexId];
+    if (!outgoing.has(edge.v1)) outgoing.set(edge.v1, []);
+    if (!outgoing.has(edge.v2)) outgoing.set(edge.v2, []);
 
-    for (let i = 0; i < chainIds.length - 1; i++) {
-      const fromId = chainIds[i];
-      const toId = chainIds[i + 1];
-      if (fromId === toId) continue;
+    const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const angle2 = Math.atan2(p1.y - p2.y, p1.x - p2.x);
 
-      const pFrom = vMap.get(fromId);
-      const pTo = vMap.get(toId);
-      if (!pFrom || !pTo) continue;
+    const he1: HalfEdge = { from: edge.v1, to: edge.v2, wallIds: edge.wallIds, angle: angle1, visited: false };
+    const he2: HalfEdge = { from: edge.v2, to: edge.v1, wallIds: edge.wallIds, angle: angle2, visited: false };
 
-      if (!outgoing.has(fromId)) outgoing.set(fromId, []);
-      if (!outgoing.has(toId)) outgoing.set(toId, []);
-
-      const angle1 = Math.atan2(pTo.y - pFrom.y, pTo.x - pFrom.x);
-      const angle2 = Math.atan2(pFrom.y - pTo.y, pFrom.x - pTo.x);
-
-      const he1: HalfEdge = { from: fromId, to: toId, wallId: w.id, angle: angle1, visited: false };
-      const he2: HalfEdge = { from: toId, to: fromId, wallId: w.id, angle: angle2, visited: false };
-
-      outgoing.get(fromId)!.push(he1);
-      outgoing.get(toId)!.push(he2);
-      halfEdges.push(he1, he2);
-    }
+    outgoing.get(edge.v1)!.push(he1);
+    outgoing.get(edge.v2)!.push(he2);
+    halfEdges.push(he1, he2);
   }
 
   // Ordenar semiaristas salientes por ángulo polar ascendente
@@ -712,6 +826,7 @@ export function findEnclosedCycles(
     list.sort((a, b) => a.angle - b.angle);
   }
 
+  // 6. Extracción de Caras Planas mediante Giro a la Izquierda
   const cycles: { vertexIds: string[]; wallIds: string[] }[] = [];
 
   for (const he of halfEdges) {
@@ -728,17 +843,14 @@ export function findEnclosedCycles(
       const outList = outgoing.get(nextVertex);
       if (!outList || outList.length === 0) break;
 
-      // En el vértice destino, ubicar la semiarista de regreso hacia curr.from
       const revIdx = outList.findIndex((e) => e.to === curr!.from);
       if (revIdx === -1) break;
 
-      // La semiarista que dobla más cerrado a la izquierda es la inmediatamente precedente
       const nextIdx = (revIdx - 1 + outList.length) % outList.length;
       curr = outList[nextIdx];
     }
 
     if (faceEdges.length >= 3 && curr === he) {
-      // Calcular área con signo mediante fórmula de Gauss (Shoelace)
       const poly = faceEdges.map((e) => vMap.get(e.from)!);
       let signedArea = 0;
       const n = poly.length;
@@ -749,13 +861,14 @@ export function findEnclosedCycles(
       }
       signedArea /= 2;
 
-      // Las caras interiores recorridas en sentido antihorario tienen signedArea > 0
-      // La cara infinita exterior tiene signo opuesto (negativo) y no se agrega
+      // Solo caras cerradas en orientación antihoraria con área positiva > 0.05 m²
       if (signedArea > 0.05) {
         const uniqueWallIds: string[] = [];
         for (const e of faceEdges) {
-          if (!uniqueWallIds.includes(e.wallId)) {
-            uniqueWallIds.push(e.wallId);
+          for (const wid of e.wallIds) {
+            if (!uniqueWallIds.includes(wid)) {
+              uniqueWallIds.push(wid);
+            }
           }
         }
 

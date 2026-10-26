@@ -734,15 +734,35 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       const verticesMap = new Map(project.vertices.map((v) => [v.id, { x: v.x, y: v.y }]));
       const cycles = findEnclosedCycles(wallsInLevel, verticesMap);
 
+      // Si se detectaron nuevos nodos de corte o empalme en T, sincronizarlos en project.vertices
+      const newVertices: WallVertex[] = [];
+      for (const [id, coord] of verticesMap.entries()) {
+        if (!project.vertices.some((v) => v.id === id)) {
+          newVertices.push({ id, x: coord.x, y: coord.y });
+        }
+      }
+
       const otherLevelSpaces = project.spaces.filter((s) => s.levelId !== project.activeLevelId);
 
       const newSpacesInLevel: Space[] = cycles.map((c, idx) => {
-        const existing = project.spaces.find(
+        // 1. Coincidencia exacta de vértices perimetrales
+        let existing = project.spaces.find(
           (s) =>
             s.levelId === project.activeLevelId &&
             s.boundaryVertexIds.length === c.vertexIds.length &&
             c.vertexIds.every((id) => s.boundaryVertexIds.includes(id))
         );
+
+        // 2. Coincidencia por mayoría de vértices compartidos (>= 60% de superposición) para preservar
+        // el nombre y propiedades si un muro compartido fue subdividido al empalmar otro recinto
+        if (!existing) {
+          existing = project.spaces.find((s) => {
+            if (s.levelId !== project.activeLevelId) return false;
+            const shared = c.vertexIds.filter((id) => s.boundaryVertexIds.includes(id)).length;
+            const maxLen = Math.max(s.boundaryVertexIds.length, c.vertexIds.length);
+            return shared / maxLen >= 0.6;
+          });
+        }
 
         if (existing) {
           return {
@@ -767,6 +787,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       set({
         project: {
           ...project,
+          vertices: newVertices.length > 0 ? [...project.vertices, ...newVertices] : project.vertices,
           spaces: [...otherLevelSpaces, ...newSpacesInLevel]
         },
         _skipHistory: true

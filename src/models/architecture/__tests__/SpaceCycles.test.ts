@@ -212,4 +212,159 @@ describe('Detección Planar de Ambientes (findEnclosedCycles)', () => {
     expect(ROOM_NAME_SUGGESTIONS).toContain('Cocina');
     expect(STANDARD_CEILING_HEIGHT_PRESETS).toContain(2.70);
   });
+
+  it('debe detectar ambientes cuando el usuario dibuja muros duplicados o superpuestos en la medianera', () => {
+    // Habitación 1: (0,0) a (4,4)
+    // Habitación 2: (4,0) a (8,4), pero el usuario trazó un muro adicional entre v2 y v3
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 4, y: 0 },
+      { id: 'v3', x: 4, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      { id: 'v5', x: 8, y: 4 },
+      { id: 'v6', x: 8, y: 0 }
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      // Habitación 2 con muro medianero duplicado (w8_dup)
+      { id: 'w5', startVertexId: 'v3', endVertexId: 'v5' },
+      { id: 'w6', startVertexId: 'v5', endVertexId: 'v6' },
+      { id: 'w7', startVertexId: 'v6', endVertexId: 'v2' },
+      { id: 'w8_dup', startVertexId: 'v2', endVertexId: 'v3' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+  });
+
+  it('debe detectar ambientes con pared parcial común y muro superpuesto parcialmente', () => {
+    // Habitación 1 de 6x4m
+    // Habitación 2 comparte el tramo de x=2 a x=6
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 6, y: 0 },
+      { id: 'v3', x: 6, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      { id: 'v_part', x: 2, y: 0 },
+      { id: 'v_r2_1', x: 6, y: -3 },
+      { id: 'v_r2_2', x: 2, y: -3 }
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' }, // Tramo continuo (0,0)-(6,0)
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      // Habitación 2 trazada con tramo parcial adosado
+      { id: 'w5', startVertexId: 'v2', endVertexId: 'v_r2_1' },
+      { id: 'w6', startVertexId: 'v_r2_1', endVertexId: 'v_r2_2' },
+      { id: 'w7', startVertexId: 'v_r2_2', endVertexId: 'v_part' },
+      { id: 'w8_part', startVertexId: 'v_part', endVertexId: 'v2' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+  });
+
+  it('debe absorber desfasajes de espesor de pared y falsa escuadra (T-junctions con offset hasta 15 cm)', () => {
+    // El vértice de llegada cae a 5 cm de la pared divisoria (por ejemplo, por medición de cara vista)
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 5, y: 0 },
+      { id: 'v3', x: 5, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      { id: 'v5', x: 9, y: 4 },
+      { id: 'v6', x: 9, y: 1 },
+      { id: 'v7_off', x: 5.05, y: 1 } // 5 cm de desvío de x=5.00
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      { id: 'w5', startVertexId: 'v3', endVertexId: 'v5' },
+      { id: 'w6', startVertexId: 'v5', endVertexId: 'v6' },
+      { id: 'w7', startVertexId: 'v6', endVertexId: 'v7_off' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+  });
+
+  it('debe detectar ambientes cuando los muros se cruzan formando un recinto sin nodo previo de intersección', () => {
+    // Muro que sobrepasa el perímetro y cruza la pared divisoria
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 5, y: 0 },
+      { id: 'v3', x: 5, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      { id: 'v5', x: 9, y: 4 },
+      { id: 'v6', x: 9, y: 1 },
+      { id: 'v7_cross', x: 4.5, y: 1 } // Cruza la pared x=5
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      { id: 'w5', startVertexId: 'v3', endVertexId: 'v5' },
+      { id: 'w6', startVertexId: 'v5', endVertexId: 'v6' },
+      { id: 'w7', startVertexId: 'v6', endVertexId: 'v7_cross' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+  });
+
+  it('debe detectar exactamente 9 recintos cerrados en una cuadrícula 3x3 de muros compartidos', () => {
+    const vertices: { id: string; x: number; y: number }[] = [];
+    for (let x = 0; x <= 3; x++) {
+      for (let y = 0; y <= 3; y++) {
+        vertices.push({ id: `v_${x}_${y}`, x, y });
+      }
+    }
+
+    const walls: { id: string; startVertexId: string; endVertexId: string }[] = [];
+    let wId = 0;
+    for (let y = 0; y <= 3; y++) {
+      for (let x = 0; x < 3; x++) {
+        walls.push({ id: `wh_${++wId}`, startVertexId: `v_${x}_${y}`, endVertexId: `v_${x + 1}_${y}` });
+      }
+    }
+    for (let x = 0; x <= 3; x++) {
+      for (let y = 0; y < 3; y++) {
+        walls.push({ id: `wv_${++wId}`, startVertexId: `v_${x}_${y}`, endVertexId: `v_${x}_${y + 1}` });
+      }
+    }
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(9);
+  });
+
+  it('no debe generar falsos ambientes con tabiques divisorios internos o aletas ciegas', () => {
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 6, y: 0 },
+      { id: 'v3', x: 6, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      { id: 'v_tab', x: 3, y: 2 }
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      { id: 'w_aleta', startVertexId: 'v1', endVertexId: 'v_tab' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(1);
+  });
 });
