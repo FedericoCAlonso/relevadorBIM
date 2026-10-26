@@ -8,11 +8,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import type { Wall, WallVertex, Vector2D } from '../../models/architecture/Wall';
+import type { Wall, WallVertex, Vector2D, WallJustification } from '../../models/architecture/Wall';
 import {
   getWallVector,
   getWallLength,
   getWallLeftNormal,
+  getWallSideOffsets,
   calculateVisibleFaceCompensation
 } from '../../models/architecture/Wall';
 import { ARCHITECTURAL_WALL_CONFIG } from '../../config/architecturalConfig';
@@ -38,7 +39,8 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       angleDeg,
       thickness = ARCHITECTURAL_WALL_CONFIG.DEFAULT_THICKNESS_M,
       justification = 'interior',
-      referenceOrigin = 'visible_face'
+      referenceOrigin = 'visible_face',
+      measurementReference
     }) => {
       const { project } = get();
       if (lengthM <= 0) return null;
@@ -57,22 +59,54 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
 
       if (!vStart) return null;
 
-      // Compensación paramétrica de cara vista si se extiende desde un vértice de muro existente
-      let effectiveLengthM = lengthM;
-      if (referenceOrigin === 'visible_face' && startVertexId) {
-        const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
-        const hostWall = project.walls.find(
-          (w) => w.endVertexId === startVertexId || w.startVertexId === startVertexId
-        );
-        if (hostWall) {
-          const compensation = calculateVisibleFaceCompensation({
-            hostWall,
-            anchorVertexId: startVertexId,
-            targetAngleDeg: angleDeg,
-            verticesMap
-          });
-          effectiveLengthM = Number((lengthM + compensation).toFixed(3));
+      const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+      // Muro anfitrión existente en el vértice de anclaje
+      let hostWall: Wall | undefined;
+      if (startVertexId) {
+        const selectedId = get().selectedEntity?.id;
+        if (selectedId) {
+          hostWall = project.walls.find(
+            (w) =>
+              w.id === selectedId &&
+              (w.endVertexId === startVertexId || w.startVertexId === startVertexId)
+          );
         }
+        if (!hostWall) {
+          const incidentWalls = project.walls.filter(
+            (w) => w.endVertexId === startVertexId || w.startVertexId === startVertexId
+          );
+          hostWall = incidentWalls.find((w) => w.endVertexId === startVertexId) || incidentWalls[0];
+        }
+      }
+
+      // La justificación física de la pared derivada se alinea con el muro anfitrión
+      // para garantizar un empalme en esquina limpio, enrasado y sin desplazamientos laterales erróneos.
+      const physicalJustification: WallJustification = hostWall
+        ? (hostWall.justification ?? 'interior')
+        : (justification ?? 'interior');
+
+      // Compensación métrica según la referencia de medida seleccionada ('interior' | 'center' | 'exterior')
+      let effectiveLengthM = lengthM;
+      if (startVertexId && hostWall) {
+        const measRef: WallJustification =
+          measurementReference ||
+          (referenceOrigin === 'center' || referenceOrigin === 'axis'
+            ? 'center'
+            : referenceOrigin === 'exterior'
+            ? 'exterior'
+            : referenceOrigin === 'interior' || referenceOrigin === 'visible_face'
+            ? 'interior'
+            : (justification as WallJustification) || 'interior');
+
+        const compensation = calculateVisibleFaceCompensation({
+          hostWall,
+          anchorVertexId: startVertexId,
+          targetAngleDeg: angleDeg,
+          measurementReference: measRef,
+          verticesMap
+        });
+        effectiveLengthM = Number((lengthM + compensation).toFixed(3));
       }
 
       const rad = (angleDeg * Math.PI) / 180;
@@ -103,7 +137,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         endVertexId: vEnd.id,
         thickness,
         height: 2.8,
-        justification
+        justification: physicalJustification
       };
 
       const updatedVertices = [...project.vertices];
@@ -157,9 +191,14 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         ? { x: vStart.x + uWall.x * offsetM, y: vStart.y + uWall.y * offsetM }
         : { x: vEnd.x - uWall.x * offsetM, y: vEnd.y - uWall.y * offsetM };
 
+      // Para un empalme en T, compensar la luz libre desde la cara vista del muro anfitrión
+      const { leftOffset, rightOffset } = getWallSideOffsets(hostWall);
+      const faceOffsetM = side === 'left' ? Math.max(0, leftOffset) : Math.abs(Math.min(0, rightOffset));
+      const effectiveBranchLengthM = Number((branchLengthM + faceOffsetM).toFixed(3));
+
       const endPoint: Vector2D = {
-        x: rootPoint.x + uBranch.x * branchLengthM,
-        y: rootPoint.y + uBranch.y * branchLengthM
+        x: rootPoint.x + uBranch.x * effectiveBranchLengthM,
+        y: rootPoint.y + uBranch.y * effectiveBranchLengthM
       };
 
       const branchRootVertex: WallVertex = {
@@ -181,7 +220,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         endVertexId: branchEndVertex.id,
         thickness,
         height: hostWall.height,
-        justification
+        justification: hostWall.justification ?? justification ?? 'interior'
       };
 
       set({

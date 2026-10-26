@@ -230,17 +230,19 @@ export interface VisibleFaceCompensationParams {
   hostWall: Wall;
   anchorVertexId: string;
   targetAngleDeg: number;
+  measurementReference?: WallJustification;
   verticesMap: Map<string, WallVertex>;
 }
 
 /**
  * Calcula la compensación métrica necesaria (en metros) cuando se traza una nueva pared
  * desde un anclaje conectado a un muro existente, para que la cota ingresada coincida
- * exactamente con la luz libre tomada con distanciómetro láser desde la cara vista.
+ * exactamente con la cota medida (luz libre desde cara interior, eje a eje o cara exterior).
  */
 export function calculateVisibleFaceCompensation({
   hostWall,
   targetAngleDeg,
+  measurementReference = 'interior',
   verticesMap
 }: VisibleFaceCompensationParams): number {
   const vStart = verticesMap.get(hostWall.startVertexId);
@@ -268,16 +270,22 @@ export function calculateVisibleFaceCompensation({
   if (Math.abs(cn) < 0.05) return 0;
 
   const { leftOffset, rightOffset } = getWallSideOffsets(hostWall);
+  const axisOffset = (leftOffset + rightOffset) / 2;
 
-  // Si se proyecta hacia la izquierda del muro base
-  if (cn > 0.05) {
-    if (leftOffset <= 0.001) return 0; // El vértice ya está en la cara izquierda
-    return Number((leftOffset / cn).toFixed(3));
+  let targetOffset: number;
+  if (measurementReference === 'center') {
+    targetOffset = axisOffset;
+  } else if (measurementReference === 'exterior') {
+    // La cara exterior es la opuesta a la dirección hacia donde se proyecta la nueva pared
+    targetOffset = cn > 0 ? rightOffset : leftOffset;
+  } else {
+    // 'interior' (por defecto): la cara vista en la dirección hacia donde se proyecta la nueva pared
+    targetOffset = cn > 0 ? leftOffset : rightOffset;
   }
 
-  // Si se proyecta hacia la derecha del muro base (cn < -0.05)
-  if (rightOffset >= -0.001) return 0; // El vértice ya está en la cara derecha
-  return Number((Math.abs(rightOffset) / Math.abs(cn)).toFixed(3));
+  // La distancia s a lo largo de uxNew/uyNew desde el vértice hasta el plano de referencia es:
+  // (P(s) - V) · n = targetOffset => s * cn = targetOffset => s = targetOffset / cn
+  return Number((targetOffset / cn).toFixed(3));
 }
 
 

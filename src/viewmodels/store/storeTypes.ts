@@ -130,7 +130,8 @@ export interface ArchitectureSlice {
     angleDeg: number;
     thickness?: number;
     justification?: WallJustification;
-    referenceOrigin?: 'visible_face' | 'axis';
+    referenceOrigin?: 'visible_face' | 'axis' | WallJustification;
+    measurementReference?: WallJustification;
   }) => { wall: Wall; endVertexId: string } | null;
 
   addBranchWallFromOffset: (params: {

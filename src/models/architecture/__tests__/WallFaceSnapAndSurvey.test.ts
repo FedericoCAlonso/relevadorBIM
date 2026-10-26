@@ -5,6 +5,7 @@ import {
   type Wall,
   type WallVertex
 } from '../Wall';
+import { computeResolvedWallPolygons } from '../WallCornerEngine';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 
 describe('Snap Paramétrico a Caras de Muro y Compensación de Cara Vista (Puntos 2 y 6)', () => {
@@ -225,6 +226,71 @@ describe('Snap Paramétrico a Caras de Muro y Compensación de Cara Vista (Punto
       const vEnd2 = useProjectStore.getState().project.vertices.find(v => v.id === w2.endVertexId)!;
       // La coordenada Y final debe ser -3.15, de modo que la luz libre entre la cara del muro (-0.15) y el final sea exactamente 3.00m
       expect(vEnd2.y).toBeCloseTo(-3.15, 2);
+      // La justificación física debe ser 'interior' para mantener el empalme enrasado
+      expect(w2.wall.justification).toBe('interior');
+    });
+
+    it('al seleccionar Cara Ext. o Eje Medio, debe corregir la medida pero mantener el empalme enrasado sin desplazar lateralmente la pared', () => {
+      const store = useProjectStore.getState();
+      store.resetProject();
+
+      // Muro base horizontal de 4m (justification: 'interior', espesor: 0.15)
+      const w1 = store.addWallFromAnchor({
+        startCoord: { x: 0, y: 0 },
+        lengthM: 4.0,
+        angleDeg: 0,
+        thickness: 0.15,
+        justification: 'interior'
+      })!;
+
+      // 1. Extender con referencia a Eje Medio ('center')
+      const wAxis = store.addWallFromAnchor({
+        startVertexId: w1.endVertexId,
+        lengthM: 3.0,
+        angleDeg: 270,
+        thickness: 0.15,
+        measurementReference: 'center'
+      })!;
+
+      // El muro derivado debe heredar la justificación física de w1 ('interior') para no romper el empalme
+      expect(wAxis.wall.justification).toBe('interior');
+      const vEndAxis = useProjectStore.getState().project.vertices.find(v => v.id === wAxis.endVertexId)!;
+      // Eje del muro está a y = -0.075. Desde el eje hasta el final deben ser 3.00m => y = -3.075
+      expect(vEndAxis.y).toBeCloseTo(-3.075, 2);
+
+      // 2. Extender con referencia a Cara Ext. ('exterior')
+      useProjectStore.getState().resetProject();
+      const wBase = useProjectStore.getState().addWallFromAnchor({
+        startCoord: { x: 0, y: 0 },
+        lengthM: 4.0,
+        angleDeg: 0,
+        thickness: 0.15,
+        justification: 'interior'
+      })!;
+
+      const wExt = useProjectStore.getState().addWallFromAnchor({
+        startVertexId: wBase.endVertexId,
+        lengthM: 3.0,
+        angleDeg: 270,
+        thickness: 0.15,
+        measurementReference: 'exterior'
+      })!;
+
+      // Justificación física sigue siendo 'interior'
+      expect(wExt.wall.justification).toBe('interior');
+      const vEndExt = useProjectStore.getState().project.vertices.find(v => v.id === wExt.endVertexId)!;
+      // Cara exterior opuesta está en y = 0. Desde y=0 hasta el final deben ser 3.00m => y = -3.00
+      expect(vEndExt.y).toBeCloseTo(-3.00, 2);
+
+      // 3. Verificar que WallCornerEngine resuelve el empalme en inglete perfecto sin huecos ni saltos
+      const verticesMap = new Map(
+        useProjectStore.getState().project.vertices.map((v) => [v.id, v])
+      );
+      const polygons = computeResolvedWallPolygons([wBase.wall, wExt.wall], verticesMap);
+      expect(polygons.get(wBase.wall.id)).toBeDefined();
+      expect(polygons.get(wExt.wall.id)).toBeDefined();
+      expect(polygons.get(wBase.wall.id)!.length).toBe(4);
+      expect(polygons.get(wExt.wall.id)!.length).toBe(4);
     });
   });
 });

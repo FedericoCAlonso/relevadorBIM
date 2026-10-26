@@ -217,13 +217,14 @@ export function useSurveyViewModel() {
         angleDeg: effectiveAngleDeg,
         thickness: wallThickness,
         justification: wallJustification,
-        referenceOrigin: measurementOrigin
+        referenceOrigin: wallJustification,
+        measurementReference: wallJustification
       });
 
       // El store ya coloca automáticamente el extremo final como activeAnchorVertexId
       return result;
     },
-    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor, wallThickness, wallJustification, measurementOrigin]
+    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor, wallThickness, wallJustification]
   );
 
   /**
