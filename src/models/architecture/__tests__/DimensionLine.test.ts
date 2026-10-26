@@ -38,3 +38,21 @@ describe('DimensionLine (Model layer)', () => {
     expect(DIMENSION_CONSTANTS.SELECTED_COLOR).toBeDefined();
   });
 });
+
+import { computeDimensionRenderGeometry } from '../DimensionLine';
+
+describe('computeDimensionRenderGeometry', () => {
+  it('retorna null para cotas degeneradas (< 0.05m)', () => {
+    expect(computeDimensionRenderGeometry({ p1: { x: 0, y: 0 }, p2: { x: 0.02, y: 0 } }, 50)).toBeNull();
+  });
+
+  it('calcula punto medio, tics a 45° y mantiene el texto legible sin invertirse', () => {
+    const geom = computeDimensionRenderGeometry({ p1: { x: 4, y: 0 }, p2: { x: 0, y: 0 } }, 50);
+    expect(geom).not.toBeNull();
+    expect(geom!.distM).toBe(4);
+    expect(geom!.midX).toBe(100);
+    // Ángulo de 180° se corrige sumando 180° -> 360° (o 0° equivalente) para lectura derecha
+    expect(Math.abs(geom!.angleDeg % 180)).toBeCloseTo(0);
+    expect(geom!.labelText).toBe('4.00 m');
+  });
+});

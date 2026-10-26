@@ -17,14 +17,10 @@ import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
 import { CAD_VIEWPORT_CONFIG } from '../../../config';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
-import { DIMENSION_CONSTANTS, formatDimensionText } from '../../../models/architecture/DimensionLine';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
 import {
   generateRoundedPolylineSvgPath,
-  computeOrthogonalConduitPoints,
-  getConduitVerticalTransitions,
-  formatElementLabel,
-  calculateConduitRealLength
+  computeOrthogonalConduitPoints
 } from '../../../models/electrical/calculations';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
 import type { SpatialElectricalNode, ConduitWaypoint } from '../../../models/electrical/ElectricalModel';
@@ -37,6 +33,11 @@ import { SpacesLayer } from './layers/SpacesLayer';
 import { OpeningsLayer } from './layers/OpeningsLayer';
 import { VerticesLayer } from './layers/VerticesLayer';
 import { PreviewRayLayer } from './layers/PreviewRayLayer';
+import { ConduitsLayer } from './layers/ConduitsLayer';
+import { ElectricalElementsLayer } from './layers/ElectricalElementsLayer';
+import { PanelsLayer } from './layers/PanelsLayer';
+import { DimensionsLayer } from './layers/DimensionsLayer';
+import type { ActiveNodeDragState, ActiveWaypointDragState } from './layers/layerTypes';
 
 export type { WallPlacementSnap };
 
@@ -292,25 +293,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [samplingStartWorldPos, setSamplingStartWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [isStencilSnapped, setIsStencilSnapped] = useState(false);
   const justCompletedSamplingRef = useRef(false);
-  const activeWaypointDragRef = useRef<{
-    conduitId: string;
-    wpIndex: number;
-    startX: number;
-    startY: number;
-    origWpX: number;
-    origWpY: number;
-    moved: boolean;
-  } | null>(null);
-  const activeNodeDragRef = useRef<{
-    kind: 'element' | 'panel';
-    id: string;
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-    origRotation: number;
-    moved: boolean;
-  } | null>(null);
+  const activeWaypointDragRef = useRef<ActiveWaypointDragState | null>(null);
+  const activeNodeDragRef = useRef<ActiveNodeDragState | null>(null);
   const placementTouchRef = useRef<{
     startX: number;
     startY: number;
@@ -992,8 +976,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     triggerPlacementRef.current = triggerPlacement;
   });
 
-  const isInteractionInterceptedRef = useRef(false);
-  isInteractionInterceptedRef.current = Boolean(
+  const isInteractionIntercepted = Boolean(
     selectedSymbolId ||
     isConnectingConduit ||
     isCalibratingUnderlay ||
@@ -1001,6 +984,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     isDrawingOverhang ||
     isMovingSpace
   );
+  const isInteractionInterceptedRef = useRef(isInteractionIntercepted);
+  useEffect(() => {
+    isInteractionInterceptedRef.current = isInteractionIntercepted;
+  }, [isInteractionIntercepted]);
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (wasDraggingRecentlyRef.current()) return;
@@ -1037,7 +1024,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   // Acciones de grips con identidad estable: delegan en la última versión de los handlers vía ref.
   const gripHandlersRef = useRef({ handleGripPointerDown, handleGripPointerMove, handleGripPointerUp });
-  gripHandlersRef.current = { handleGripPointerDown, handleGripPointerMove, handleGripPointerUp };
+  useEffect(() => {
+    gripHandlersRef.current = { handleGripPointerDown, handleGripPointerMove, handleGripPointerUp };
+  });
   const wallGripActions = useMemo<WallGripActions>(() => {
     const finishDrag = (e: React.PointerEvent) => {
       gripHandlersRef.current.handleGripPointerUp(e);
@@ -1070,1085 +1059,51 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     return new Map(project.levels.map((l) => [l.id, l]));
   }, [project.levels]);
 
-  const renderedConduits = useMemo(() => {
-    return project.conduits.map((conduit) => {
-      const elFrom = elementsMap.get(conduit.fromElementId);
-      const elTo = elementsMap.get(conduit.toElementId);
-      if (!elFrom || !elTo) return null;
-      if (elFrom.levelId !== project.activeLevelId || elTo.levelId !== project.activeLevelId) return null;
+  const isNodeDragBlocked = Boolean(
+    selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern
+  );
+  const activeLevelElements = useMemo(
+    () => project.electricalElements.filter((el) => el.levelId === project.activeLevelId),
+    [project.electricalElements, project.activeLevelId]
+  );
+  const activeLevelPanels = useMemo(
+    () => (project.panels || []).filter((panel) => panel.isPlaced && panel.levelId === project.activeLevelId),
+    [project.panels, project.activeLevelId]
+  );
+  const emptyIdSet = useMemo(() => new Set<string>(), []);
+  const selectedConduitIds = selectedEntityMap.get('conduit') ?? emptyIdSet;
+  const selectedElementIds = selectedEntityMap.get('electrical_element') ?? emptyIdSet;
+  const selectedPanelIds = selectedEntityMap.get('panel') ?? emptyIdSet;
 
-      const p1 = { x: elFrom.x * zoom, y: elFrom.y * zoom };
-      const p2 = { x: elTo.x * zoom, y: elTo.y * zoom };
+  const electricalActionsRef = useRef({ toggleSelectEntity, setSelectedEntity });
+  useEffect(() => {
+    electricalActionsRef.current = { toggleSelectEntity, setSelectedEntity };
+  });
+  const handleToggleSelectConduit = useMemo(
+    () => (conduitId: string, shiftKey: boolean) =>
+      electricalActionsRef.current.toggleSelectEntity({ type: 'conduit', id: conduitId }, shiftKey),
+    []
+  );
+  const handleSelectElementAfterDrag = useMemo(
+    () => (elementId: string) =>
+      electricalActionsRef.current.setSelectedEntity({ type: 'electrical_element', id: elementId }),
+    []
+  );
+  const handleSelectPanelAfterDrag = useMemo(
+    () => (panelId: string) =>
+      electricalActionsRef.current.setSelectedEntity({ type: 'panel', id: panelId }),
+    []
+  );
 
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 1) return null;
-
-      const routingPlane = conduit.routingPlane || 'wall';
-      const isSlabOrFloor = routingPlane === 'ceiling_slab' || routingPlane === 'floor_slab';
-      const isSchematicArc = conduit.routingMode === 'schematic_arc';
-      let pathD: string;
-      let midX: number;
-      let midY: number;
-
-      const waypointsPx = conduit.waypoints?.map((wp) => ({
-        x: wp.x * zoom,
-        y: wp.y * zoom
-      }));
-
-      if (isSchematicArc) {
-        // Curvatura suave arco esquemático tradicional AEA (el modo arco no admite waypoints)
-        const normalX = -dy / dist;
-        const normalY = dx / dist;
-        const curveOffset = Math.min(dist * 0.18, 28);
-        midX = (p1.x + p2.x) / 2 + normalX * curveOffset;
-        midY = (p1.y + p2.y) / 2 + normalY * curveOffset;
-        pathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-      } else if (isSlabOrFloor) {
-        // En losa o contrapiso: trazo directo / diagonal entre extremos o waypoints
-        const pts = [p1, ...(waypointsPx || []), p2];
-        pathD = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} ` + pts.slice(1).map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-        const midIdx = Math.max(1, Math.floor(pts.length / 2));
-        midX = (pts[midIdx - 1].x + pts[midIdx].x) / 2;
-        midY = (pts[midIdx - 1].y + pts[midIdx].y) / 2;
-      } else {
-        // Ortogonal por pared con curvas técnicas redondeadas a 90°
-        const orthoPoints = computeOrthogonalConduitPoints(p1, p2, waypointsPx);
-        const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
-        pathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
-
-        const midSegmentIdx = Math.max(1, Math.floor(orthoPoints.length / 2));
-        const pSegA = orthoPoints[midSegmentIdx - 1];
-        const pSegB = orthoPoints[midSegmentIdx];
-        midX = (pSegA.x + pSegB.x) / 2;
-        midY = (pSegA.y + pSegB.y) / 2;
-      }
-
-      const isSelected = selectedEntityMap.get('conduit')?.has(conduit.id) || false;
-
-      // Color del circuito asignado o anaranjado por defecto
-      const assignedCircuitId = conduit.circuitId || conduit.circuitIds?.[0];
-      const circ = assignedCircuitId ? project.circuits.find((c) => c.id === assignedCircuitId) : null;
-      const strokeColor = isSelected ? '#2563eb' : circ?.color || '#ea580c';
-      const planeGlyph = routingPlane === 'ceiling_slab' ? '☁' : routingPlane === 'floor_slab' ? '👣' : '🧱';
-      const labelText = circ
-        ? `${circ.name.split(' ')[0]} · Ø${conduit.diameterMM}mm`
-        : conduit.label || `Ø${conduit.diameterMM}mm`;
-
-      // Verificación de desnivel vertical (subidas ▲ y bajadas ▼ según AEA y vía de tendido)
-      const space = project.spaces.find((s) => s.id === elFrom.spaceId || s.id === elTo.spaceId);
-      const ceilingH = space ? space.ceilingHeight : 2.70;
-      const vertTrans = getConduitVerticalTransitions(elFrom.heightZ, elTo.heightZ, 0.30, routingPlane, ceilingH);
-
-      return (
-        <g
-          key={conduit.id}
-          onClick={(e) => {
-            if (wasDraggingRecentlyRef.current()) return;
-            if (isInteractionInterceptedRef.current) {
-              triggerPlacementRef.current(e.clientX, e.clientY);
-              return;
-            }
-            e.stopPropagation();
-            toggleSelectEntity({ type: 'conduit', id: conduit.id }, e.shiftKey);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="cursor-pointer group"
-        >
-          {/* Hit area amplia */}
-          <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
-          {/* Cañería continua con esquinas redondeadas, arco o diagonal de losa */}
-          <path
-            d={pathD}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth={isSelected ? 3.5 : conduit.material.includes('bandeja') ? 3.0 : 2.2}
-            strokeDasharray={conduit.material.includes('corrugado') ? '6 3' : conduit.material.includes('bandeja') ? '5 2' : 'none'}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* Diámetro, vía de tendido y circuito de la cañería */}
-          <text
-            x={midX}
-            y={midY - 5}
-            textAnchor="middle"
-            fontSize={9}
-            fill={isSelected ? '#1d4ed8' : strokeColor}
-            className="font-mono font-bold pointer-events-none select-none"
-          >
-            {planeGlyph} {labelText}
-          </text>
-
-          {/* Indicador de cota vertical en ORIGEN (subida o bajada hacia losa/piso) */}
-          {vertTrans.hasTransition && vertTrans.glyphTextFrom && (
-            <g transform={`translate(${p1.x + 8}, ${p1.y + (vertTrans.fromType === 'bajada' ? 12 : -8)})`} className="pointer-events-none">
-              <rect
-                x={-2}
-                y={-8}
-                width={vertTrans.glyphTextFrom.length * 5.6 + 6}
-                height={11}
-                rx={2.5}
-                fill="#0f172a"
-                fillOpacity={0.85}
-              />
-              <text
-                x={1}
-                y={0.5}
-                fontSize={7.5}
-                fill={vertTrans.fromType === 'bajada' ? '#38bdf8' : '#fbbf24'}
-                className="font-mono font-bold select-none"
-              >
-                {vertTrans.glyphTextFrom}
-              </text>
-            </g>
-          )}
-
-          {/* Indicador de cota vertical en DESTINO (bajada o subida desde losa/piso) */}
-          {vertTrans.hasTransition && vertTrans.glyphTextTo && (
-            <g transform={`translate(${p2.x + 8}, ${p2.y + (vertTrans.toType === 'bajada' ? 12 : -8)})`} className="pointer-events-none">
-              <rect
-                x={-2}
-                y={-8}
-                width={vertTrans.glyphTextTo.length * 5.6 + 6}
-                height={11}
-                rx={2.5}
-                fill="#0f172a"
-                fillOpacity={0.85}
-              />
-              <text
-                x={1}
-                y={0.5}
-                fontSize={7.5}
-                fill={vertTrans.toType === 'bajada' ? '#38bdf8' : '#fbbf24'}
-                className="font-mono font-bold select-none"
-              >
-                {vertTrans.glyphTextTo}
-              </text>
-            </g>
-          )}
-
-          {/* Indicador de Montante Vertical / Pase de losa restante */}
-          {(conduit.isRiserTerminal || (typeof conduit.additionalLengthM === 'number' && conduit.additionalLengthM > 0)) && (
-            <g transform={`translate(${p2.x + 8}, ${p2.y + 22})`} className="pointer-events-none">
-              <rect
-                x={-2}
-                y={-8}
-                width={Math.max(60, ((conduit.targetDescription || '').length + 10) * 5.5)}
-                height={12}
-                rx={3}
-                fill="#b45309"
-                fillOpacity={0.9}
-              />
-              <text
-                x={1}
-                y={0.5}
-                fontSize={7.5}
-                fill="#ffffff"
-                className="font-mono font-bold select-none"
-              >
-                ⌖ +{(conduit.additionalLengthM || 0).toFixed(2)}m {conduit.targetDescription ? `· ${conduit.targetDescription}` : ''}
-              </text>
-            </g>
-          )}
-
-          {/* Marcadores de Quiebres Interactivos (Waypoints) cuando la canalización está seleccionada o en edición */}
-          {(isSelected || editingConduitRouteId === conduit.id) &&
-            conduit.routingMode !== 'schematic_arc' &&
-            waypointsPx &&
-            waypointsPx.length > 0 && (
-              <g className="conduit-waypoints-handles">
-                {waypointsPx.map((wp, idx) => (
-                  <g key={`wp-handle-${conduit.id}-${idx}`}>
-                    <g
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        isDraggingObjectRef.current = true;
-                        try {
-                          (e.currentTarget as Element).setPointerCapture(e.pointerId);
-                        } catch {
-                          // Fallback
-                        }
-                        activeWaypointDragRef.current = {
-                          conduitId: conduit.id,
-                          wpIndex: idx,
-                          startX: e.clientX,
-                          startY: e.clientY,
-                          origWpX: conduit.waypoints![idx].x,
-                          origWpY: conduit.waypoints![idx].y,
-                          moved: false
-                        };
-                      }}
-                      onPointerMove={(e) => {
-                        if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
-                          e.stopPropagation();
-                          const drag = activeWaypointDragRef.current;
-                          const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-                          if (dist > 3) drag.moved = true;
-                          const dxWorld = (e.clientX - drag.startX) / zoom;
-                          const dyWorld = (e.clientY - drag.startY) / zoom;
-                          const candX = Number((drag.origWpX + dxWorld).toFixed(3));
-                          const candY = Number((drag.origWpY + dyWorld).toFixed(3));
-                          onUpdateConduitWaypoint?.(conduit.id, idx, {
-                            x: candX,
-                            y: candY
-                          });
-                        }
-                      }}
-                      onPointerUp={(e) => {
-                        if (activeWaypointDragRef.current && activeWaypointDragRef.current.wpIndex === idx) {
-                          e.stopPropagation();
-                          try {
-                            (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                          } catch {
-                            // Ignore
-                          }
-                          activeWaypointDragRef.current = null;
-                          isDraggingObjectRef.current = false;
-                        }
-                      }}
-                      onTouchStart={(e) => {
-                        e.stopPropagation();
-                        isDraggingObjectRef.current = true;
-                        if (e.touches.length === 1) {
-                          const t = e.touches[0];
-                          activeWaypointDragRef.current = {
-                            conduitId: conduit.id,
-                            wpIndex: idx,
-                            startX: t.clientX,
-                            startY: t.clientY,
-                            origWpX: conduit.waypoints![idx].x,
-                            origWpY: conduit.waypoints![idx].y,
-                            moved: false
-                          };
-                        }
-                      }}
-                      onTouchMove={(e) => {
-                        if (
-                          activeWaypointDragRef.current &&
-                          activeWaypointDragRef.current.wpIndex === idx &&
-                          e.touches.length === 1
-                        ) {
-                          e.stopPropagation();
-                          const t = e.touches[0];
-                          const drag = activeWaypointDragRef.current;
-                          const dist = Math.hypot(t.clientX - drag.startX, t.clientY - drag.startY);
-                          if (dist > 3) drag.moved = true;
-                          const dxWorld = (t.clientX - drag.startX) / zoom;
-                          const dyWorld = (t.clientY - drag.startY) / zoom;
-                          const candX = Number((drag.origWpX + dxWorld).toFixed(3));
-                          const candY = Number((drag.origWpY + dyWorld).toFixed(3));
-                          onUpdateConduitWaypoint?.(conduit.id, idx, {
-                            x: candX,
-                            y: candY
-                          });
-                        }
-                      }}
-                      onTouchEnd={(e) => {
-                        e.stopPropagation();
-                        activeWaypointDragRef.current = null;
-                        isDraggingObjectRef.current = false;
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onRemoveConduitWaypoint?.(conduit.id, idx);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveConduitWaypoint?.(conduit.id, idx);
-                      }}
-                      className="cursor-move"
-                    >
-                      {/* Diana táctil amplia de 36px de diámetro invisible (sin rebote ni jitter) */}
-                      <circle cx={wp.x} cy={wp.y} r={18} fill="transparent" />
-                      <circle
-                        cx={wp.x}
-                        cy={wp.y}
-                        r={13}
-                        fill="none"
-                        stroke="#f59e0b"
-                        strokeWidth={1.5}
-                        strokeDasharray="3 3"
-                        className="pointer-events-none"
-                      />
-                      <circle
-                        cx={wp.x}
-                        cy={wp.y}
-                        r={9}
-                        fill="#f59e0b"
-                        stroke="#ffffff"
-                        strokeWidth={2}
-                        className="hover:stroke-amber-300 hover:stroke-[3px] transition-colors pointer-events-none"
-                      />
-                      <text
-                        x={wp.x}
-                        y={wp.y + 3}
-                        textAnchor="middle"
-                        fontSize={8}
-                        fill="#ffffff"
-                        className="font-mono font-bold select-none pointer-events-none"
-                      >
-                        P{idx + 1}
-                      </text>
-                    </g>
-                  </g>
-                ))}
-              </g>
-            )}
-        </g>
-      );
-    });
-  }, [
-    project.conduits,
-    project.circuits,
-    project.spaces,
-    project.activeLevelId,
-    elementsMap,
-    zoom,
-    selectedEntityMap,
-    isConnectingConduit,
-    editingConduitRouteId,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    toggleSelectEntity,
-    onUpdateConduitWaypoint,
-    onRemoveConduitWaypoint
-  ]);
-
-  // 7. Símbolos Eléctricos AEA con visibilidad absoluta y área de impacto táctil
-  const renderedElements = useMemo(() => {
-    return project.electricalElements
-      .filter((el) => el.levelId === project.activeLevelId)
-      .map((element) => {
-        const pxX = element.x * zoom;
-        const pxY = element.y * zoom;
-        const isSelected = selectedEntityMap.get('electrical_element')?.has(element.id) || false;
-        const isPendingStart = pendingConduitStartId === element.id;
-        const circ = element.circuitId ? project.circuits.find((c) => c.id === element.circuitId) : null;
-        const panel = circ ? project.panels.find((p) => p.id === circ.panelId) : project.panels[0] || null;
-        const circuitLabel = circ ? circ.name.split(' ')[0] : undefined;
-        const formattedLabel = formatElementLabel({
-          elementLabel: element.label,
-          circuit: circ,
-          panel,
-          mode: labelDisplayMode
-        });
-
-        const isTerminalRef = Boolean(element.isTerminalReference || element.symbolId === 'sym-terminal-referencia');
-
-        return (
-          <g
-            key={element.id}
-            transform={`translate(${pxX}, ${pxY})`}
-            style={{ touchAction: 'none' }}
-            onPointerDown={(e) => {
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
-              if (e.button !== 0 && e.pointerType === 'mouse') return;
-              e.stopPropagation();
-              isDraggingObjectRef.current = true;
-              try {
-                (e.currentTarget as Element).setPointerCapture(e.pointerId);
-              } catch {
-                // Fallback
-              }
-              activeNodeDragRef.current = {
-                kind: 'element',
-                id: element.id,
-                startX: e.clientX,
-                startY: e.clientY,
-                origX: element.x,
-                origY: element.y,
-                origRotation: element.rotation || 0,
-                moved: false
-              };
-            }}
-            onPointerMove={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
-                e.stopPropagation();
-                const drag = activeNodeDragRef.current;
-                const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-                if (dist > 3) drag.moved = true;
-                const dxWorld = (e.clientX - drag.startX) / zoom;
-                const dyWorld = (e.clientY - drag.startY) / zoom;
-                let candX = Number((drag.origX + dxWorld).toFixed(3));
-                let candY = Number((drag.origY + dyWorld).toFixed(3));
-                let candRot = drag.origRotation;
-
-                const isCeiling = element.symbolId.includes('techo') || element.symbolId.includes('ventilador');
-                if (!isCeiling && isSnapEnabled && !e.shiftKey) {
-                  const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
-                  const wallSnap = calculateWallSnap({ x: candX, y: candY }, wallsInLevel, verticesMap, 0.40);
-                  if (wallSnap) {
-                    candX = Number(wallSnap.snappedPoint.x.toFixed(3));
-                    candY = Number(wallSnap.snappedPoint.y.toFixed(3));
-                    candRot = wallSnap.rotationDeg;
-                  }
-                }
-
-                updateElectricalElement(element.id, {
-                  x: candX,
-                  y: candY,
-                  rotation: candRot
-                });
-              }
-            }}
-            onPointerUp={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
-                e.stopPropagation();
-                try {
-                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                } catch {
-                  // Ignore
-                }
-                const drag = activeNodeDragRef.current;
-                if (drag.moved) {
-                  lastDragEndTimeRef.current = Date.now();
-                  setSelectedEntity({ type: 'electrical_element', id: element.id });
-                }
-                activeNodeDragRef.current = null;
-                isDraggingObjectRef.current = false;
-              }
-            }}
-            onPointerCancel={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === element.id) {
-                try {
-                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                } catch {
-                  // Ignore
-                }
-                activeNodeDragRef.current = null;
-                isDraggingObjectRef.current = false;
-              }
-            }}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isInteractionInterceptedRef.current) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              onElectricalElementClick?.(element.id, e.shiftKey);
-            }}
-            onDoubleClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              onElectricalElementDoubleClick?.(element.id);
-            }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
-            className={isSelected ? 'cursor-move' : isTerminalRef ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
-          >
-            {/* Hitbox táctil ampliada para arrastre ergonómico en pantalla táctil */}
-            <circle
-              r={isSelected ? 44 : 36}
-              fill="transparent"
-              pointerEvents="all"
-              className={isSelected ? 'cursor-move' : 'cursor-pointer'}
-            />
-            {isSelected && (
-              <circle
-                r={30}
-                fill="none"
-                stroke="#3b82f6"
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-                className="pointer-events-none opacity-80"
-              />
-            )}
-
-            {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
-            {isPendingStart && (
-              <g pointerEvents="none">
-                <circle
-                  r={32}
-                  fill="rgba(245, 158, 11, 0.22)"
-                  stroke="#f59e0b"
-                  strokeWidth={2.5}
-                  strokeDasharray="4 2"
-                  className="animate-pulse"
-                />
-                <circle
-                  r={44}
-                  fill="none"
-                  stroke="#f59e0b"
-                  strokeWidth={1}
-                  strokeDasharray="2 2"
-                  opacity={0.6}
-                />
-                <g transform="translate(0, -38)">
-                  <rect
-                    x="-42"
-                    y="-10"
-                    width={84}
-                    height={20}
-                    rx="10"
-                    fill="#d97706"
-                    className="shadow-md"
-                  />
-                  <text
-                    x="0"
-                    y="4"
-                    textAnchor="middle"
-                    fill="#ffffff"
-                    fontSize="9"
-                    fontWeight="bold"
-                    className="font-sans select-none"
-                  >
-                    ⚡ Inicio Cañería
-                  </text>
-                </g>
-              </g>
-            )}
-
-            <AeaCanvasSymbol
-              symbolId={element.symbolId}
-              zoom={zoom}
-              isSelected={isSelected || isPendingStart}
-              elementLabel={element.label}
-              circuitLabel={circuitLabel}
-              formattedLabel={formattedLabel}
-              returnRef={element.returnRef}
-              rotationDeg={element.rotation || 0}
-            />
-
-            {/* Ficha técnica flotante para etiquetas / remates de caño */}
-            {isTerminalRef && (() => {
-              const connectedConduit = project.conduits.find(
-                (c) => c.fromElementId === element.id || c.toElementId === element.id
-              );
-              const otherId = connectedConduit
-                ? connectedConduit.fromElementId === element.id
-                  ? connectedConduit.toElementId
-                  : connectedConduit.fromElementId
-                : null;
-              const otherEl = otherId ? elementsMap.get(otherId) : null;
-              const autoLen = otherEl
-                ? calculateConduitRealLength({
-                    fromElement: element,
-                    toElement: otherEl,
-                    levelsMap,
-                    routingPlane: connectedConduit?.routingPlane,
-                    waypoints: connectedConduit?.waypoints,
-                    elevationRoute: connectedConduit?.elevationRoute
-                  })
-                : 0;
-              const totalLen =
-                element.totalLengthM ??
-                connectedConduit?.manualLengthM ??
-                (autoLen + (connectedConduit?.additionalLengthM || element.additionalLengthM || 0));
-              const isFixedLength = element.totalLengthM != null || connectedConduit?.manualLengthM != null;
-              const diam =
-                element.continuationConduitDiameterMM ||
-                connectedConduit?.diameterMM ||
-                19;
-              const conductorsCount =
-                element.continuationConductorsCount ||
-                connectedConduit?.conductors?.length ||
-                3;
-              const section =
-                element.continuationCableSectionMM2 ||
-                connectedConduit?.conductors?.[0]?.sectionMM2 ||
-                2.5;
-              const condDesc = `${conductorsCount}x${section}mm²`;
-              const targetText =
-                element.targetDescription ||
-                connectedConduit?.targetDescription ||
-                'A Tablero';
-
-              const boxWidth = Math.max(130, targetText.length * 6.5 + 28);
-
-              return (
-                <g
-                  transform="translate(14, -14)"
-                  pointerEvents="all"
-                  className="select-none font-sans cursor-grab active:cursor-grabbing"
-                >
-                  <title>Arrastrar para mover referencia técnica. Doble clic para editar.</title>
-                  <rect
-                    x="0"
-                    y="-9"
-                    width={boxWidth}
-                    height={30}
-                    rx="6"
-                    fill="rgba(15, 23, 42, 0.92)"
-                    stroke="#38bdf8"
-                    strokeWidth="1.2"
-                    className="shadow-md"
-                  />
-                  <text x="6" y="3.5" fill="#38bdf8" fontSize="9.5" fontWeight="bold">
-                    ➔ {targetText}
-                  </text>
-                  <text x="6" y="15" fill="#94a3b8" fontSize="8" fontFamily="monospace">
-                    Ø{diam}mm · L={totalLen.toFixed(1)}m{isFixedLength ? ' [Fijo]' : ''} · {condDesc}
-                  </text>
-                </g>
-              );
-            })()}
-
-            {/* Si está seleccionado y NO estamos enlazando cañerías, botón contextual flotante */}
-            {isSelected && !isConnectingConduit && (
-              <g
-                transform="translate(0, -36)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onElectricalElementDoubleClick?.(element.id);
-                }}
-                className="cursor-pointer group"
-              >
-                <rect
-                  x="-52"
-                  y="-11"
-                  width="104"
-                  height="22"
-                  rx="11"
-                  fill="#0f172a"
-                  stroke="#3b82f6"
-                  strokeWidth="1.5"
-                  className="shadow-md group-hover:fill-blue-600 transition-colors"
-                />
-                <text
-                  x="0"
-                  y="4"
-                  textAnchor="middle"
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  className="select-none font-sans pointer-events-none"
-                >
-                  ⚙️ Ficha / Medir
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      });
-  }, [
-    project.electricalElements,
-    project.circuits,
-    project.panels,
-    project.conduits,
-    elementsMap,
-    levelsMap,
-    labelDisplayMode,
-    project.activeLevelId,
-    zoom,
-    selectedEntityMap,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    pendingConduitStartId,
-    onElectricalElementClick,
-    onElectricalElementDoubleClick,
-    updateElectricalElement,
-    isSamplingPattern,
-    selectedSymbolId,
-    project.walls,
-    verticesMap,
-    isSnapEnabled,
-    setSelectedEntity
-  ]);
-
-  // 7b. Tableros Eléctricos Autónomos (Distribuidores de Circuitos)
-  const renderedPanels = useMemo(() => {
-    return (project.panels || [])
-      .filter((panel) => panel.isPlaced && panel.levelId === project.activeLevelId)
-      .map((panel) => {
-        const pxX = panel.x * zoom;
-        const pxY = panel.y * zoom;
-        const isSelected = selectedEntityMap.get('panel')?.has(panel.id) || false;
-        const isPendingStart = pendingConduitStartId === panel.id;
-        const panelCircuits = project.circuits.filter((c) => c.panelId === panel.id);
-        const symbolId =
-          panel.symbolId ||
-          (panel.type === 'principal' ? 'sym-planta-tablero-principal' : 'sym-planta-tablero-seccional');
-
-        return (
-          <g
-            key={panel.id}
-            transform={`translate(${pxX}, ${pxY})`}
-            style={{ touchAction: 'none' }}
-            onPointerDown={(e) => {
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension || isSamplingPattern) return;
-              if (e.button !== 0 && e.pointerType === 'mouse') return;
-              e.stopPropagation();
-              isDraggingObjectRef.current = true;
-              try {
-                (e.currentTarget as Element).setPointerCapture(e.pointerId);
-              } catch {
-                // Fallback
-              }
-              activeNodeDragRef.current = {
-                kind: 'panel',
-                id: panel.id,
-                startX: e.clientX,
-                startY: e.clientY,
-                origX: panel.x,
-                origY: panel.y,
-                origRotation: 0,
-                moved: false
-              };
-            }}
-            onPointerMove={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
-                e.stopPropagation();
-                const drag = activeNodeDragRef.current;
-                const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-                if (dist > 3) drag.moved = true;
-                const dxWorld = (e.clientX - drag.startX) / zoom;
-                const dyWorld = (e.clientY - drag.startY) / zoom;
-                let candX = Number((drag.origX + dxWorld).toFixed(3));
-                let candY = Number((drag.origY + dyWorld).toFixed(3));
-
-                if (isSnapEnabled && !e.shiftKey) {
-                  const wallsInLevel = project.walls.filter((w) => w.levelId === project.activeLevelId);
-                  const wallSnap = calculateWallSnap({ x: candX, y: candY }, wallsInLevel, verticesMap, 0.45);
-                  if (wallSnap) {
-                    candX = Number(wallSnap.snappedPoint.x.toFixed(3));
-                    candY = Number(wallSnap.snappedPoint.y.toFixed(3));
-                  }
-                }
-
-                updatePanel(panel.id, {
-                  x: candX,
-                  y: candY
-                });
-              }
-            }}
-            onPointerUp={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
-                e.stopPropagation();
-                try {
-                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                } catch {
-                  // Ignore
-                }
-                const drag = activeNodeDragRef.current;
-                if (drag.moved) {
-                  lastDragEndTimeRef.current = Date.now();
-                  setSelectedEntity({ type: 'panel', id: panel.id });
-                }
-                activeNodeDragRef.current = null;
-                isDraggingObjectRef.current = false;
-              }
-            }}
-            onPointerCancel={(e) => {
-              if (activeNodeDragRef.current && activeNodeDragRef.current.id === panel.id) {
-                try {
-                  (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-                } catch {
-                  // Ignore
-                }
-                activeNodeDragRef.current = null;
-                isDraggingObjectRef.current = false;
-              }
-            }}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isInteractionInterceptedRef.current && !isConnectingConduit) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              if (isConnectingConduit) {
-                onElectricalElementClick?.(panel.id);
-              } else if (onPanelClick) {
-                onPanelClick(panel.id, e.shiftKey);
-              } else {
-                onElectricalElementClick?.(panel.id, e.shiftKey);
-              }
-            }}
-            onDoubleClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isCalibratingUnderlay || isAddingDimension) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              if (isConnectingConduit) {
-                onElectricalElementClick?.(panel.id);
-              } else if (onPanelDoubleClick) {
-                onPanelDoubleClick(panel.id);
-              } else {
-                onElectricalElementDoubleClick?.(panel.id);
-              }
-            }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
-            className={isSelected ? 'cursor-move' : 'cursor-pointer'}
-          >
-            {/* Hitbox táctil ampliada para arrastre de tablero en pantalla táctil */}
-            <circle
-              r={isSelected ? 48 : 36}
-              fill="transparent"
-              pointerEvents="all"
-              className={isSelected ? 'cursor-move' : 'cursor-pointer'}
-            />
-            {isSelected && (
-              <circle
-                r={36}
-                fill="none"
-                stroke="#f59e0b"
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-                className="pointer-events-none opacity-80"
-              />
-            )}
-            {/* Halo pulsante ámbar para el primer extremo de conexión de cañería */}
-            {isPendingStart && (
-              <g pointerEvents="none">
-                <circle
-                  r={36}
-                  fill="rgba(245, 158, 11, 0.25)"
-                  stroke="#f59e0b"
-                  strokeWidth={2.5}
-                  strokeDasharray="4 2"
-                  className="animate-pulse"
-                />
-                <g transform="translate(0, -42)">
-                  <rect
-                    x="-48"
-                    y="-10"
-                    width={96}
-                    height={20}
-                    rx="10"
-                    fill="#d97706"
-                    className="shadow-md"
-                  />
-                  <text
-                    x="0"
-                    y="4"
-                    textAnchor="middle"
-                    fill="#ffffff"
-                    fontSize="9"
-                    fontWeight="bold"
-                    className="font-sans select-none"
-                  >
-                    ⚡ Tablero Origen
-                  </text>
-                </g>
-              </g>
-            )}
-
-            <AeaCanvasSymbol
-              symbolId={symbolId}
-              zoom={zoom}
-              isSelected={isSelected || isPendingStart}
-              elementLabel={panel.name}
-              circuitLabel={`${panelCircuits.length} circ`}
-              formattedLabel={`${panel.name} (${panelCircuits.length} C)`}
-              rotationDeg={panel.rotation || 0}
-            />
-
-            {/* Botón contextual flotante al seleccionar el tablero */}
-            {isSelected && !isConnectingConduit && (
-              <g
-                transform="translate(0, -38)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onPanelDoubleClick) {
-                    onPanelDoubleClick(panel.id);
-                  } else {
-                    onElectricalElementDoubleClick?.(panel.id);
-                  }
-                }}
-                className="cursor-pointer group"
-              >
-                <rect
-                  x="-62"
-                  y="-11"
-                  width={124}
-                  height="22"
-                  rx="11"
-                  fill="#0f172a"
-                  stroke="#f59e0b"
-                  strokeWidth="1.5"
-                  className="shadow-md group-hover:fill-amber-600 transition-colors"
-                />
-                <text
-                  x="0"
-                  y="4"
-                  textAnchor="middle"
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  className="select-none font-sans pointer-events-none"
-                >
-                  ⚙️ Ficha Distribuidor
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      });
-  }, [
-    project.panels,
-    project.circuits,
-    project.activeLevelId,
-    zoom,
-    selectedEntityMap,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    pendingConduitStartId,
-    onElectricalElementClick,
-    onElectricalElementDoubleClick,
-    onPanelClick,
-    onPanelDoubleClick,
-    updatePanel,
-    project.walls,
-    verticesMap,
-    isSnapEnabled,
-    selectedSymbolId,
-    setSelectedEntity,
-    isSamplingPattern
-  ]);
-
-  // 8. Cotas Métricas Libres en el Plano CAD
-  const renderedDimensions = useMemo(() => {
-    if (!showDimensions || !project.dimensions) return null;
-
-    return project.dimensions
-      .filter((dim) => dim.levelId === project.activeLevelId)
-      .map((dim) => {
-        const x1 = dim.p1.x * zoom;
-        const y1 = dim.p1.y * zoom;
-        const x2 = dim.p2.x * zoom;
-        const y2 = dim.p2.y * zoom;
-        const dist = Math.hypot(dim.p2.x - dim.p1.x, dim.p2.y - dim.p1.y);
-        if (dist < 0.05) return null;
-
-        const isSelected = selectedEntity?.type === 'dimension' && selectedEntity.id === dim.id;
-        const strokeColor = isSelected ? DIMENSION_CONSTANTS.SELECTED_COLOR : DIMENSION_CONSTANTS.DEFAULT_COLOR;
-
-        const angleRad = Math.atan2(y2 - y1, x2 - x1);
-        const tickAngleRad = angleRad + Math.PI / 4;
-        const tickDx = Math.cos(tickAngleRad) * 5;
-        const tickDy = Math.sin(tickAngleRad) * 5;
-
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        const normX = -(y2 - y1) / (dist * zoom);
-        const normY = (x2 - x1) / (dist * zoom);
-        const textX = midX + normX * 8;
-        const textY = midY + normY * 8;
-
-        let angleDeg = (angleRad * 180) / Math.PI;
-        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
-
-        const labelText = formatDimensionText(dist, dim.label);
-
-        return (
-          <g
-            key={dim.id}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isInteractionInterceptedRef.current) {
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              setSelectedEntity({ type: 'dimension', id: dim.id });
-            }}
-            className="cursor-pointer group"
-          >
-            {/* Hit area amplia */}
-            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={18} pointerEvents="stroke" />
-
-            {/* Línea de cota */}
-            <line
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2.5 : 1.5}
-            />
-
-            {/* Tics arquitectónicos a 45° */}
-            <line
-              x1={x1 - tickDx}
-              y1={y1 - tickDy}
-              x2={x1 + tickDx}
-              y2={y1 + tickDy}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2.5 : 2}
-            />
-            <line
-              x1={x2 - tickDx}
-              y1={y2 - tickDy}
-              x2={x2 + tickDx}
-              y2={y2 + tickDy}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 2.5 : 2}
-            />
-
-            {/* Etiqueta de cota */}
-            <g transform={`translate(${textX}, ${textY}) rotate(${angleDeg})`}>
-              <rect
-                x="-26"
-                y="-10"
-                width="52"
-                height="20"
-                rx="4"
-                fill="#ffffff"
-                stroke={isSelected ? strokeColor : '#cbd5e1'}
-                strokeWidth={1}
-                className="shadow-xs"
-              />
-              <text
-                x="0"
-                y="4"
-                textAnchor="middle"
-                fontSize={10}
-                fontWeight="bold"
-                fill={strokeColor}
-                className="font-mono select-none pointer-events-none"
-              >
-                {labelText}
-              </text>
-            </g>
-
-            {/* Botón flotante para eliminar la cota si está seleccionada */}
-            {isSelected && (
-              <g
-                transform={`translate(${midX}, ${midY - 24})`}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteDimensionLine(dim.id);
-                }}
-                className="cursor-pointer group/dimdel"
-              >
-                <circle r={10} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} className="transition-colors group-hover/dimdel:fill-red-600 drop-shadow" />
-                <text x="0" y="3.5" textAnchor="middle" fontSize={10} fontWeight="bold" fill="#ffffff" className="select-none font-sans pointer-events-none">
-                  ✕
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      });
-  }, [
-    project.dimensions,
-    project.activeLevelId,
-    showDimensions,
-    selectedEntity,
-    zoom,
-    selectedSymbolId,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    setSelectedEntity,
-    deleteDimensionLine
-  ]);
+  const activeLevelDimensions = useMemo(
+    () => (project.dimensions || []).filter((dim) => dim.levelId === project.activeLevelId),
+    [project.dimensions, project.activeLevelId]
+  );
+  const handleSelectDimension = useMemo(
+    () => (dimId: string) =>
+      electricalActionsRef.current.setSelectedEntity({ type: 'dimension', id: dimId }),
+    []
+  );
 
   // 3.1. Capa visual de guías inteligentes (Smart Guides), imantación y cotas dinámicas durante arrastre de muro
   return (
@@ -2223,11 +1178,91 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           <OpeningsLayer openings={project.openings} wallsMap={wallsMap} verticesMap={verticesMap} activeLevelId={project.activeLevelId} zoom={zoom} selectedOpeningId={selectedEntity?.type === 'opening' ? selectedEntity.id : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onOpeningClick={onOpeningClick} />
           <ColumnsLayer columns={activeLevelColumns} zoom={zoom} selectedColumnId={selectedEntity?.type === 'column' ? selectedEntity.id : null} onColumnClick={onColumnClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           <PreviewRayLayer anchorVertex={activeAnchorVertex ?? null} distanceM={previewDistanceM} directionDeg={currentDirectionDeg} zoom={zoom} />
-          {renderedConduits}
+          <ConduitsLayer
+            conduits={project.conduits}
+            circuits={project.circuits}
+            spaces={project.spaces}
+            elementsMap={elementsMap}
+            activeLevelId={project.activeLevelId}
+            zoom={zoom}
+            selectedConduitIds={selectedConduitIds}
+            editingConduitRouteId={editingConduitRouteId}
+            activeWaypointDragRef={activeWaypointDragRef}
+            isDraggingObjectRef={isDraggingObjectRef}
+            wasDraggingRecentlyRef={wasDraggingRecentlyRef}
+            isInteractionInterceptedRef={isInteractionInterceptedRef}
+            triggerPlacementRef={triggerPlacementRef}
+            onToggleSelectConduit={handleToggleSelectConduit}
+            onUpdateConduitWaypoint={onUpdateConduitWaypoint}
+            onRemoveConduitWaypoint={onRemoveConduitWaypoint}
+          />
           <VerticesLayer vertices={project.vertices} zoom={zoom} activeAnchorVertexId={activeAnchorVertexId} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onSelectAnchor={setActiveAnchorVertexId} />
-          {renderedElements}
-          {renderedPanels}
-          {renderedDimensions}
+          <ElectricalElementsLayer
+            elements={activeLevelElements}
+            circuits={project.circuits}
+            panels={project.panels}
+            conduits={project.conduits}
+            elementsMap={elementsMap}
+            levelsMap={levelsMap}
+            walls={activeLevelWalls}
+            verticesMap={verticesMap}
+            labelDisplayMode={labelDisplayMode}
+            zoom={zoom}
+            selectedElementIds={selectedElementIds}
+            pendingConduitStartId={pendingConduitStartId}
+            isConnectingConduit={isConnectingConduit}
+            isCalibratingUnderlay={isCalibratingUnderlay}
+            isAddingDimension={isAddingDimension}
+            isSnapEnabled={isSnapEnabled}
+            isNodeDragBlocked={isNodeDragBlocked}
+            activeNodeDragRef={activeNodeDragRef}
+            isDraggingObjectRef={isDraggingObjectRef}
+            lastDragEndTimeRef={lastDragEndTimeRef}
+            wasDraggingRecentlyRef={wasDraggingRecentlyRef}
+            isInteractionInterceptedRef={isInteractionInterceptedRef}
+            triggerPlacementRef={triggerPlacementRef}
+            onUpdateElement={updateElectricalElement}
+            onSelectElementAfterDrag={handleSelectElementAfterDrag}
+            onElectricalElementClick={onElectricalElementClick}
+            onElectricalElementDoubleClick={onElectricalElementDoubleClick}
+          />
+          <PanelsLayer
+            panels={activeLevelPanels}
+            circuits={project.circuits}
+            walls={activeLevelWalls}
+            verticesMap={verticesMap}
+            zoom={zoom}
+            selectedPanelIds={selectedPanelIds}
+            pendingConduitStartId={pendingConduitStartId}
+            isConnectingConduit={isConnectingConduit}
+            isCalibratingUnderlay={isCalibratingUnderlay}
+            isAddingDimension={isAddingDimension}
+            isSnapEnabled={isSnapEnabled}
+            isNodeDragBlocked={isNodeDragBlocked}
+            activeNodeDragRef={activeNodeDragRef}
+            isDraggingObjectRef={isDraggingObjectRef}
+            lastDragEndTimeRef={lastDragEndTimeRef}
+            wasDraggingRecentlyRef={wasDraggingRecentlyRef}
+            isInteractionInterceptedRef={isInteractionInterceptedRef}
+            triggerPlacementRef={triggerPlacementRef}
+            onUpdatePanel={updatePanel}
+            onSelectPanelAfterDrag={handleSelectPanelAfterDrag}
+            onElectricalElementClick={onElectricalElementClick}
+            onElectricalElementDoubleClick={onElectricalElementDoubleClick}
+            onPanelClick={onPanelClick}
+            onPanelDoubleClick={onPanelDoubleClick}
+          />
+          <DimensionsLayer
+            dimensions={activeLevelDimensions}
+            showDimensions={showDimensions}
+            zoom={zoom}
+            selectedDimensionId={selectedEntity?.type === 'dimension' ? selectedEntity.id : null}
+            wasDraggingRecentlyRef={wasDraggingRecentlyRef}
+            isInteractionInterceptedRef={isInteractionInterceptedRef}
+            triggerPlacementRef={triggerPlacementRef}
+            onSelectDimension={handleSelectDimension}
+            onDeleteDimension={deleteDimensionLine}
+          />
           <SmartGuidesLayer activeDrag={activeDrag} activeSnapResult={activeSnapResult} zoom={zoom} />
 
           {detectedPatternMatches.length > 0 && underlaySheet && (

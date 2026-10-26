@@ -10,3 +10,26 @@ export interface LayerInteractionGuards {
   /** Verdadero cuando otra herramienta (símbolo, cañería, calibración, cota) captura los clics. */
   isInteractionBlocked: boolean;
 }
+
+/** Estado en vuelo durante el arrastre de una boca o tablero eléctrico en el lienzo. */
+export interface ActiveNodeDragState {
+  kind: 'element' | 'panel';
+  id: string;
+  startX: number;
+  startY: number;
+  origX: number;
+  origY: number;
+  origRotation: number;
+  moved: boolean;
+}
+
+/** Estado en vuelo durante el arrastre de un waypoint (quiebre intermedio) de cañería. */
+export interface ActiveWaypointDragState {
+  conduitId: string;
+  wpIndex: number;
+  startX: number;
+  startY: number;
+  origWpX: number;
+  origWpY: number;
+  moved: boolean;
+}
