@@ -96,3 +96,34 @@ export const CAD_OVERLAY_COLORS = {
   patternDismiss: '#ef4444',
   white: '#ffffff'
 } as const;
+
+/** Paleta de entidades estructurales, vértices de anclaje y rayo de previsualización del lienzo CAD. */
+export const CAD_STRUCTURE_COLORS = {
+  beamFill: 'rgba(148, 163, 184, 0.10)',
+  beamFillSelected: 'rgba(37, 99, 235, 0.15)',
+  beamStroke: '#64748b',
+  beamStrokeSelected: '#2563eb',
+  columnFill: '#cbd5e1',
+  columnFillSelected: '#3b82f6',
+  columnStroke: '#334155',
+  columnStrokeSelected: '#1d4ed8',
+  columnCrossHair: '#475569',
+  columnDiagonal: '#64748b',
+  anchorHaloFill: 'rgba(59, 130, 246, 0.25)',
+  anchorHaloStroke: '#3b82f6',
+  anchorFill: '#2563eb',
+  vertexFill: '#64748b',
+  vertexStroke: '#ffffff',
+  previewRay: '#ef4444'
+} as const;
+
+/** Tamaños geométricos (px) de los vértices y marcas del lienzo CAD. */
+export const CAD_STRUCTURE_METRICS = {
+  anchorHaloRadius: 12,
+  anchorRadius: 6,
+  vertexRadius: 4.5,
+  columnCrossHalfSize: 6,
+  columnLabelOffsetPx: 8,
+  previewRayMarkerRadius: 5,
+  previewRayLabelOffsetPx: 8
+} as const;

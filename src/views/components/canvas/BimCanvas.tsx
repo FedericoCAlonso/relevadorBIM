@@ -23,7 +23,6 @@ import {
   isSpaceSemiCovered,
   computeCeilingProjection
 } from '../../../models/architecture/Space';
-import { getColumnPolygon, getBeamPolygon } from '../../../models/architecture/StructuralElement';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
 import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
@@ -43,6 +42,9 @@ import type { SpatialElectricalNode, ConduitWaypoint } from '../../../models/ele
 import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
 import { SmartGuidesLayer } from './layers/SmartGuidesLayer';
 import { PatternMatchesLayer } from './layers/PatternMatchesLayer';
+import { BeamsLayer, ColumnsLayer } from './layers/StructuralLayers';
+import { VerticesLayer } from './layers/VerticesLayer';
+import { PreviewRayLayer } from './layers/PreviewRayLayer';
 
 export type { WallPlacementSnap };
 
@@ -1753,235 +1755,9 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     });
   }, [project.openings, wallsMap, project.activeLevelId, verticesMap, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onOpeningClick]);
 
-  // 3b. Vigas Salientes (Cuelgues de Losa / Proyección Superior)
-  const renderedBeams = useMemo(() => {
-    const beams = project.beams || [];
-    return beams
-      .filter((b) => b.levelId === project.activeLevelId)
-      .map((beam) => {
-        const poly = getBeamPolygon(beam);
-        if (poly.length < 4) return null;
-        const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
-        const isSelected = selectedEntity?.type === 'beam' && selectedEntity.id === beam.id;
-        const midX = ((beam.startX + beam.endX) / 2) * zoom;
-        const midY = ((beam.startY + beam.endY) / 2) * zoom;
-
-        return (
-          <g
-            key={beam.id}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) return;
-              e.stopPropagation();
-              onBeamClick?.(beam.id);
-            }}
-            className="cursor-pointer group"
-          >
-            <polygon
-              points={pointsStr}
-              fill={isSelected ? 'rgba(37, 99, 235, 0.15)' : 'rgba(148, 163, 184, 0.10)'}
-              stroke={isSelected ? '#2563eb' : '#64748b'}
-              strokeWidth={isSelected ? 2 : 1}
-              strokeDasharray="6 3"
-            />
-            <text
-              x={midX}
-              y={midY}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fontSize={9}
-              className="fill-slate-600 font-mono font-bold pointer-events-none select-none"
-            >
-              V {Math.round(beam.width * 100)}x{Math.round(beam.dropHeightM * 100)}
-            </text>
-          </g>
-        );
-      });
-  }, [project.beams, project.activeLevelId, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onBeamClick]);
-
-  // 3c. Columnas Estructurales (Hormigón Armado y Acero)
-  const renderedColumns = useMemo(() => {
-    const columns = project.columns || [];
-    return columns
-      .filter((c) => c.levelId === project.activeLevelId)
-      .map((col) => {
-        const isSelected = selectedEntity?.type === 'column' && selectedEntity.id === col.id;
-        const cx = col.x * zoom;
-        const cy = col.y * zoom;
-
-        return (
-          <g
-            key={col.id}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension) return;
-              e.stopPropagation();
-              onColumnClick?.(col.id);
-            }}
-            className="cursor-pointer group"
-          >
-            {col.shape === 'circular' ? (
-              <>
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={(col.width / 2) * zoom}
-                  fill={isSelected ? '#3b82f6' : '#cbd5e1'}
-                  stroke={isSelected ? '#1d4ed8' : '#334155'}
-                  strokeWidth={1.5}
-                />
-                <line
-                  x1={cx - 6}
-                  y1={cy}
-                  x2={cx + 6}
-                  y2={cy}
-                  stroke="#475569"
-                  strokeWidth={1}
-                  className="pointer-events-none select-none"
-                />
-                <line
-                  x1={cx}
-                  y1={cy - 6}
-                  x2={cx}
-                  y2={cy + 6}
-                  stroke="#475569"
-                  strokeWidth={1}
-                  className="pointer-events-none select-none"
-                />
-              </>
-            ) : (
-              (() => {
-                const poly = getColumnPolygon(col);
-                const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
-                return (
-                  <>
-                    <polygon
-                      points={pointsStr}
-                      fill={isSelected ? '#3b82f6' : '#cbd5e1'}
-                      stroke={isSelected ? '#1d4ed8' : '#334155'}
-                      strokeWidth={1.5}
-                    />
-                    <line
-                      x1={poly[0].x * zoom}
-                      y1={poly[0].y * zoom}
-                      x2={poly[2].x * zoom}
-                      y2={poly[2].y * zoom}
-                      stroke={isSelected ? '#1d4ed8' : '#64748b'}
-                      strokeWidth={1}
-                      className="pointer-events-none select-none opacity-60"
-                    />
-                    <line
-                      x1={poly[1].x * zoom}
-                      y1={poly[1].y * zoom}
-                      x2={poly[3].x * zoom}
-                      y2={poly[3].y * zoom}
-                      stroke={isSelected ? '#1d4ed8' : '#64748b'}
-                      strokeWidth={1}
-                      className="pointer-events-none select-none opacity-60"
-                    />
-                  </>
-                );
-              })()
-            )}
-            {isSelected && (
-              <text
-                x={cx}
-                y={cy - (col.depth / 2) * zoom - 8}
-                textAnchor="middle"
-                fontSize={9}
-                className="fill-blue-600 font-mono font-bold pointer-events-none select-none"
-              >
-                Col {Math.round(col.width * 100)}x{Math.round(col.depth * 100)}
-              </text>
-            )}
-          </g>
-        );
-      });
-  }, [project.columns, project.activeLevelId, zoom, selectedEntity, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, onColumnClick]);
-
-  // 4. Vértices y Puntos de Anclaje (Snaps)
-  const renderedVertices = useMemo(() => {
-    return project.vertices.map((v) => {
-      const isAnchor = activeAnchorVertexId === v.id;
-      const pxX = v.x * zoom;
-      const pxY = v.y * zoom;
-
-      return (
-        <g
-          key={v.id}
-          transform={`translate(${pxX}, ${pxY})`}
-          onClick={(e) => {
-            if (wasDraggingRecentlyRef.current()) return;
-            if (isInteractionInterceptedRef.current) {
-              triggerPlacementRef.current(e.clientX, e.clientY);
-              return;
-            }
-            e.stopPropagation();
-            setActiveAnchorVertexId(v.id);
-          }}
-          className="cursor-pointer"
-        >
-          {/* Halo de anclaje activo */}
-          {isAnchor && (
-            <circle
-              r={12}
-              fill="rgba(59, 130, 246, 0.25)"
-              stroke="#3b82f6"
-              strokeWidth={1.5}
-              strokeDasharray="2 2"
-            />
-          )}
-          {/* Punto de esquina */}
-          <circle
-            r={isAnchor ? 6 : 4.5}
-            fill={isAnchor ? '#2563eb' : '#64748b'}
-            stroke="#ffffff"
-            strokeWidth={1.5}
-            className="hover:stroke-blue-400 hover:stroke-[2.5px] transition-colors"
-          />
-        </g>
-      );
-    });
-  }, [project.vertices, activeAnchorVertexId, zoom, selectedSymbolId, isConnectingConduit, isCalibratingUnderlay, isAddingDimension, setActiveAnchorVertexId]);
-
-  // 5. Previsualización del rayo láser proyectado desde el anclaje activo
-  const renderedPreviewRay = useMemo(() => {
-    if (!activeAnchorVertex || previewDistanceM <= 0) return null;
-
-    const startX = activeAnchorVertex.x * zoom;
-    const startY = activeAnchorVertex.y * zoom;
-    const rad = (currentDirectionDeg * Math.PI) / 180;
-    const endX = startX + Math.cos(rad) * previewDistanceM * zoom;
-    const endY = startY + Math.sin(rad) * previewDistanceM * zoom;
-
-    return (
-      <g pointerEvents="none">
-        {/* Rayo láser proyectado */}
-        <line
-          x1={startX}
-          y1={startY}
-          x2={endX}
-          y2={endY}
-          stroke="#ef4444"
-          strokeWidth={2}
-          strokeDasharray="5 4"
-          strokeOpacity={0.8}
-        />
-        {/* Marcador de destino */}
-        <circle cx={endX} cy={endY} r={5} fill="#ef4444" fillOpacity={0.7} />
-        {/* Cota flotante del rayo */}
-        <text
-          x={(startX + endX) / 2}
-          y={(startY + endY) / 2 - 8}
-          textAnchor="middle"
-          fontSize={10}
-          className="font-mono font-bold fill-red-600 bg-white"
-        >
-          {previewDistanceM.toFixed(2)} m
-        </text>
-      </g>
-    );
-  }, [activeAnchorVertex, previewDistanceM, currentDirectionDeg, zoom]);
+  const isInteractionBlocked = Boolean(selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension);
+  const activeLevelBeams = useMemo(() => (project.beams || []).filter((b) => b.levelId === project.activeLevelId), [project.beams, project.activeLevelId]);
+  const activeLevelColumns = useMemo(() => (project.columns || []).filter((c) => c.levelId === project.activeLevelId), [project.columns, project.activeLevelId]);
 
   // 6. Cañerías de enlace entre bocas eléctricas y tableros distribuidores
   const elementsMap = useMemo(() => {
@@ -3143,13 +2919,13 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
           )}
 
           {renderedSpaces}
-          {renderedBeams}
+          <BeamsLayer beams={activeLevelBeams} zoom={zoom} selectedBeamId={selectedEntity?.type === 'beam' ? selectedEntity.id : null} onBeamClick={onBeamClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           {renderedWalls}
           {renderedOpenings}
-          {renderedColumns}
-          {renderedPreviewRay}
+          <ColumnsLayer columns={activeLevelColumns} zoom={zoom} selectedColumnId={selectedEntity?.type === 'column' ? selectedEntity.id : null} onColumnClick={onColumnClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
+          <PreviewRayLayer anchorVertex={activeAnchorVertex ?? null} distanceM={previewDistanceM} directionDeg={currentDirectionDeg} zoom={zoom} />
           {renderedConduits}
-          {renderedVertices}
+          <VerticesLayer vertices={project.vertices} zoom={zoom} activeAnchorVertexId={activeAnchorVertexId} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onSelectAnchor={setActiveAnchorVertexId} />
           {renderedElements}
           {renderedPanels}
           {renderedDimensions}
