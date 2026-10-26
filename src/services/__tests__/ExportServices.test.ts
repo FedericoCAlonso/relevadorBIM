@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { createEmptyProject } from '../../models/architecture/BuildingProject';
 import { exportProjectToDxf } from '../dxfExportService';
-import { exportProjectToJson, parseProjectJson } from '../projectBackupService';
+import {
+  exportProjectToJson,
+  parseProjectJson,
+  saveProjectToLocalStorage,
+  loadProjectFromLocalStorage,
+  clearProjectFromLocalStorage
+} from '../projectBackupService';
 import { generarComputoCotizador, exportComputoToCsv } from '../cotizadorBridge';
 
 describe('Servicios de Exportación y Respaldo Técnico', () => {
@@ -149,6 +155,34 @@ describe('Servicios de Exportación y Respaldo Técnico', () => {
       expect(() => parseProjectJson(invalidJson)).toThrow(
         'El archivo seleccionado no corresponde a un proyecto válido de RelevadorBIM.'
       );
+    });
+
+    it('debe guardar, cargar y limpiar el proyecto en localStorage para soporte offline', () => {
+      const storageMock: Record<string, string> = {};
+      const mockStorage = {
+        getItem: (k: string) => storageMock[k] ?? null,
+        setItem: (k: string, v: string) => { storageMock[k] = v; },
+        removeItem: (k: string) => { delete storageMock[k]; }
+      } as unknown as Storage;
+
+      (globalThis as unknown as { localStorage: Storage }).localStorage = mockStorage;
+
+      const originalProject = createMockProject();
+
+      // Guardar
+      const saved = saveProjectToLocalStorage(originalProject);
+      expect(saved).toBe(true);
+
+      // Cargar
+      const loaded = loadProjectFromLocalStorage();
+      expect(loaded).not.toBeNull();
+      expect(loaded?.meta.name).toBe('Obra Test AEA');
+      expect(loaded?.walls.length).toBe(4);
+
+      // Limpiar
+      clearProjectFromLocalStorage();
+      const cleared = loadProjectFromLocalStorage();
+      expect(cleared).toBeNull();
     });
   });
 

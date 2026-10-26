@@ -14,9 +14,15 @@ interface TopStatusBarProps {
   onOpenMenu: () => void;
   onOpenBatchSelect?: () => void;
   onOpenVoiceAssistant?: () => void;
+  isOnline?: boolean;
 }
 
-export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBatchSelect, onOpenVoiceAssistant }) => {
+export const TopStatusBar: React.FC<TopStatusBarProps> = ({
+  onOpenMenu,
+  onOpenBatchSelect,
+  onOpenVoiceAssistant,
+  isOnline = true
+}) => {
   const { project, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -87,6 +93,15 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({ onOpenMenu, onOpenBa
           <span className="text-slate-600 font-medium truncate text-[11px] sm:text-xs">
             {project.levels.find((l) => l.id === project.activeLevelId)?.name || 'Planta'}
           </span>
+          {!isOnline && (
+            <span
+              className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 shrink-0"
+              title="Modo sin conexión. Los cambios se guardan localmente en el dispositivo."
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Offline
+            </span>
+          )}
         </div>
       </div>
 

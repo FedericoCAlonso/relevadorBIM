@@ -37,6 +37,7 @@ import { UnderlayCalibrationModal } from './views/components/underlay/UnderlayCa
 import { UnderlayAdjustModal } from './views/components/underlay/UnderlayAdjustModal';
 import { useElectricalViewModel } from './viewmodels/useElectricalViewModel';
 import { useVoiceAssistantViewModel } from './viewmodels/useVoiceAssistantViewModel';
+import { usePwaViewModel } from './viewmodels/usePwaViewModel';
 import { VoiceAssistantModal } from './views/components/nlp/VoiceAssistantModal';
 import { VoiceConfirmationToast } from './views/components/nlp/VoiceConfirmationToast';
 import { getSymbolById } from './models/electrical/symbolsLib';
@@ -45,6 +46,7 @@ import { X, Mic } from 'lucide-react';
 export function App() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const voiceAssistant = useVoiceAssistantViewModel();
+  const pwa = usePwaViewModel();
 
   const {
     project,
@@ -411,6 +413,7 @@ export function App() {
         onOpenMenu={() => setShowMainMenu(true)}
         onOpenBatchSelect={() => setShowBatchSelectModal(true)}
         onOpenVoiceAssistant={() => voiceAssistant.setIsModalOpen(true)}
+        isOnline={pwa.isOnline}
       />
 
       {/* 2. Cuerpo Principal: Responsive Desktop vs Mobile */}
@@ -987,6 +990,13 @@ export function App() {
         onStartUnderlayCalibration={startUnderlayCalibration}
         onOpenAdjustUnderlay={openUnderlayAdjustModal}
         onRemoveUnderlay={removeUnderlaySheet}
+        isOnline={pwa.isOnline}
+        isInstallable={pwa.isInstallable}
+        isInstalled={pwa.isInstalled}
+        isIos={pwa.isIos}
+        hasUpdate={pwa.hasUpdate}
+        onInstall={pwa.installApp}
+        onRefresh={pwa.refreshApp}
       />
 
       {/* Modal de Calibración Métrica de Escala del Plano de Fondo */}

@@ -25,7 +25,12 @@ import {
   Layers,
   Sliders,
   Filter,
-  Mic
+  Mic,
+  Wifi,
+  WifiOff,
+  DownloadCloud,
+  Smartphone,
+  RefreshCw
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -43,6 +48,13 @@ interface MainMenuModalProps {
   onStartUnderlayCalibration?: () => void;
   onOpenAdjustUnderlay?: () => void;
   onRemoveUnderlay?: () => void;
+  isOnline?: boolean;
+  isInstallable?: boolean;
+  isInstalled?: boolean;
+  isIos?: boolean;
+  hasUpdate?: boolean;
+  onInstall?: () => void;
+  onRefresh?: () => void;
 }
 
 export const MainMenuModal: React.FC<MainMenuModalProps> = ({
@@ -59,7 +71,14 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onLoadUnderlay,
   onStartUnderlayCalibration,
   onOpenAdjustUnderlay,
-  onRemoveUnderlay
+  onRemoveUnderlay,
+  isOnline = true,
+  isInstallable = false,
+  isInstalled = false,
+  isIos = false,
+  hasUpdate = false,
+  onInstall,
+  onRefresh
 }) => {
   const { project, resetProject, loadProject } = useProjectStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -448,6 +467,110 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               </div>
               <ChevronRight size={16} className="text-slate-400" />
             </button>
+          </div>
+
+          {/* 4. SECCIÓN PWA / APLICACIÓN MÓVIL Y OFFLINE */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+              📱 Aplicación Móvil & Offline (PWA)
+            </span>
+
+            {/* Estado de Conectividad */}
+            <div
+              className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-left ${
+                isOnline
+                  ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50/70 border-amber-200 text-amber-900'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`p-2 rounded-xl border shadow-xs ${
+                    isOnline
+                      ? 'bg-white text-emerald-600 border-emerald-200'
+                      : 'bg-white text-amber-600 border-amber-200'
+                  }`}
+                >
+                  {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
+                </div>
+                <div>
+                  <div className="font-bold text-xs">
+                    {isOnline ? 'Conexión a Internet Activa' : 'Modo Offline (Sin Conexión)'}
+                  </div>
+                  <div className="text-[11px] opacity-80">
+                    {isOnline
+                      ? 'Navegación y sincronización en línea activa'
+                      : 'Operando 100% en almacenamiento local del dispositivo'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actualización Disponible de la App */}
+            {hasUpdate && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="w-full flex items-center justify-between p-3 bg-blue-50 hover:bg-blue-100 rounded-2xl border border-blue-200 transition-all text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white text-blue-600 rounded-xl border border-blue-200 shadow-xs">
+                    <RefreshCw size={16} className="animate-spin" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-blue-900 text-xs">Nueva versión disponible</div>
+                    <div className="text-[11px] text-blue-700">Tocar para actualizar la aplicación</div>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-blue-400" />
+              </button>
+            )}
+
+            {/* Botón Instalar App (PWA Nativo) */}
+            {isInstallable && !isInstalled && onInstall && (
+              <button
+                type="button"
+                onClick={onInstall}
+                className="w-full flex items-center justify-between p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-sm transition-all text-left cursor-pointer active:scale-[0.98]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 text-white rounded-xl">
+                    <DownloadCloud size={16} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs">Instalar RelevadorBIM (App)</div>
+                    <div className="text-[11px] text-blue-100">
+                      Acceso directo en inicio, pantalla completa y 100% offline
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={16} className="text-white/70" />
+              </button>
+            )}
+
+            {/* Indicador de App ya instalada */}
+            {isInstalled && (
+              <div className="w-full flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 text-left">
+                <div className="p-2 bg-white text-blue-600 rounded-xl border border-slate-200 shadow-xs">
+                  <Smartphone size={16} />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800 text-xs">Aplicación Instalada</div>
+                  <div className="text-[11px] text-slate-500">
+                    Modo autónomo PWA activo en este dispositivo
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Guía rápida para iOS Safari */}
+            {isIos && !isInstalled && (
+              <div className="w-full p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 leading-tight">
+                💡 <span className="font-bold">Para instalar en iPhone/iPad:</span> Tocá el botón{' '}
+                <span className="font-bold">Compartir</span> en Safari y seleccioná{' '}
+                <span className="font-bold">&quot;Agregar a inicio&quot;</span>.
+              </div>
+            )}
           </div>
         </div>
       </div>

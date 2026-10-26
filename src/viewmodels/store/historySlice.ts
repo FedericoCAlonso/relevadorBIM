@@ -12,6 +12,11 @@ import type { BuildingProject } from '../../models/architecture/BuildingProject'
 import { createEmptyProject } from '../../models/architecture/BuildingProject';
 import { migrateLoadedProject } from '../../models/architecture/projectMigration';
 import {
+  saveProjectToLocalStorage,
+  loadProjectFromLocalStorage,
+  clearProjectFromLocalStorage
+} from '../../services/projectBackupService';
+import {
   MAX_PROJECT_UNDO_STACK,
   type HistoryAndMetaSlice,
   type ProjectHistoryEntry,
@@ -50,6 +55,7 @@ export function createHistoryWrappedSet(rawSet: StoreSet): StoreSet {
       }
 
       if ('project' in nextPartial && nextPartial.project && nextPartial.project !== state.project) {
+        saveProjectToLocalStorage(nextPartial.project);
         const currentEntry: ProjectHistoryEntry = {
           project: cloneProject(state.project),
           activeAnchorVertexId: state.activeAnchorVertexId
@@ -78,7 +84,7 @@ export function createHistorySlice(
   get: StoreGet
 ): HistoryAndMetaSlice {
   return {
-    project: createEmptyProject(),
+    project: (typeof window !== 'undefined' ? loadProjectFromLocalStorage() : null) || createEmptyProject(),
     undoStack: [],
     redoStack: [],
     canUndo: false,
@@ -98,6 +104,8 @@ export function createHistorySlice(
       if (nextRedoStack.length > MAX_PROJECT_UNDO_STACK) {
         nextRedoStack.pop();
       }
+
+      saveProjectToLocalStorage(prevEntry.project);
 
       rawSet({
         project: prevEntry.project,
@@ -127,6 +135,8 @@ export function createHistorySlice(
       if (nextUndoStack.length > MAX_PROJECT_UNDO_STACK) {
         nextUndoStack.shift();
       }
+
+      saveProjectToLocalStorage(nextEntry.project);
 
       rawSet({
         project: nextEntry.project,
@@ -196,6 +206,7 @@ export function createHistorySlice(
 
     loadProject: (project) => {
       const migrated = migrateLoadedProject(project);
+      saveProjectToLocalStorage(migrated);
       set({
         project: migrated,
         selectedEntity: null,
@@ -209,7 +220,8 @@ export function createHistorySlice(
       });
     },
 
-    resetProject: () =>
+    resetProject: () => {
+      clearProjectFromLocalStorage();
       set({
         project: createEmptyProject(),
         selectedEntity: null,
@@ -220,6 +232,7 @@ export function createHistorySlice(
         canUndo: false,
         canRedo: false,
         _skipHistory: true
-      })
+      });
+    }
   };
 }
