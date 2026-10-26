@@ -27,7 +27,8 @@ export interface WallTypeOption {
 export const WALL_TYPE_OPTIONS: readonly WallTypeOption[] = [
   { id: 'standard', label: 'Estándar' },
   { id: 'low_wall', label: 'Muro Bajo' },
-  { id: 'railing', label: 'Baranda' }
+  { id: 'railing', label: 'Baranda' },
+  { id: 'separator', label: 'Límite Virtual (Separador)' }
 ] as const;
 
 export interface WallJustificationOption {

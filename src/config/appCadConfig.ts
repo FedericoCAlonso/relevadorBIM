@@ -174,6 +174,7 @@ export const CAD_WALL_STYLES = {
   standard: { fill: '#334155', fillHover: '#475569', stroke: '#1e293b', strokeWidth: 1 },
   low_wall: { fill: '#94a3b8', fillHover: '#64748b', stroke: '#475569', strokeWidth: 1 },
   railing: { fill: 'rgba(148, 163, 184, 0.15)', fillHover: 'rgba(148, 163, 184, 0.15)', stroke: '#475569', strokeWidth: 1.5, strokeDasharray: '8 4' },
+  separator: { fill: 'none', fillHover: 'rgba(2, 132, 199, 0.08)', stroke: '#0284c7', strokeWidth: 1.5, strokeDasharray: '6 4' },
   selected: { fill: '#2563eb', stroke: '#1d4ed8', strokeWidth: 2, outline: '#60a5fa' },
   gripFill: '#ffffff',
   gripStroke: '#2563eb',

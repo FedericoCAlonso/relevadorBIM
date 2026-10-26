@@ -16,10 +16,11 @@ export interface WallBodyStyle {
   strokeDasharray?: string;
 }
 
-const TYPOLOGY_KEYS: Record<WallType, 'standard' | 'low_wall' | 'railing'> = {
+const TYPOLOGY_KEYS: Record<WallType, 'standard' | 'low_wall' | 'railing' | 'separator'> = {
   standard: 'standard',
   low_wall: 'low_wall',
-  railing: 'railing'
+  railing: 'railing',
+  separator: 'separator'
 };
 
 /** Estilo del cuerpo del muro; la selección tiene precedencia sobre la tipología y el hover. */
@@ -41,5 +42,6 @@ export function getWallBodyStyle(wall: { wallType?: WallType }, isSelected: bool
 export function getWallTypologyLabel(wall: { wallType?: WallType; height?: number }): string | null {
   if (wall.wallType === 'low_wall') return `h=${wall.height || CAD_WALL_STYLES.defaultLowWallHeightM}m`;
   if (wall.wallType === 'railing') return 'Baranda';
+  if (wall.wallType === 'separator') return 'Límite Virtual';
   return null;
 }

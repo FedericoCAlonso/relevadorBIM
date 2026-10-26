@@ -29,7 +29,7 @@ export interface WallPlacementSnap {
 
 export type WallJustification = 'interior' | 'center' | 'exterior';
 
-export type WallType = 'standard' | 'low_wall' | 'railing';
+export type WallType = 'standard' | 'low_wall' | 'railing' | 'separator';
 
 export interface Wall {
   id: string;

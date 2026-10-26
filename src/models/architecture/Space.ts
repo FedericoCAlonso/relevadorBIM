@@ -604,10 +604,63 @@ export function findEnclosedCycles(
     return findCyclesTopologicalFallback(walls);
   }
 
-  const vMap =
-    verticesMap instanceof Map
-      ? verticesMap
-      : new Map(verticesMap.map((v) => [v.id, { x: v.x, y: v.y }]));
+  // 1. Clonar mapa de coordenadas para permitir inserción de puntos de cruce virtuales si fuera necesario
+  const vMap = new Map<string, { x: number; y: number }>();
+  if (verticesMap instanceof Map) {
+    for (const [id, coord] of verticesMap.entries()) {
+      vMap.set(id, { x: coord.x, y: coord.y });
+    }
+  } else {
+    for (const v of verticesMap) {
+      vMap.set(v.id, { x: v.x, y: v.y });
+    }
+  }
+
+  // 2. Planarización: para cada muro, detectar todos los vértices colineales interiores
+  // que caigan sobre su segmento (T-junctions, empalmes parciales o tabiques adosados).
+  interface IntermediatePoint {
+    id: string;
+    t: number;
+  }
+
+  const wallSubdivisions = new Map<string, IntermediatePoint[]>();
+
+  for (const w of walls) {
+    if (w.startVertexId === w.endVertexId) continue;
+    const v1 = vMap.get(w.startVertexId);
+    const v2 = vMap.get(w.endVertexId);
+    if (!v1 || !v2) continue;
+
+    const dx = v2.x - v1.x;
+    const dy = v2.y - v1.y;
+    const len = Math.hypot(dx, dy);
+    if (len <= 0.01) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+
+    const intermediates: IntermediatePoint[] = [];
+
+    // Comprobar todos los vértices existentes en el nivel
+    for (const [vId, pt] of vMap.entries()) {
+      if (vId === w.startVertexId || vId === w.endVertexId) continue;
+
+      const vx = pt.x - v1.x;
+      const vy = pt.y - v1.y;
+      const t = vx * ux + vy * uy;
+      const distNormal = Math.abs(vx * nx + vy * ny);
+
+      // Si el vértice está sobre la línea del muro (tolerancia 2.5 cm) y estrictamente dentro del tramo
+      if (distNormal <= 0.025 && t >= 0.025 && t <= len - 0.025) {
+        intermediates.push({ id: vId, t });
+      }
+    }
+
+    intermediates.sort((a, b) => a.t - b.t);
+    wallSubdivisions.set(w.id, intermediates);
+  }
 
   interface HalfEdge {
     from: string;
@@ -626,18 +679,32 @@ export function findEnclosedCycles(
     const v2 = vMap.get(w.endVertexId);
     if (!v1 || !v2) continue;
 
-    if (!outgoing.has(w.startVertexId)) outgoing.set(w.startVertexId, []);
-    if (!outgoing.has(w.endVertexId)) outgoing.set(w.endVertexId, []);
+    const intermediates = wallSubdivisions.get(w.id) || [];
+    // Cadena de nodos a lo largo del muro: vStart -> p1 -> p2 -> ... -> vEnd
+    const chainIds = [w.startVertexId, ...intermediates.map((p) => p.id), w.endVertexId];
 
-    const angle1 = Math.atan2(v2.y - v1.y, v2.x - v1.x);
-    const angle2 = Math.atan2(v1.y - v2.y, v1.x - v2.x);
+    for (let i = 0; i < chainIds.length - 1; i++) {
+      const fromId = chainIds[i];
+      const toId = chainIds[i + 1];
+      if (fromId === toId) continue;
 
-    const he1: HalfEdge = { from: w.startVertexId, to: w.endVertexId, wallId: w.id, angle: angle1, visited: false };
-    const he2: HalfEdge = { from: w.endVertexId, to: w.startVertexId, wallId: w.id, angle: angle2, visited: false };
+      const pFrom = vMap.get(fromId);
+      const pTo = vMap.get(toId);
+      if (!pFrom || !pTo) continue;
 
-    outgoing.get(w.startVertexId)!.push(he1);
-    outgoing.get(w.endVertexId)!.push(he2);
-    halfEdges.push(he1, he2);
+      if (!outgoing.has(fromId)) outgoing.set(fromId, []);
+      if (!outgoing.has(toId)) outgoing.set(toId, []);
+
+      const angle1 = Math.atan2(pTo.y - pFrom.y, pTo.x - pFrom.x);
+      const angle2 = Math.atan2(pFrom.y - pTo.y, pFrom.x - pTo.x);
+
+      const he1: HalfEdge = { from: fromId, to: toId, wallId: w.id, angle: angle1, visited: false };
+      const he2: HalfEdge = { from: toId, to: fromId, wallId: w.id, angle: angle2, visited: false };
+
+      outgoing.get(fromId)!.push(he1);
+      outgoing.get(toId)!.push(he2);
+      halfEdges.push(he1, he2);
+    }
   }
 
   // Ordenar semiaristas salientes por ángulo polar ascendente
@@ -685,9 +752,16 @@ export function findEnclosedCycles(
       // Las caras interiores recorridas en sentido antihorario tienen signedArea > 0
       // La cara infinita exterior tiene signo opuesto (negativo) y no se agrega
       if (signedArea > 0.05) {
+        const uniqueWallIds: string[] = [];
+        for (const e of faceEdges) {
+          if (!uniqueWallIds.includes(e.wallId)) {
+            uniqueWallIds.push(e.wallId);
+          }
+        }
+
         cycles.push({
           vertexIds: faceEdges.map((e) => e.from),
-          wallIds: faceEdges.map((e) => e.wallId)
+          wallIds: uniqueWallIds
         });
       }
     }

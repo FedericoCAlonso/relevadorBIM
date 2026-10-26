@@ -65,6 +65,104 @@ describe('Detección Planar de Ambientes (findEnclosedCycles)', () => {
     expect(hasRoom2).toBe(true);
   });
 
+  it('debe detectar ambientes cuando comparten una pared parcial común (empalme en T sin partir muro previamente)', () => {
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 6, y: 0 }, // Muro largo de 6m
+      { id: 'v3', x: 6, y: 4 },
+      { id: 'v4', x: 0, y: 4 },
+      // Segundo ambiente adosado parcialmente de x=0 a x=4
+      { id: 'vT', x: 4, y: 0 }, // Cae sobre el muro v1-v2
+      { id: 'vC', x: 4, y: -3 },
+      { id: 'vD', x: 0, y: -3 }
+    ];
+
+    const walls = [
+      // Habitación 1 (6x4 = 24m²)
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' }, // Muro continuo de 6m
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v1' },
+      // Habitación 2 adosada (4x3 = 12m²)
+      { id: 'w5', startVertexId: 'vT', endVertexId: 'vC' },
+      { id: 'w6', startVertexId: 'vC', endVertexId: 'vD' },
+      { id: 'w7', startVertexId: 'vD', endVertexId: 'v1' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+  });
+
+  it('debe detectar ambientes complejos anidados en L con múltiples paredes compartidas parcialmente', () => {
+    // Habitación 1 en "L":
+    // (0,0) -> (6,0) -> (6,3) -> (3,3) -> (3,6) -> (0,6) -> (0,0)
+    // Habitación 2 que encaja en el hueco de la "L" de (3,3) a (6,6):
+    // Comparte parcialmente el tramo vertical (3,3)-(3,6) y el tramo horizontal (3,3)-(6,3)
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 6, y: 0 },
+      { id: 'v3', x: 6, y: 3 },
+      { id: 'v4', x: 3, y: 3 },
+      { id: 'v5', x: 3, y: 6 },
+      { id: 'v6', x: 0, y: 6 },
+      // Esquina exterior de la Habitación 2
+      { id: 'v7', x: 6, y: 6 }
+    ];
+
+    const walls = [
+      // Perímetro de Habitación 1
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' }, // Compartida con Hab 2
+      { id: 'w4', startVertexId: 'v4', endVertexId: 'v5' }, // Compartida con Hab 2
+      { id: 'w5', startVertexId: 'v5', endVertexId: 'v6' },
+      { id: 'w6', startVertexId: 'v6', endVertexId: 'v1' },
+      // Cierre de Habitación 2
+      { id: 'w7', startVertexId: 'v3', endVertexId: 'v7' },
+      { id: 'w8', startVertexId: 'v7', endVertexId: 'v5' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(2);
+
+    const areas = cycles.map((c) => {
+      const poly = c.vertexIds.map((id) => vertices.find((v) => v.id === id)!);
+      let a = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const p1 = poly[i];
+        const p2 = poly[(i + 1) % poly.length];
+        a += p1.x * p2.y - p2.x * p1.y;
+      }
+      return a / 2;
+    });
+
+    // Hab 1: 6x6 - 3x3 = 27 m²
+    // Hab 2: 3x3 = 9 m²
+    expect(areas.some((a) => Math.abs(a - 27) < 0.1)).toBe(true);
+    expect(areas.some((a) => Math.abs(a - 9) < 0.1)).toBe(true);
+  });
+
+  it('debe cerrar el patio/vacío de aire y luz con una Línea Divisoria Virtual (separator)', () => {
+    const vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 3, y: 0 },
+      { id: 'v3', x: 3, y: 3 },
+      { id: 'v4', x: 0, y: 3 }
+    ];
+
+    const walls = [
+      { id: 'w1', startVertexId: 'v1', endVertexId: 'v2' },
+      { id: 'w2', startVertexId: 'v2', endVertexId: 'v3' },
+      { id: 'w3', startVertexId: 'v3', endVertexId: 'v4' },
+      // 4ta cara abierta: se cierra con separator (Línea de separación virtual)
+      { id: 'w-sep', startVertexId: 'v4', endVertexId: 'v1' }
+    ];
+
+    const cycles = findEnclosedCycles(walls, vertices);
+    expect(cycles.length).toBe(1);
+    expect(cycles[0].wallIds).toContain('w-sep');
+  });
+
   it('no debe detectar ambientes si los muros no cierran ningún recinto (paredes abiertas o aletas)', () => {
     const vertices = [
       { id: 'v1', x: 0, y: 0 },

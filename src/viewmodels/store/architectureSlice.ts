@@ -195,6 +195,8 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         selectedEntity: { type: 'wall', id: branchWall.id }
       });
 
+      get().autoDetectSpaces();
+
       return branchWall;
     },
 
