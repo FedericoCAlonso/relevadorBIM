@@ -234,3 +234,36 @@ export const CAD_ELECTRICAL_STYLES = {
   elementSnapToleranceM: 0.40,
   dragMoveThresholdPx: 3
 } as const;
+
+/** Paleta y parámetros geométricos de los overlays interactivos de herramientas y muestreo SVD. */
+export const CAD_INTERACTION_OVERLAY_STYLES = {
+  crosshairDefault: '#06b6d4',
+  crosshairSnapped: '#10b981',
+  crosshairRingDefault: '#0891b2',
+  crosshairExtentPx: 100000,
+  crosshairArmOuterPx: 45,
+  crosshairArmInnerPx: 8,
+  crosshairRingRadiusPx: 6,
+  autoSampleDefaultSizeM: 0.45,
+  autoSampleFill: 'rgba(6, 182, 212, 0.12)',
+  marqueeFill: 'rgba(6, 182, 212, 0.20)',
+  adjustBoxFill: 'rgba(6, 182, 212, 0.16)',
+  adjustHandleHitRadiusPx: 14,
+  adjustHandleSizePx: 10,
+  stencilFillDefault: 'rgba(6, 182, 212, 0.22)',
+  stencilFillSnapped: 'rgba(16, 185, 129, 0.22)',
+  stencilTextSnapped: '#059669',
+  stencilCrossHalfM: 0.25,
+  dimensionDraftStroke: '#2563eb',
+  overhangDraftStroke: '#0284c7',
+  calibrationDraftStroke: '#0284c7',
+  spaceMoveStroke: '#2563eb',
+  spaceMoveTargetFill: '#1d4ed8',
+  spaceMoveGhostFill: 'rgba(59, 130, 246, 0.18)',
+  conduitDraftStroke: '#f59e0b',
+  conduitWaypointBadgeFill: '#0f172a',
+  conduitWaypointTextFill: '#fbbf24',
+  ghostSnapPatternStroke: '#06b6d4',
+  ghostSnapWallStroke: '#2563eb',
+  white: '#ffffff'
+} as const;

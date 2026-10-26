@@ -33,3 +33,6 @@ export interface ActiveWaypointDragState {
   origWpY: number;
   moved: boolean;
 }
+
+/** Manija activa durante el ajuste fino interactivo del recuadro de Muestra #1. */
+export type AdjustSampleHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;

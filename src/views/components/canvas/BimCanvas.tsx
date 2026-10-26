@@ -12,16 +12,10 @@ import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
 import { calculateWallSnap } from '../../../models/architecture/Wall';
 import { resolveSpacePolygon, calculatePolygonCentroid } from '../../../models/architecture/Space';
-import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
-import { getSymbolById } from '../../../models/electrical/symbolsLib';
-import { Plus, Minus, Maximize2, Ruler, Eye, EyeOff, DraftingCompass, ScanSearch, Lock, Unlock } from 'lucide-react';
+
 import { CAD_VIEWPORT_CONFIG } from '../../../config';
 import type { UnderlaySheet } from '../../../models/underlay/UnderlaySheet';
 import type { DetectedPatternMatch } from '../../../models/underlay/PatternDetector';
-import {
-  generateRoundedPolylineSvgPath,
-  computeOrthogonalConduitPoints
-} from '../../../models/electrical/calculations';
 import { useElectricalSequenceStore } from '../../../viewmodels/useElectricalViewModel';
 import type { SpatialElectricalNode, ConduitWaypoint } from '../../../models/electrical/ElectricalModel';
 import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
@@ -37,7 +31,15 @@ import { ConduitsLayer } from './layers/ConduitsLayer';
 import { ElectricalElementsLayer } from './layers/ElectricalElementsLayer';
 import { PanelsLayer } from './layers/PanelsLayer';
 import { DimensionsLayer } from './layers/DimensionsLayer';
-import type { ActiveNodeDragState, ActiveWaypointDragState } from './layers/layerTypes';
+import { PatternSamplingOverlayLayer } from './layers/PatternSamplingOverlayLayer';
+import { InteractiveDraftLayer } from './layers/InteractiveDraftLayer';
+import { CanvasModeBanners } from './layers/CanvasModeBanners';
+import { CanvasFloatingControls } from './layers/CanvasFloatingControls';
+import type {
+  ActiveNodeDragState,
+  ActiveWaypointDragState,
+  AdjustSampleHandle
+} from './layers/layerTypes';
 
 export type { WallPlacementSnap };
 
@@ -314,11 +316,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   });
 
   // Estados locales para arrastre y redimensión del recuadro provisional de Muestra #1
-  type AdjustHandle = 'nw' | 'ne' | 'se' | 'sw' | 'move' | null;
-  const [activeAdjustHandle, setActiveAdjustHandle] = useState<AdjustHandle>(null);
+  const [activeAdjustHandle, setActiveAdjustHandle] = useState<AdjustSampleHandle>(null);
   const adjustDragStartRef = useRef<{ clientX: number; clientY: number; initBox: { x: number; y: number; size: number } } | null>(null);
 
-  const startAdjustDrag = (handle: AdjustHandle, clientX: number, clientY: number) => {
+  const startAdjustDrag = (handle: AdjustSampleHandle, clientX: number, clientY: number) => {
     if (!provisionalSquareBox) return;
     setActiveAdjustHandle(handle);
     adjustDragStartRef.current = {
@@ -1105,6 +1106,46 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     []
   );
 
+  const movingSpace = useMemo(
+    () => (isMovingSpace && movingSpaceId ? project.spaces.find((s) => s.id === movingSpaceId) ?? null : null),
+    [isMovingSpace, movingSpaceId, project.spaces]
+  );
+  const pendingConduitStartNode = useMemo(
+    () => (pendingConduitStartId ? elementsMap.get(pendingConduitStartId) ?? null : null),
+    [pendingConduitStartId, elementsMap]
+  );
+
+  const viewportActionsRef = useRef({ handleRecenter, startAdjustDrag });
+  useEffect(() => {
+    viewportActionsRef.current = { handleRecenter, startAdjustDrag };
+  });
+  const handleStableRecenter = useMemo(() => () => viewportActionsRef.current.handleRecenter(), []);
+  const handleStableStartAdjustDrag = useMemo(
+    () => (handle: AdjustSampleHandle, clientX: number, clientY: number) =>
+      viewportActionsRef.current.startAdjustDrag(handle, clientX, clientY),
+    []
+  );
+  const handleZoomIn = useMemo(
+    () => () =>
+      setZoom((z) =>
+        Math.min(
+          CAD_VIEWPORT_CONFIG.MAX_ZOOM_PIXELS_PER_METER,
+          Number((z * CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))
+        )
+      ),
+    []
+  );
+  const handleZoomOut = useMemo(
+    () => () =>
+      setZoom((z) =>
+        Math.max(
+          CAD_VIEWPORT_CONFIG.MIN_ZOOM_PIXELS_PER_METER,
+          Number((z / CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))
+        )
+      ),
+    []
+  );
+
   // 3.1. Capa visual de guías inteligentes (Smart Guides), imantación y cotas dinámicas durante arrastre de muro
   return (
     <div
@@ -1269,1185 +1310,107 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             <PatternMatchesLayer matches={detectedPatternMatches} underlaySheet={underlaySheet} zoom={zoom} onDismiss={onDismissPatternMatch} />
           )}
 
-          {/* Retícula en cruz CAD extendida para alineación ortogonal precisa (Ejes X e Y infinitos) */}
-          {isSamplingPattern && hoverWorldPos && (
-            <g pointerEvents="none">
-              {/* Eje horizontal infinito */}
-              <line
-                x1={-100000}
-                y1={hoverWorldPos.y * zoom}
-                x2={100000}
-                y2={hoverWorldPos.y * zoom}
-                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
-                strokeWidth={1}
-                strokeDasharray="6 4"
-                strokeOpacity={0.6}
-              />
-              {/* Eje vertical infinito */}
-              <line
-                x1={hoverWorldPos.x * zoom}
-                y1={-100000}
-                x2={hoverWorldPos.x * zoom}
-                y2={100000}
-                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
-                strokeWidth={1}
-                strokeDasharray="6 4"
-                strokeOpacity={0.6}
-              />
-              {/* Retícula central sólida de mira CAD extendida (90px) con anillo de precisión */}
-              <circle
-                cx={hoverWorldPos.x * zoom}
-                cy={hoverWorldPos.y * zoom}
-                r={6}
-                fill="none"
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={1.5}
-              />
-              <line
-                x1={hoverWorldPos.x * zoom - 45}
-                y1={hoverWorldPos.y * zoom}
-                x2={hoverWorldPos.x * zoom - 8}
-                y2={hoverWorldPos.y * zoom}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={1.5}
-              />
-              <line
-                x1={hoverWorldPos.x * zoom + 8}
-                y1={hoverWorldPos.y * zoom}
-                x2={hoverWorldPos.x * zoom + 45}
-                y2={hoverWorldPos.y * zoom}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={1.5}
-              />
-              <line
-                x1={hoverWorldPos.x * zoom}
-                y1={hoverWorldPos.y * zoom - 45}
-                x2={hoverWorldPos.x * zoom}
-                y2={hoverWorldPos.y * zoom - 8}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={1.5}
-              />
-              <line
-                x1={hoverWorldPos.x * zoom}
-                y1={hoverWorldPos.y * zoom + 8}
-                x2={hoverWorldPos.x * zoom}
-                y2={hoverWorldPos.y * zoom + 45}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={1.5}
-              />
-            </g>
-          )}
+          <PatternSamplingOverlayLayer
+            isSamplingPattern={isSamplingPattern}
+            isAdjustingSampleBox={isAdjustingSampleBox}
+            patternSamplingMode={patternSamplingMode}
+            positiveExemplarsCount={positiveExemplarsCount}
+            stencilSizeWorld={stencilSizeWorld}
+            stencilRotationDeg={stencilRotationDeg}
+            isStencilSnapped={isStencilSnapped}
+            hoverWorldPos={hoverWorldPos}
+            samplingStartWorldPos={samplingStartWorldPos}
+            provisionalSquareBox={provisionalSquareBox}
+            zoom={zoom}
+            onStartAdjustDrag={handleStableStartAdjustDrag}
+          />
 
-          {/* Caja indicadora del objetivo para Auto-muestreo inteligente (1 clic) */}
-          {isSamplingPattern && patternSamplingMode === 'auto' && hoverWorldPos && (
-            <g pointerEvents="none">
-              <rect
-                x={(hoverWorldPos.x - (stencilSizeWorld?.width || 0.45) / 2) * zoom}
-                y={(hoverWorldPos.y - (stencilSizeWorld?.width || 0.45) / 2) * zoom}
-                width={(stencilSizeWorld?.width || 0.45) * zoom}
-                height={(stencilSizeWorld?.width || 0.45) * zoom}
-                fill="rgba(6, 182, 212, 0.12)"
-                stroke="#06b6d4"
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-                rx={4}
-              />
-            </g>
-          )}
-
-          {/* Recuadro elástico de selección de patrón (Marquesina Muestra #1) */}
-          {isSamplingPattern && !isAdjustingSampleBox && (!positiveExemplarsCount || positiveExemplarsCount === 0) && samplingStartWorldPos && hoverWorldPos && (
-            <g pointerEvents="none">
-              <rect
-                x={Math.min(samplingStartWorldPos.x, hoverWorldPos.x) * zoom}
-                y={Math.min(samplingStartWorldPos.y, hoverWorldPos.y) * zoom}
-                width={Math.abs(hoverWorldPos.x - samplingStartWorldPos.x) * zoom}
-                height={Math.abs(hoverWorldPos.y - samplingStartWorldPos.y) * zoom}
-                fill="rgba(6, 182, 212, 0.20)"
-                stroke="#0891b2"
-                strokeWidth={2}
-                strokeDasharray="5 3"
-                rx={2}
-              />
-              <text
-                x={((samplingStartWorldPos.x + hoverWorldPos.x) / 2) * zoom}
-                y={(Math.min(samplingStartWorldPos.y, hoverWorldPos.y) - 0.15) * zoom}
-                textAnchor="middle"
-                fontSize={11}
-                fontWeight="bold"
-                fill="#0891b2"
-                className="font-mono bg-white select-none"
-              >
-                🎯 Muestra #1: Enmarcar símbolo base
-              </text>
-            </g>
-          )}
-
-          {/* Recuadro interactivo de ajuste fino para la Muestra #1 (Trazar -> Ajustar -> Confirmar) */}
-          {isAdjustingSampleBox && provisionalSquareBox && (() => {
-            const boxX = provisionalSquareBox.x * zoom;
-            const boxY = provisionalSquareBox.y * zoom;
-            const boxW = provisionalSquareBox.size * zoom;
-            const boxH = provisionalSquareBox.size * zoom;
-            const cx = boxX + boxW / 2;
-            const cy = boxY + boxH / 2;
-
-            return (
-              <g className="select-none">
-                {/* Zona translúcida de fondo movible */}
-                <rect
-                  x={boxX}
-                  y={boxY}
-                  width={boxW}
-                  height={boxH}
-                  fill="rgba(6, 182, 212, 0.16)"
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  strokeDasharray="4 2"
-                  rx={3}
-                  className="cursor-move"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    startAdjustDrag('move', e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    if (e.touches.length === 1) {
-                      startAdjustDrag('move', e.touches[0].clientX, e.touches[0].clientY);
-                    }
-                  }}
-                />
-
-                {/* Retícula en cruz milimétrica para centrado exacto sobre el símbolo */}
-                <line
-                  x1={boxX}
-                  y1={cy}
-                  x2={boxX + boxW}
-                  y2={cy}
-                  stroke="#0891b2"
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                  strokeOpacity={0.8}
-                  pointerEvents="none"
-                />
-                <line
-                  x1={cx}
-                  y1={boxY}
-                  x2={cx}
-                  y2={boxY + boxH}
-                  stroke="#0891b2"
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                  strokeOpacity={0.8}
-                  pointerEvents="none"
-                />
-                <circle cx={cx} cy={cy} r={3} fill="#0891b2" pointerEvents="none" />
-
-                {/* Etiqueta superior */}
-                <text
-                  x={cx}
-                  y={boxY - 10}
-                  textAnchor="middle"
-                  fontSize={11}
-                  fontWeight="bold"
-                  fill="#0891b2"
-                  className="font-mono bg-white select-none pointer-events-none"
-                >
-                  🎯 Muestra #1 ({Math.round(provisionalSquareBox.size * 100)} cm) · Ajustá posición y tamaño
-                </text>
-
-                {/* Manija NW */}
-                <circle
-                  cx={boxX}
-                  cy={boxY}
-                  r={14}
-                  fill="transparent"
-                  className="cursor-nwse-resize"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    startAdjustDrag('nw', e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    if (e.touches.length === 1) startAdjustDrag('nw', e.touches[0].clientX, e.touches[0].clientY);
-                  }}
-                />
-                <rect
-                  x={boxX - 5}
-                  y={boxY - 5}
-                  width={10}
-                  height={10}
-                  fill="#ffffff"
-                  stroke="#0891b2"
-                  strokeWidth={2}
-                  rx={2}
-                  pointerEvents="none"
-                />
-
-                {/* Manija NE */}
-                <circle
-                  cx={boxX + boxW}
-                  cy={boxY}
-                  r={14}
-                  fill="transparent"
-                  className="cursor-nesw-resize"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    startAdjustDrag('ne', e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    if (e.touches.length === 1) startAdjustDrag('ne', e.touches[0].clientX, e.touches[0].clientY);
-                  }}
-                />
-                <rect
-                  x={boxX + boxW - 5}
-                  y={boxY - 5}
-                  width={10}
-                  height={10}
-                  fill="#ffffff"
-                  stroke="#0891b2"
-                  strokeWidth={2}
-                  rx={2}
-                  pointerEvents="none"
-                />
-
-                {/* Manija SE */}
-                <circle
-                  cx={boxX + boxW}
-                  cy={boxY + boxH}
-                  r={14}
-                  fill="transparent"
-                  className="cursor-nwse-resize"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    startAdjustDrag('se', e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    if (e.touches.length === 1) startAdjustDrag('se', e.touches[0].clientX, e.touches[0].clientY);
-                  }}
-                />
-                <rect
-                  x={boxX + boxW - 5}
-                  y={boxY + boxH - 5}
-                  width={10}
-                  height={10}
-                  fill="#ffffff"
-                  stroke="#0891b2"
-                  strokeWidth={2}
-                  rx={2}
-                  pointerEvents="none"
-                />
-
-                {/* Manija SW */}
-                <circle
-                  cx={boxX}
-                  cy={boxY + boxH}
-                  r={14}
-                  fill="transparent"
-                  className="cursor-nesw-resize"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    startAdjustDrag('sw', e.clientX, e.clientY);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    if (e.touches.length === 1) startAdjustDrag('sw', e.touches[0].clientX, e.touches[0].clientY);
-                  }}
-                />
-                <rect
-                  x={boxX - 5}
-                  y={boxY + boxH - 5}
-                  width={10}
-                  height={10}
-                  fill="#ffffff"
-                  stroke="#0891b2"
-                  strokeWidth={2}
-                  rx={2}
-                  pointerEvents="none"
-                />
-              </g>
-            );
-          })()}
-
-          {/* Esténcil rígido semitransparente asistido por SVD (Muestras #2 en adelante) */}
-          {isSamplingPattern && positiveExemplarsCount > 0 && stencilSizeWorld && hoverWorldPos && (
-            <g pointerEvents="none">
-              {/* Rectángulo rígido centrado en el cursor/hover */}
-              <rect
-                x={(hoverWorldPos.x - stencilSizeWorld.width / 2) * zoom}
-                y={(hoverWorldPos.y - stencilSizeWorld.height / 2) * zoom}
-                width={stencilSizeWorld.width * zoom}
-                height={stencilSizeWorld.height * zoom}
-                fill={isStencilSnapped ? "rgba(16, 185, 129, 0.22)" : "rgba(6, 182, 212, 0.22)"}
-                stroke={isStencilSnapped ? "#10b981" : "#06b6d4"}
-                strokeWidth={isStencilSnapped ? 2.5 : 2}
-                strokeDasharray={isStencilSnapped ? "none" : "6 3"}
-                rx={3}
-              />
-              {/* Retícula en cruz para centrado visual */}
-              <line
-                x1={(hoverWorldPos.x - 0.25) * zoom}
-                y1={hoverWorldPos.y * zoom}
-                x2={(hoverWorldPos.x + 0.25) * zoom}
-                y2={hoverWorldPos.y * zoom}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={isStencilSnapped ? 2 : 1.5}
-              />
-              <line
-                x1={hoverWorldPos.x * zoom}
-                y1={(hoverWorldPos.y - 0.25) * zoom}
-                x2={hoverWorldPos.x * zoom}
-                y2={(hoverWorldPos.y + 0.25) * zoom}
-                stroke={isStencilSnapped ? "#10b981" : "#0891b2"}
-                strokeWidth={isStencilSnapped ? 2 : 1.5}
-              />
-              {/* Etiqueta flotante con orientación y aviso de snap magnético */}
-              <text
-                x={hoverWorldPos.x * zoom}
-                y={(hoverWorldPos.y - stencilSizeWorld.height / 2 - 0.15) * zoom}
-                textAnchor="middle"
-                fontSize={11}
-                fontWeight="bold"
-                fill={isStencilSnapped ? "#059669" : "#0891b2"}
-                className="font-mono bg-white select-none"
-              >
-                {isStencilSnapped
-                  ? `🎯 Snap fijado al símbolo (${stencilRotationDeg ?? 0}°) · Clic para confirmar`
-                  : `🎯 Sello Muestra #${positiveExemplarsCount + 1} (${stencilRotationDeg ?? 0}°) · Clic para estampar`}
-              </text>
-            </g>
-          )}
-
-          {/* Línea elástica interactiva al trazar cotas métricas */}
-          {isAddingDimension && dimensionP1 && (
-            <g pointerEvents="none">
-              {hoverWorldPos && (
-                <>
-                  <line
-                    x1={dimensionP1.x * zoom}
-                    y1={dimensionP1.y * zoom}
-                    x2={hoverWorldPos.x * zoom}
-                    y2={hoverWorldPos.y * zoom}
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                  />
-                  <circle
-                    cx={hoverWorldPos.x * zoom}
-                    cy={hoverWorldPos.y * zoom}
-                    r={5}
-                    fill="#2563eb"
-                  />
-                  <text
-                    x={((dimensionP1.x + hoverWorldPos.x) / 2) * zoom}
-                    y={((dimensionP1.y + hoverWorldPos.y) / 2) * zoom - 8}
-                    textAnchor="middle"
-                    fontSize={11}
-                    className="font-mono font-bold fill-blue-700 bg-white"
-                  >
-                    {Math.hypot(hoverWorldPos.x - dimensionP1.x, hoverWorldPos.y - dimensionP1.y).toFixed(2)} m
-                  </text>
-                </>
-              )}
-              {/* Punto 1 marcado */}
-              <circle
-                cx={dimensionP1.x * zoom}
-                cy={dimensionP1.y * zoom}
-                r={6}
-                fill="#2563eb"
-                stroke="#ffffff"
-                strokeWidth={2}
-              />
-            </g>
-          )}
-
-          {/* Línea elástica interactiva al trazar línea de alero (2 clics) */}
-          {isDrawingOverhang && overhangP1 && (
-            <g pointerEvents="none">
-              {hoverWorldPos && (
-                <>
-                  <line
-                    x1={overhangP1.x * zoom}
-                    y1={overhangP1.y * zoom}
-                    x2={hoverWorldPos.x * zoom}
-                    y2={hoverWorldPos.y * zoom}
-                    stroke="#0284c7"
-                    strokeWidth={2}
-                    strokeDasharray="8 3 2 3"
-                  />
-                  <circle
-                    cx={hoverWorldPos.x * zoom}
-                    cy={hoverWorldPos.y * zoom}
-                    r={5}
-                    fill="#0284c7"
-                  />
-                  <text
-                    x={((overhangP1.x + hoverWorldPos.x) / 2) * zoom}
-                    y={((overhangP1.y + hoverWorldPos.y) / 2) * zoom - 8}
-                    textAnchor="middle"
-                    fontSize={11}
-                    className="font-mono font-bold fill-cyan-700 bg-white"
-                  >
-                    Arista de Alero ({Math.hypot(hoverWorldPos.x - overhangP1.x, hoverWorldPos.y - overhangP1.y).toFixed(2)} m)
-                  </text>
-                </>
-              )}
-              {/* Punto 1 marcado */}
-              <circle
-                cx={overhangP1.x * zoom}
-                cy={overhangP1.y * zoom}
-                r={6}
-                fill="#0284c7"
-                stroke="#ffffff"
-                strokeWidth={2}
-              />
-            </g>
-          )}
-
-          {/* Vista previa elástica y contorno fantasma al mover ambiente (punto base + destino) */}
-          {isMovingSpace && movingSpaceId && (() => {
-            const movingSpace = project.spaces.find((s) => s.id === movingSpaceId);
-            if (!movingSpace) return null;
-            const movingPoly = resolveSpacePolygon(movingSpace, verticesMap);
-            if (movingPoly.length < 3) return null;
-
-            return (
-              <g pointerEvents="none">
-                {/* Punto base marcado */}
-                {movingBasePoint && (
-                  <g>
-                    <circle
-                      cx={movingBasePoint.x * zoom}
-                      cy={movingBasePoint.y * zoom}
-                      r={6}
-                      fill="#2563eb"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                    />
-                    <circle
-                      cx={movingBasePoint.x * zoom}
-                      cy={movingBasePoint.y * zoom}
-                      r={10}
-                      fill="none"
-                      stroke="#2563eb"
-                      strokeWidth={1.5}
-                      strokeDasharray="3 3"
-                    />
-                  </g>
-                )}
-
-                {/* Polígono fantasma desplazado hacia el cursor */}
-                {movingBasePoint && hoverWorldPos && (() => {
-                  const dx = hoverWorldPos.x - movingBasePoint.x;
-                  const dy = hoverWorldPos.y - movingBasePoint.y;
-                  const ghostPoints = movingPoly
-                    .map((p) => `${(p.x + dx) * zoom},${(p.y + dy) * zoom}`)
-                    .join(' ');
-
-                  return (
-                    <g>
-                      {/* Contorno fantasma traslúcido */}
-                      <polygon
-                        points={ghostPoints}
-                        fill="rgba(59, 130, 246, 0.18)"
-                        stroke="#2563eb"
-                        strokeWidth={2}
-                        strokeDasharray="6 3"
-                      />
-
-                      {/* Vector elástico desde punto base hasta cursor */}
-                      <line
-                        x1={movingBasePoint.x * zoom}
-                        y1={movingBasePoint.y * zoom}
-                        x2={hoverWorldPos.x * zoom}
-                        y2={hoverWorldPos.y * zoom}
-                        stroke="#2563eb"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 2"
-                      />
-
-                      {/* Marcador en la posición destino proyectada */}
-                      <circle
-                        cx={hoverWorldPos.x * zoom}
-                        cy={hoverWorldPos.y * zoom}
-                        r={5}
-                        fill="#1d4ed8"
-                      />
-
-                      {/* Rótulo de desplazamiento delta */}
-                      <text
-                        x={((movingBasePoint.x + hoverWorldPos.x) / 2) * zoom}
-                        y={((movingBasePoint.y + hoverWorldPos.y) / 2) * zoom - 8}
-                        textAnchor="middle"
-                        fontSize={11}
-                        className="font-mono font-bold fill-blue-800 bg-white"
-                      >
-                        ΔX: {dx >= 0 ? '+' : ''}{dx.toFixed(2)}m, ΔY: {dy >= 0 ? '+' : ''}{dy.toFixed(2)}m ({Math.hypot(dx, dy).toFixed(2)}m)
-                      </text>
-                    </g>
-                  );
-                })()}
-              </g>
-            );
-          })()}
-
-          {/* Línea elástica y marcas de calibración métrica del plano de fondo */}
-          {isCalibratingUnderlay && calibrationP1 && (
-            <g pointerEvents="none">
-              {hoverWorldPos && (
-                <>
-                  <line
-                    x1={calibrationP1.x * zoom}
-                    y1={calibrationP1.y * zoom}
-                    x2={hoverWorldPos.x * zoom}
-                    y2={hoverWorldPos.y * zoom}
-                    stroke="#0284c7"
-                    strokeWidth={2.5}
-                    strokeDasharray="6 4"
-                  />
-                  <circle
-                    cx={hoverWorldPos.x * zoom}
-                    cy={hoverWorldPos.y * zoom}
-                    r={5}
-                    fill="#0284c7"
-                  />
-                  <text
-                    x={((calibrationP1.x + hoverWorldPos.x) / 2) * zoom}
-                    y={((calibrationP1.y + hoverWorldPos.y) / 2) * zoom - 8}
-                    textAnchor="middle"
-                    fontSize={11}
-                    className="font-mono font-bold fill-sky-700 bg-white"
-                  >
-                    {Math.hypot(hoverWorldPos.x - calibrationP1.x, hoverWorldPos.y - calibrationP1.y).toFixed(2)} m
-                  </text>
-                </>
-              )}
-              {/* Punto 1 marcado */}
-              <circle
-                cx={calibrationP1.x * zoom}
-                cy={calibrationP1.y * zoom}
-                r={6}
-                fill="#0284c7"
-                stroke="#ffffff"
-                strokeWidth={2}
-              />
-            </g>
-          )}
-
-          {/* Línea o arco elástico interactivo guiando al usuario hacia el segundo extremo */}
-          {isConnectingConduit && pendingConduitStartId && hoverWorldPos && (() => {
-            const startEl =
-              project.electricalElements.find((e) => e.id === pendingConduitStartId) ||
-              project.panels?.find((p) => p.id === pendingConduitStartId);
-            if (!startEl) return null;
-            const p1 = { x: startEl.x * zoom, y: startEl.y * zoom };
-            const pEnd = { x: hoverWorldPos.x * zoom, y: hoverWorldPos.y * zoom };
-            const waypointsPx = (pendingConduitWaypoints || []).map((wp) => ({
-              x: wp.x * zoom,
-              y: wp.y * zoom
-            }));
-
-            const isArc = sequenceRoutingMode === 'schematic_arc';
-            let guidePathD: string;
-
-            if (isArc) {
-              const dx = pEnd.x - p1.x;
-              const dy = pEnd.y - p1.y;
-              const dist = Math.hypot(dx, dy);
-              if (dist < 1) return null;
-              const normalX = -dy / dist;
-              const normalY = dx / dist;
-              const curveOffset = Math.min(dist * 0.18, 28);
-              const midX = (p1.x + pEnd.x) / 2 + normalX * curveOffset;
-              const midY = (p1.y + pEnd.y) / 2 + normalY * curveOffset;
-              guidePathD = `M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${pEnd.x.toFixed(1)} ${pEnd.y.toFixed(1)}`;
-            } else if (sequenceRoutingMode === 'orthogonal' && sequenceRoutingPlane === 'wall') {
-              const orthoPoints = computeOrthogonalConduitPoints(p1, pEnd, waypointsPx);
-              const filletRadiusPx = Math.min(22, Math.max(8, 14 * (zoom / 40)));
-              guidePathD = generateRoundedPolylineSvgPath(orthoPoints, filletRadiusPx);
-            } else {
-              const allPts = [p1, ...waypointsPx, pEnd];
-              guidePathD = `M ${allPts[0].x.toFixed(1)} ${allPts[0].y.toFixed(1)} ` + allPts.slice(1).map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-            }
-
-            return (
-              <g pointerEvents="none">
-                {/* Trazo elástico de la cañería */}
-                <path
-                  d={guidePathD}
-                  fill="none"
-                  stroke="#f59e0b"
-                  strokeWidth={2.5}
-                  strokeDasharray="6 4"
-                />
-                {/* Marcadores visuales para cada vértice intermedio ya fijado (solo en modos no-arco) */}
-                {!isArc && waypointsPx.map((wp, idx) => (
-                  <g key={`pending-wp-${idx}`}>
-                    <circle
-                      cx={wp.x}
-                      cy={wp.y}
-                      r={5}
-                      fill="#f59e0b"
-                      stroke="#ffffff"
-                      strokeWidth={1.8}
-                    />
-                    <rect
-                      x={wp.x + 6}
-                      y={wp.y - 14}
-                      width={18}
-                      height={12}
-                      rx={3}
-                      fill="#0f172a"
-                      fillOpacity={0.85}
-                    />
-                    <text
-                      x={wp.x + 9}
-                      y={wp.y - 5}
-                      fontSize={8}
-                      fill="#fbbf24"
-                      className="font-mono font-bold select-none"
-                    >
-                      P{idx + 1}
-                    </text>
-                  </g>
-                ))}
-                {/* Punto cursor objetivo */}
-                <circle
-                  cx={pEnd.x}
-                  cy={pEnd.y}
-                  r={6}
-                  fill="#f59e0b"
-                  opacity={0.8}
-                />
-              </g>
-            );
-          })()}
-
-          {/* Previsualización del elemento eléctrico que sigue al cursor (Ghost preview con snap al centro, a pared o a símbolo detectado) */}
-          {selectedSymbolId && hoverWorldPos && (
-            <g
-              transform={`translate(${hoverWorldPos.x * zoom}, ${hoverWorldPos.y * zoom})`}
-              className="pointer-events-none opacity-90"
-            >
-              <AeaCanvasSymbol
-                symbolId={selectedSymbolId}
-                zoom={zoom}
-                isSelected={true}
-                elementLabel={
-                  isSnappedToPatternMatch
-                    ? 'Símbolo 🎯'
-                    : activeSnapInfo
-                    ? 'Pared'
-                    : isSnappedToCenter
-                    ? 'Centro'
-                    : undefined
-                }
-                rotationDeg={hoverRotationDeg}
-              />
-              {isSnappedToPatternMatch && (
-                <circle r={22} fill="none" stroke="#06b6d4" strokeWidth={2.5} strokeDasharray="5 3" />
-              )}
-              {activeSnapInfo && !isSnappedToPatternMatch && (
-                <circle r={18} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="3 3" />
-              )}
-              {isSnappedToCenter && !isSnappedToPatternMatch && (
-                <circle r={26} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="4 3" />
-              )}
-            </g>
-          )}
+          <InteractiveDraftLayer
+            zoom={zoom}
+            hoverWorldPos={hoverWorldPos}
+            hoverRotationDeg={hoverRotationDeg}
+            isAddingDimension={isAddingDimension}
+            dimensionP1={dimensionP1}
+            isDrawingOverhang={isDrawingOverhang}
+            overhangP1={overhangP1}
+            isMovingSpace={isMovingSpace}
+            movingSpace={movingSpace}
+            movingBasePoint={movingBasePoint}
+            verticesMap={verticesMap}
+            isCalibratingUnderlay={isCalibratingUnderlay}
+            calibrationP1={calibrationP1}
+            isConnectingConduit={isConnectingConduit}
+            pendingConduitStartNode={pendingConduitStartNode}
+            pendingConduitWaypoints={pendingConduitWaypoints}
+            sequenceRoutingMode={sequenceRoutingMode}
+            sequenceRoutingPlane={sequenceRoutingPlane}
+            selectedSymbolId={selectedSymbolId}
+            activeSnapInfo={activeSnapInfo}
+            isSnappedToCenter={isSnappedToCenter}
+            isSnappedToPatternMatch={isSnappedToPatternMatch}
+          />
         </g>
       </svg>
 
-      {/* Banner / Píldora superior cuando se conecta cañería (visible solo en escritorio) */}
-      {isConnectingConduit && isDesktop && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-3.5 pr-2 py-1.5 rounded-full shadow-xl border border-amber-500/50 flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-          <span className="truncate max-w-[280px] sm:max-w-none">
-            {!pendingConduitStartId
-              ? '⚡ Trazar Canalización: Tocá la primera boca o tablero'
-              : sequenceRoutingMode === 'schematic_arc'
-              ? '⚡ 1° Extremo fijado · Tocá la boca o tablero de destino'
-              : (pendingConduitWaypoints?.length || 0) === 0
-              ? '⚡ 1° Extremo fijado · Clic en plano para quiebre o en boca para cerrar'
-              : `⚡ Recorrido (${pendingConduitWaypoints?.length} quiebres) · Clic para sumar quiebre o en boca final`}
-          </span>
-          <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
-            {sequenceRoutingMode !== 'schematic_arc' && (pendingConduitWaypoints?.length || 0) > 0 && onUndoConduitWaypoint && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUndoConduitWaypoint();
-                }}
-                className="px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-600 hover:bg-amber-800 text-amber-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1"
-                title="Deshacer último quiebre del recorrido"
-              >
-                <span>↶ Deshacer</span>
-                <span className="bg-amber-800/80 px-1 rounded text-[10px]">{pendingConduitWaypoints?.length}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                const nextMode = sequenceRoutingMode === 'orthogonal' ? 'schematic_arc' : 'orthogonal';
-                setSequenceRoutingMode(nextMode);
-                if (nextMode === 'schematic_arc') {
-                  onClearConduitWaypoints?.();
-                }
-              }}
-              className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 hover:bg-slate-700 text-amber-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap"
-              title="Alternar entre Arco Curvo AEA y Trazado Ortogonal a 90°"
-            >
-              {sequenceRoutingMode === 'orthogonal' ? '📐 90° Ortogonal' : '⌒ Arco AEA'}
-            </button>
-            {onCommitConduitWithTerminalReference && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  let targetPos: { x: number; y: number } | null = hoverWorldPos;
-                  if (!targetPos && pendingConduitWaypoints && pendingConduitWaypoints.length > 0) {
-                    targetPos = pendingConduitWaypoints[pendingConduitWaypoints.length - 1];
-                  }
-                  if (!targetPos && pendingConduitStartId) {
-                    const start = elementsMap.get(pendingConduitStartId);
-                    if (start) {
-                      targetPos = { x: start.x + 1.0, y: start.y };
-                    }
-                  }
-                  if (targetPos) {
-                    onCommitConduitWithTerminalReference(targetPos);
-                  }
-                }}
-                className="px-2 py-0.5 rounded-full bg-sky-950/90 border border-sky-600 hover:bg-sky-800 text-sky-300 text-[11px] font-mono cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1"
-                title="Rematar cañería en una etiqueta de referencia / pase a montante"
-              >
-                <span>➔ Rematar Etiqueta</span>
-              </button>
-            )}
-            {onCancelConnectingConduit && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancelConnectingConduit();
-                }}
-                className="p-0.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white text-[11px] transition-colors cursor-pointer ml-0.5"
-                title="Cancelar conexión de canalización (Esc)"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <CanvasModeBanners
+        isDesktop={isDesktop}
+        isConnectingConduit={isConnectingConduit}
+        pendingConduitStartId={pendingConduitStartId}
+        pendingConduitWaypoints={pendingConduitWaypoints}
+        sequenceRoutingMode={sequenceRoutingMode}
+        hoverWorldPos={hoverWorldPos}
+        elementsMap={elementsMap}
+        onUndoConduitWaypoint={onUndoConduitWaypoint}
+        onClearConduitWaypoints={onClearConduitWaypoints}
+        onSetSequenceRoutingMode={setSequenceRoutingMode}
+        onCommitConduitWithTerminalReference={onCommitConduitWithTerminalReference}
+        onCancelConnectingConduit={onCancelConnectingConduit}
+        isCalibratingUnderlay={isCalibratingUnderlay}
+        calibrationP1={calibrationP1}
+        onCancelCalibration={onCancelCalibration}
+        isAddingDimension={isAddingDimension}
+        dimensionP1={dimensionP1}
+        onCancelAddingDimension={onCancelAddingDimension}
+        isDrawingOverhang={isDrawingOverhang}
+        overhangP1={overhangP1}
+        onCancelDrawingOverhang={onCancelDrawingOverhang}
+        isMovingSpace={isMovingSpace}
+        movingBasePoint={movingBasePoint}
+        onCancelMovingSpace={onCancelMovingSpace}
+        isAdjustingSampleBox={isAdjustingSampleBox}
+        hasProvisionalSquareBox={Boolean(provisionalSquareBox)}
+        onConfirmProvisionalSampleBox={onConfirmProvisionalSampleBox}
+        onCancelProvisionalSampleBox={onCancelProvisionalSampleBox}
+        isSamplingPattern={isSamplingPattern}
+        onCancelSamplingPattern={onCancelSamplingPattern}
+      />
 
-      {/* Banner / Píldora superior durante calibración de plano de fondo */}
-      {isCalibratingUnderlay && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-sky-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
-          <span>
-            {calibrationP1
-              ? '📏 1° punto fijado · Tocá el segundo punto de la cota conocida'
-              : '📏 Calibrar Escala: Tocá el primer punto de una cota conocida del plano'}
-          </span>
-          {onCancelCalibration && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelCalibration();
-              }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar calibración"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner / Píldora superior durante trazado de cota libre */}
-      {isAddingDimension && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-blue-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping" />
-          <span>
-            {dimensionP1
-              ? '📐 1° punto fijado · Hacé clic en el segundo punto de la cota'
-              : '📐 Trazar Cota: Hacé clic en el primer punto a medir'}
-          </span>
-          {onCancelAddingDimension && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelAddingDimension();
-              }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar trazado de cota"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner / Píldora superior durante trazado de alero / techo parcial */}
-      {isDrawingOverhang && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-          <span>
-            {overhangP1
-              ? '☂ 1° punto fijado · Hacé clic en el segundo punto de la arista del alero'
-              : '☂ Trazar Alero: Hacé clic en el primer punto de la arista del techo'}
-          </span>
-          {onCancelDrawingOverhang && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelDrawingOverhang();
-              }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar trazado de alero"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner / Píldora superior durante reubicación de ambiente */}
-      {isMovingSpace && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-blue-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping" />
-          <span>
-            {movingBasePoint
-              ? `⚓ Punto Base: (${movingBasePoint.x.toFixed(2)}, ${movingBasePoint.y.toFixed(2)}) m · Clic en el destino para reubicar`
-              : '⚓ Mover Ambiente: Clic en el plano para definir el Punto Base'}
-          </span>
-          {onCancelMovingSpace && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelMovingSpace();
-              }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar movimiento (Esc)"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner / Píldora superior durante ajuste fino interactivo de Muestra #1 */}
-      {isAdjustingSampleBox && provisionalSquareBox && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-2xl border border-cyan-400/60 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-          <span>📐 Ajustá posición y tamaño de la muestra base</span>
-          {onConfirmProvisionalSampleBox && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onConfirmProvisionalSampleBox();
-              }}
-              className="ml-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-full shadow transition-colors cursor-pointer flex items-center gap-1"
-              title="Confirmar muestra base (Enter)"
-            >
-              ✓ Confirmar (Enter)
-            </button>
-          )}
-          {onCancelProvisionalSampleBox && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelProvisionalSampleBox();
-              }}
-              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] rounded-full border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar ajuste (Esc)"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Banner / Píldora superior durante selección con recuadro para detectar símbolos */}
-      {isSamplingPattern && !isAdjustingSampleBox && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white pl-4 pr-2 py-1.5 rounded-full shadow-xl border border-cyan-500/50 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-          <span>🎯 Arrastrá un recuadro sobre el símbolo del plano para detectarlo en toda la planta</span>
-          {onCancelSamplingPattern && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelSamplingPattern();
-              }}
-              className="ml-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] border border-slate-600 transition-colors cursor-pointer"
-              title="Cancelar detección"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Botonera flotante CAD (Desktop completa vs Móvil ultra-compacta) */}
-      {isDesktop ? (
-        <div
-          className="absolute top-4 right-4 flex flex-col gap-1.5 z-10"
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.min(CAD_VIEWPORT_CONFIG.MAX_ZOOM_PIXELS_PER_METER, Number((z * CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))))}
-            className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
-            title="Acercar (+)"
-          >
-            <Plus size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.max(CAD_VIEWPORT_CONFIG.MIN_ZOOM_PIXELS_PER_METER, Number((z / CAD_VIEWPORT_CONFIG.ZOOM_STEP_FACTOR).toFixed(1))))}
-            className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
-            title="Alejar (-)"
-          >
-            <Minus size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={handleRecenter}
-            className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all"
-            title="Recentrar y encuadrar plano"
-          >
-            <Maximize2 size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={toggleDimensions}
-            className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-              showDimensions
-                ? 'bg-blue-600 text-white border-blue-700'
-                : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-700'
-            }`}
-            title={showDimensions ? 'Ocultar cotas métricas' : 'Mostrar cotas métricas'}
-          >
-            <Ruler size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={onToggleAddingDimension}
-            className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-              isAddingDimension
-                ? 'bg-blue-600 text-white border-blue-700'
-                : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
-            }`}
-            title={isAddingDimension ? 'Cancelar trazado de cota' : 'Trazar cota métrica libre (2 clics)'}
-          >
-            <DraftingCompass size={16} />
-          </button>
-
-          {onToggleLockArchitecture && (
-            <button
-              type="button"
-              onClick={onToggleLockArchitecture}
-              className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                isArchitectureLocked
-                  ? 'bg-amber-600 text-white border-amber-700 shadow-amber-200 ring-2 ring-amber-400'
-                  : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
-              }`}
-              title={
-                isArchitectureLocked
-                  ? 'Arquitectura bloqueada (clic para desbloquear muros)'
-                  : 'Bloquear arquitectura (inmunizar muros contra toques accidentales)'
-              }
-            >
-              {isArchitectureLocked ? <Lock size={16} /> : <Unlock size={16} />}
-            </button>
-          )}
-
-          {/* Controles de Lámina de Fondo y Snap Analítico (solo si hay plano cargado) */}
-          {underlaySheet && (
-            <>
-              <div className="h-px bg-slate-200 my-0.5" />
-              {onToggleSnap && (
-                <button
-                  type="button"
-                  onClick={onToggleSnap}
-                  className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                    isSnapEnabled
-                      ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200'
-                      : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-600'
-                  }`}
-                  title={
-                    isSnapEnabled
-                      ? 'Snap magnético activado (tecla S para desactivar, o mantener Shift)'
-                      : 'Snap magnético desactivado (tecla S para activar)'
-                  }
-                >
-                  <span className="text-sm select-none">🧲</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onToggleUnderlayVisibility}
-                className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                  underlaySheet.visible
-                    ? 'bg-sky-600 text-white border-sky-700'
-                    : 'bg-white/90 text-slate-400 border-slate-200 hover:text-slate-700'
-                }`}
-                title={underlaySheet.visible ? 'Ocultar plano de fondo' : 'Mostrar plano de fondo'}
-              >
-                {underlaySheet.visible ? <Eye size={16} /> : <EyeOff size={16} />}
-              </button>
-              <button
-                type="button"
-                onClick={onCycleUnderlayOpacity}
-                className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all text-[11px] font-mono font-bold"
-                title={`Opacidad del plano: ${Math.round(underlaySheet.opacity * 100)}% (clic para cambiar)`}
-              >
-                {Math.round(underlaySheet.opacity * 100)}%
-              </button>
-              <button
-                type="button"
-                onClick={onStartUnderlayCalibration}
-                className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                  isCalibratingUnderlay
-                    ? 'bg-amber-500 text-white border-amber-600'
-                    : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
-                }`}
-                title="Recalibrar escala métrica (2 clics)"
-              >
-                📏
-              </button>
-              {onOpenAdjustUnderlay && (
-                <button
-                  type="button"
-                  onClick={onOpenAdjustUnderlay}
-                  className="w-9 h-9 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition-all text-xs font-bold"
-                  title="Ajustar plano de fondo (rotar / recortar)"
-                >
-                  ✂️
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (isSamplingPattern) {
-                    onCancelSamplingPattern?.();
-                  } else {
-                    onStartPatternSampling?.();
-                  }
-                }}
-                className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                  isSamplingPattern
-                    ? 'bg-cyan-600 text-white border-cyan-700 shadow-cyan-200 ring-2 ring-cyan-400'
-                    : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
-                }`}
-                title={
-                  isSamplingPattern
-                    ? 'Desactivar detección de patrones'
-                    : 'Detectar símbolos similares en plano con autovectores (selección con recuadro)'
-                }
-              >
-                <ScanSearch size={16} />
-              </button>
-            </>
-          )}
-        </div>
-      ) : (
-        /* En Móvil: Barra CAD compacta y ergonómica (Cero invasión visual) */
-        <div
-          className="absolute top-3 right-3 flex flex-col gap-1.5 z-10"
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          {/* Botón Recentrar Encuadre */}
-          <button
-            type="button"
-            onClick={handleRecenter}
-            className="w-8 h-8 bg-white/90 backdrop-blur-md shadow-md rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 active:scale-95 transition-all"
-            title="Recentrar y encuadrar plano"
-          >
-            <Maximize2 size={15} />
-          </button>
-
-          {/* Botón Bloquear Arquitectura (Vital en móvil para no mover muros por error) */}
-          {onToggleLockArchitecture && (
-            <button
-              type="button"
-              onClick={onToggleLockArchitecture}
-              className={`w-8 h-8 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                isArchitectureLocked
-                  ? 'bg-amber-600 text-white border-amber-700 shadow-amber-200 ring-2 ring-amber-400'
-                  : 'bg-white/90 text-slate-700 border-slate-200'
-              }`}
-              title={isArchitectureLocked ? 'Desbloquear arquitectura' : 'Bloquear arquitectura'}
-            >
-              {isArchitectureLocked ? <Lock size={14} /> : <Unlock size={14} />}
-            </button>
-          )}
-
-          {/* Trazar cota libre (si está activa la herramienta de cotas) */}
-          {isAddingDimension && (
-            <button
-              type="button"
-              onClick={onToggleAddingDimension}
-              className="w-8 h-8 bg-blue-600 text-white border border-blue-700 shadow-md rounded-xl flex items-center justify-center active:scale-95 transition-all"
-              title="Cancelar cota libre"
-            >
-              <DraftingCompass size={15} />
-            </button>
-          )}
-
-          {/* Si hay lámina de fondo: Botón rápido de Snap Magnético */}
-          {underlaySheet && onToggleSnap && (
-            <button
-              type="button"
-              onClick={onToggleSnap}
-              className={`w-8 h-8 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all ${
-                isSnapEnabled
-                  ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200'
-                  : 'bg-white/90 text-slate-400 border-slate-200'
-              }`}
-              title="Snap magnético"
-            >
-              <span className="text-xs select-none">🧲</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Aviso móvil superior al tener boca seleccionada (posicionado debajo de la barra de estado) */}
-      {selectedSymbolId && !isDesktop && (
-        <div className="absolute top-3 left-4 right-14 bg-blue-600/95 backdrop-blur-md text-white text-[11px] font-semibold px-3 py-1.5 rounded-xl shadow-lg truncate pointer-events-none z-10 animate-in fade-in slide-in-from-top-1">
-          📍 Tocá plano o muro para emplazar {getSymbolById(selectedSymbolId)?.label || 'Boca'}
-        </div>
-      )}
-
-      {/* Indicador de ayuda de escritorio */}
-      <div className="hidden lg:flex absolute bottom-4 left-4 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl shadow-md border border-slate-200 text-xs font-mono text-slate-700 pointer-events-none items-center gap-2">
-        {selectedSymbolId ? (
-          <span className="text-blue-700 font-bold">
-            📍 Multi-inserción: Clic para emplazar · Esc para salir · S: Snap {isSnapEnabled ? 'ON' : 'OFF'} (Shift para liberar)
-          </span>
-        ) : project.vertices.length === 0 ? (
-          'Tocá cualquier parte del lienzo para plantar el punto de inicio'
-        ) : activeAnchorVertex ? (
-          `Anclaje seleccionado: (${activeAnchorVertex.x}, ${activeAnchorVertex.y}) m`
-        ) : (
-          'Tocá un vértice o esquina para anclar la siguiente pared'
-        )}
-      </div>
+      <CanvasFloatingControls
+        isDesktop={isDesktop}
+        showDimensions={showDimensions}
+        isAddingDimension={isAddingDimension}
+        isArchitectureLocked={isArchitectureLocked}
+        isSnapEnabled={isSnapEnabled}
+        isCalibratingUnderlay={isCalibratingUnderlay}
+        isSamplingPattern={isSamplingPattern}
+        underlaySheet={underlaySheet}
+        selectedSymbolId={selectedSymbolId}
+        verticesCount={project.vertices.length}
+        activeAnchorVertex={activeAnchorVertex}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onRecenter={handleStableRecenter}
+        onToggleDimensions={toggleDimensions}
+        onToggleAddingDimension={onToggleAddingDimension}
+        onToggleLockArchitecture={onToggleLockArchitecture}
+        onToggleSnap={onToggleSnap}
+        onToggleUnderlayVisibility={onToggleUnderlayVisibility}
+        onCycleUnderlayOpacity={onCycleUnderlayOpacity}
+        onStartUnderlayCalibration={onStartUnderlayCalibration}
+        onOpenAdjustUnderlay={onOpenAdjustUnderlay}
+        onStartPatternSampling={onStartPatternSampling}
+        onCancelSamplingPattern={onCancelSamplingPattern}
+      />
     </div>
   );
 };
