@@ -196,6 +196,19 @@ export const CONDUCTOR_ROLE_OPTIONS: readonly ConductorRoleOption[] = [
   { id: 'fase_t', label: 'Fase T (L3)' }
 ];
 
+export const DEFAULT_RETURN_CONDUCTOR_SPEC = {
+  role: 'retorno' as const,
+  sectionMM2: 1.5,
+  color: '#ca8a04',
+  reference: 'a'
+} as const;
+
+export const ELEMENT_PLACEMENT_OPTIONS = [
+  { id: 'ceiling' as const, label: 'Cielorraso', defaultHeightZ: 2.70 },
+  { id: 'wall' as const, label: 'Pared', defaultHeightZ: 1.20 },
+  { id: 'floor' as const, label: 'Piso', defaultHeightZ: 0.05 }
+] as const;
+
 export {
   CONDUIT_MATERIALS_CATALOG,
   DEFAULT_CONDUIT_MATERIAL,

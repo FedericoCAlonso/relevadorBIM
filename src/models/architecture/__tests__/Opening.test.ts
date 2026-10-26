@@ -129,8 +129,8 @@ describe('Opening - Geometría de Jambas y Aberturas de Cara a Cara', () => {
   });
 });
 
-import { getDoorSwingGeometry } from '../Opening';
-import { getWallSideOffsets } from '../Wall';
+import { getDoorSwingGeometry, toggleOpeningHinge, toggleOpeningDirection } from '../Opening';
+import { getWallSideOffsets, flipWallMountedNodeSide } from '../Wall';
 
 describe('Opening - Simbología de puertas y justificación de muro', () => {
   it('getWallSideOffsets respeta la justificación del muro', () => {
@@ -150,5 +150,38 @@ describe('Opening - Simbología de puertas y justificación de muro', () => {
     expect(rightOut.leafY).toBeCloseTo(0.7);
 
     expect(getDoorSwingGeometry('right_in', 0.8, 0.1, -0.1).sweep).toBe(0);
+  });
+
+  it('toggleOpeningHinge y toggleOpeningDirection invierten mano y sentido correctamente', () => {
+    expect(toggleOpeningHinge('left_in')).toBe('right_in');
+    expect(toggleOpeningHinge('right_out')).toBe('left_out');
+    expect(toggleOpeningDirection('left_in')).toBe('left_out');
+    expect(toggleOpeningDirection('right_out')).toBe('right_in');
+  });
+
+  it('flipWallMountedNodeSide invierte la cara física de un nodo adosado a un muro horizontal', () => {
+    const vMap = new Map<string, WallVertex>([
+      ['v1', { id: 'v1', x: 0, y: 0 }],
+      ['v2', { id: 'v2', x: 4, y: 0 }]
+    ]);
+    const wall: Wall = {
+      id: 'w1',
+      levelId: 'lvl-1',
+      startVertexId: 'v1',
+      endVertexId: 'v2',
+      thickness: 0.20,
+      height: 2.8
+    };
+    const flipped = flipWallMountedNodeSide(
+      { x: 2, y: 0.1, side: 'left', rotation: 180 },
+      wall,
+      vMap
+    );
+    expect(flipped).toEqual({
+      x: 2,
+      y: -0.1,
+      side: 'right',
+      rotation: 0
+    });
   });
 });

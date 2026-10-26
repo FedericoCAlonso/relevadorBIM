@@ -122,3 +122,25 @@ export function getDoorSwingGeometry(
   const arcPath = `M ${hingeX} ${leafY} A ${widthLocal} ${widthLocal} 0 0 ${sweep} ${targetX} ${hingeY}`;
   return { hingeX, hingeY, leafY, sweep, arcPath };
 }
+
+/**
+ * Invierte la mano de bisagra (izquierda <-> derecha) manteniendo el sentido interior/exterior.
+ */
+export function toggleOpeningHinge(swing: OpeningSwing = 'left_in'): OpeningSwing {
+  if (swing === 'left_in') return 'right_in';
+  if (swing === 'right_in') return 'left_in';
+  if (swing === 'left_out') return 'right_out';
+  if (swing === 'right_out') return 'left_out';
+  return 'left_out';
+}
+
+/**
+ * Invierte el sentido de apertura (adentro <-> afuera) manteniendo la mano de bisagra.
+ */
+export function toggleOpeningDirection(swing: OpeningSwing = 'left_in'): OpeningSwing {
+  if (swing === 'left_in') return 'left_out';
+  if (swing === 'left_out') return 'left_in';
+  if (swing === 'right_in') return 'right_out';
+  if (swing === 'right_out') return 'right_in';
+  return 'right_in';
+}

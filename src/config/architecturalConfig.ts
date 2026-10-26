@@ -7,6 +7,7 @@
 
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
 import type { SpaceCoverType, SpaceCategory } from '../models/architecture/Space';
+import type { WallType, WallJustification } from '../models/architecture/Wall';
 
 export const ARCHITECTURAL_WALL_CONFIG = {
   DEFAULT_THICKNESS_M: 0.15,
@@ -17,6 +18,41 @@ export const ARCHITECTURAL_WALL_CONFIG = {
   TEE_DEFAULT_OFFSET_M: 1.50,
   TEE_DEFAULT_LENGTH_M: 2.50
 } as const;
+
+export interface WallTypeOption {
+  readonly id: WallType;
+  readonly label: string;
+}
+
+export const WALL_TYPE_OPTIONS: readonly WallTypeOption[] = [
+  { id: 'standard', label: 'Estándar' },
+  { id: 'low_wall', label: 'Muro Bajo' },
+  { id: 'railing', label: 'Baranda' }
+] as const;
+
+export interface WallJustificationOption {
+  readonly id: WallJustification;
+  readonly label: string;
+  readonly title: string;
+}
+
+export const WALL_JUSTIFICATION_OPTIONS: readonly WallJustificationOption[] = [
+  {
+    id: 'interior',
+    label: 'Cara Int.',
+    title: 'Medida tomada sobre la cara interior (luz libre de habitación)'
+  },
+  {
+    id: 'center',
+    label: 'Eje Medio',
+    title: 'Medida entre ejes medios de muro'
+  },
+  {
+    id: 'exterior',
+    label: 'Cara Ext.',
+    title: 'Medida tomada sobre la cara exterior (fachada o medianera)'
+  }
+] as const;
 
 export const ARCHITECTURAL_OPENING_CONFIG = {
   DOOR_DEFAULT_WIDTH_M: 0.80,
@@ -56,6 +92,19 @@ export const OPENING_SWING_OPTIONS: readonly OpeningSwingOption[] = [
   { id: 'double', label: 'Doble Hoja' },
   { id: 'sliding', label: 'Corrediza' },
   { id: 'none', label: 'Sin Batiente / Fijo' }
+] as const;
+
+export interface DoorQuadrantSwingOption {
+  readonly id: OpeningSwing;
+  readonly shortLabel: string;
+  readonly arrowLabel: string;
+}
+
+export const DOOR_QUADRANT_SWING_OPTIONS: readonly DoorQuadrantSwingOption[] = [
+  { id: 'left_in', shortLabel: 'Izq/Ad', arrowLabel: '↶ Izq. Int.' },
+  { id: 'right_in', shortLabel: 'Der/Ad', arrowLabel: '↷ Der. Int.' },
+  { id: 'left_out', shortLabel: 'Izq/Af', arrowLabel: '↶ Izq. Ext.' },
+  { id: 'right_out', shortLabel: 'Der/Af', arrowLabel: '↷ Der. Ext.' }
 ] as const;
 
 export const ARCHITECTURAL_SPACE_CONFIG = {

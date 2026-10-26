@@ -239,3 +239,38 @@ export function getWallSideOffsets(wall: Pick<Wall, 'thickness' | 'justification
   if (just === 'exterior') return { leftOffset: T, rightOffset: 0 };
   return { leftOffset: T / 2, rightOffset: -T / 2 };
 }
+
+/**
+ * Invierte la cara física de montaje (left <-> right) de una entidad adosada a un muro,
+ * desplazándola perpendicularmente por el espesor del paramento y rotándola 180°.
+ */
+export function flipWallMountedNodeSide(
+  node: { x: number; y: number; side?: 'left' | 'right' | 'interior' | 'exterior' | string; rotation?: number },
+  wall: Wall,
+  verticesMap: Map<string, WallVertex>
+): { x: number; y: number; side: 'left' | 'right'; rotation: number } | null {
+  const vStart = verticesMap.get(wall.startVertexId);
+  const vEnd = verticesMap.get(wall.endVertexId);
+  if (!vStart || !vEnd) return null;
+
+  const dx = vEnd.x - vStart.x;
+  const dy = vEnd.y - vStart.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.001) return null;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+  const curSide = node.side === 'right' || node.side === 'exterior' ? 'right' : 'left';
+  const newSide: 'left' | 'right' = curSide === 'left' ? 'right' : 'left';
+  const mult = curSide === 'left' ? -1 : 1;
+  const newX = node.x + mult * wall.thickness * nx;
+  const newY = node.y + mult * wall.thickness * ny;
+  const curRot = node.rotation || 0;
+
+  return {
+    x: Number(newX.toFixed(3)),
+    y: Number(newY.toFixed(3)),
+    side: newSide,
+    rotation: (curRot + 180) % 360
+  };
+}
