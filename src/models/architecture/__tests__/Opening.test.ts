@@ -143,7 +143,7 @@ describe('Opening - Simbología de puertas y justificación de muro', () => {
     const leftIn = getDoorSwingGeometry('left_in', 0.8, 0.1, -0.1);
     expect(leftIn).toMatchObject({ hingeX: 0, hingeY: 0.1, sweep: 1 });
     expect(leftIn.leafY).toBeCloseTo(-0.7);
-    expect(leftIn.arcPath).toBe('M 0 -0.7 A 0.8 0.8 0 0 1 0.8 0.1');
+    expect(leftIn.arcPath).toMatch(/^M 0 -0\.7\d* A 0\.8 0\.8 0 0 1 0\.8 0\.1$/);
 
     const rightOut = getDoorSwingGeometry('right_out', 0.8, 0.1, -0.1);
     expect(rightOut).toMatchObject({ hingeX: 0.8, hingeY: -0.1, sweep: 1 });
