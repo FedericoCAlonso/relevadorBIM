@@ -7,7 +7,7 @@
  */
 
 import type { Wall, WallVertex, Vector2D } from './Wall';
-import { getWallVector, getWallLength, getWallLeftNormal } from './Wall';
+import { getWallVector, getWallLength, getWallLeftNormal, getWallSideOffsets } from './Wall';
 
 export type OpeningType = 'door' | 'window' | 'passage';
 
@@ -82,19 +82,7 @@ export function getOpeningPhysicalJambs(
   if (!jambs) return null;
 
   const normal = getWallLeftNormal(wall, vertices);
-  const T = wall.thickness;
-  const just = wall.justification ?? 'center';
-
-  let leftOffset = T / 2;
-  let rightOffset = -T / 2;
-
-  if (just === 'interior') {
-    leftOffset = 0;
-    rightOffset = -T;
-  } else if (just === 'exterior') {
-    leftOffset = T;
-    rightOffset = 0;
-  }
+  const { leftOffset, rightOffset } = getWallSideOffsets(wall);
 
   return {
     leftJamb1: { x: jambs.jamb1.x + normal.x * leftOffset, y: jambs.jamb1.y + normal.y * leftOffset },

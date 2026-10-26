@@ -118,19 +118,7 @@ export function getWallFaces(
   if (!vStart || !vEnd) return null;
 
   const normal = getWallLeftNormal(wall, vertices);
-  const T = wall.thickness;
-  const just = wall.justification ?? 'center';
-
-  let leftOffset = T / 2;
-  let rightOffset = -T / 2;
-
-  if (just === 'interior') {
-    leftOffset = 0;
-    rightOffset = -T;
-  } else if (just === 'exterior') {
-    leftOffset = T;
-    rightOffset = 0;
-  }
+  const { leftOffset, rightOffset } = getWallSideOffsets(wall);
 
   return {
     leftFace: {

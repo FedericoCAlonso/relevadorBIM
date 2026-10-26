@@ -9,6 +9,7 @@
 
 import type { Vector2D, WallVertex } from './Wall';
 import type { CeilingMaterialType } from './ceilingPlan';
+import { SPACE_COVER_TYPE_OPTIONS, type SpaceCoverTypeOption } from '../../config/architecturalConfig';
 
 export type SpaceCategory =
   | 'living'
@@ -74,54 +75,8 @@ export const STANDARD_CEILING_HEIGHT_PRESETS: readonly number[] = [2.40, 2.60, 2
 
 export const STANDARD_OVERHANG_DEPTH_PRESETS: readonly number[] = [1.00, 1.50, 2.00, 2.50];
 
-export interface SpaceCoverTypeOption {
-  readonly id: SpaceCoverType;
-  readonly label: string;
-  readonly shortLabel: string;
-  readonly defaultCategory: SpaceCategory;
-  readonly defaultIP: 'IP20' | 'IP44' | 'IP65';
-  readonly aeaAreaFactor: number;
-  readonly description: string;
-}
-
-export const SPACE_COVER_TYPE_OPTIONS: readonly SpaceCoverTypeOption[] = [
-  {
-    id: 'cubierto',
-    label: 'Cubierto (Interior / Habitable)',
-    shortLabel: 'Cubierto',
-    defaultCategory: 'living',
-    defaultIP: 'IP20',
-    aeaAreaFactor: 1.0,
-    description: 'Losa o techo completo. 100% computable para superficie límite AEA 771.'
-  },
-  {
-    id: 'semicubierto',
-    label: 'Semicubierto (Galería / Balcón / Alero)',
-    shortLabel: 'Semicubierto',
-    defaultCategory: 'balcon',
-    defaultIP: 'IP44',
-    aeaAreaFactor: 0.5,
-    description: 'Techo o alero abierto al exterior. 50% computable para superficie límite AEA 771.'
-  },
-  {
-    id: 'descubierto',
-    label: 'Descubierto (Patio / Terraza / Jardín)',
-    shortLabel: 'Descubierto',
-    defaultCategory: 'exterior',
-    defaultIP: 'IP65',
-    aeaAreaFactor: 0.0,
-    description: 'A cielo abierto sin cubierta. 0% computable para superficie límite AEA 771.'
-  },
-  {
-    id: 'vacio',
-    label: 'Vacío / Aire y Luz / Pleno',
-    shortLabel: 'Vacío',
-    defaultCategory: 'aire_luz',
-    defaultIP: 'IP20',
-    aeaAreaFactor: 0.0,
-    description: 'Hueco de losa o patio de aire y luz. 0% computable.'
-  }
-];
+export { SPACE_COVER_TYPE_OPTIONS };
+export type { SpaceCoverTypeOption };
 
 export function getSpaceCoverOption(coverType?: SpaceCoverType): SpaceCoverTypeOption {
   const match = SPACE_COVER_TYPE_OPTIONS.find((opt) => opt.id === coverType);

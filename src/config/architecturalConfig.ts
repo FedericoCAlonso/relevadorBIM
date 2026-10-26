@@ -6,7 +6,7 @@
  */
 
 import type { OpeningType, OpeningSwing } from '../models/architecture/Opening';
-import type { SpaceCoverType } from '../models/architecture/Space';
+import type { SpaceCoverType, SpaceCategory } from '../models/architecture/Space';
 
 export const ARCHITECTURAL_WALL_CONFIG = {
   DEFAULT_THICKNESS_M: 0.15,
@@ -106,7 +106,7 @@ export interface SpaceCoverTypeOption {
   readonly id: SpaceCoverType;
   readonly label: string;
   readonly shortLabel: string;
-  readonly defaultCategory: string;
+  readonly defaultCategory: SpaceCategory;
   readonly defaultIP: 'IP20' | 'IP44' | 'IP65';
   readonly aeaAreaFactor: number;
   readonly description: string;

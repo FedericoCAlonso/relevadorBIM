@@ -10,8 +10,7 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import type { WallVertex, Wall, WallPlacementSnap } from '../../../models/architecture/Wall';
-import { getWallPolygon, getWallLength, calculateWallSnap } from '../../../models/architecture/Wall';
-import { computeResolvedWallPolygons } from '../../../models/architecture/WallCornerEngine';
+import { calculateWallSnap } from '../../../models/architecture/Wall';
 import { resolveSpacePolygon, calculatePolygonCentroid } from '../../../models/architecture/Space';
 import { AeaCanvasSymbol } from '../electrical/AeaSymbolIcon';
 import { getSymbolById } from '../../../models/electrical/symbolsLib';
@@ -33,6 +32,7 @@ import { useWallGripDrag } from '../../../viewmodels/useWallGripDrag';
 import { SmartGuidesLayer } from './layers/SmartGuidesLayer';
 import { PatternMatchesLayer } from './layers/PatternMatchesLayer';
 import { BeamsLayer, ColumnsLayer } from './layers/StructuralLayers';
+import { WallsLayer, type WallGripActions } from './layers/WallsLayer';
 import { SpacesLayer } from './layers/SpacesLayer';
 import { OpeningsLayer } from './layers/OpeningsLayer';
 import { VerticesLayer } from './layers/VerticesLayer';
@@ -291,7 +291,6 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const [isSnappedToPatternMatch, setIsSnappedToPatternMatch] = useState(false);
   const [samplingStartWorldPos, setSamplingStartWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [isStencilSnapped, setIsStencilSnapped] = useState(false);
-  const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
   const justCompletedSamplingRef = useRef(false);
   const activeWaypointDragRef = useRef<{
     conduitId: string;
@@ -1034,271 +1033,26 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
   const activeLevelSpaces = useMemo(() => project.spaces.filter((s) => s.levelId === project.activeLevelId), [project.spaces, project.activeLevelId]);
 
-  // 2. Muros físicos con espesor y esquinas resueltas en inglete (CAD Miter Joins)
-  const renderedWalls = useMemo(() => {
-    const levelWalls = project.walls.filter((w) => w.levelId === project.activeLevelId);
-    const resolvedPolys = computeResolvedWallPolygons(levelWalls, verticesMap);
+  const activeLevelWalls = useMemo(() => project.walls.filter((w) => w.levelId === project.activeLevelId), [project.walls, project.activeLevelId]);
 
-    return levelWalls.map((wall) => {
-      const poly = resolvedPolys.get(wall.id) || getWallPolygon(wall, verticesMap);
-      const vStart = verticesMap.get(wall.startVertexId);
-      const vEnd = verticesMap.get(wall.endVertexId);
-      if (!poly || !vStart || !vEnd) return null;
-
-        const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
-        const lenM = getWallLength(wall, verticesMap);
-        const isSelected = selectedEntity?.type === 'wall' && selectedEntity.id === wall.id;
-
-        const midX = ((vStart.x + vEnd.x) / 2) * zoom;
-        const midY = ((vStart.y + vEnd.y) / 2) * zoom;
-
-        return (
-          <g
-            key={wall.id}
-            onMouseEnter={() => setHoveredWallId(wall.id)}
-            onMouseLeave={() => setHoveredWallId(null)}
-            onClick={(e) => {
-              if (wasDraggingRecentlyRef.current()) return;
-              if (isInteractionInterceptedRef.current) {
-                // Modo inserción de elemento eléctrico o conexión de cañerías / mover espacio
-                triggerPlacementRef.current(e.clientX, e.clientY);
-                return;
-              }
-              e.stopPropagation();
-              onWallClick?.(wall.id);
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              onWallDoubleClick?.(wall.id);
-            }}
-            className="cursor-pointer group"
-          >
-            {/* 1. Zona táctil y de clic amplia para selección inmediata del muro */}
-            <line
-              x1={vStart.x * zoom}
-              y1={vStart.y * zoom}
-              x2={vEnd.x * zoom}
-              y2={vEnd.y * zoom}
-              stroke="transparent"
-              strokeWidth={Math.max(wall.thickness * zoom + 24, 32)}
-              pointerEvents="stroke"
-            />
-
-            {/* 2. Cuerpo físico del muro */}
-            {(() => {
-              const isLowWall = wall.wallType === 'low_wall';
-              const isRailing = wall.wallType === 'railing';
-
-              const fill = isSelected
-                ? '#2563eb'
-                : isRailing
-                ? 'rgba(148, 163, 184, 0.15)'
-                : isLowWall
-                ? hoveredWallId === wall.id ? '#64748b' : '#94a3b8'
-                : hoveredWallId === wall.id ? '#475569' : '#334155';
-
-              const stroke = isSelected
-                ? '#1d4ed8'
-                : isRailing
-                ? '#475569'
-                : isLowWall
-                ? '#475569'
-                : '#1e293b';
-
-              const strokeWidth = isSelected ? 2 : isRailing ? 1.5 : 1;
-              const strokeDasharray = isRailing ? '8 4' : undefined;
-
-              return (
-                <>
-                  <polygon
-                    points={pointsStr}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={strokeDasharray}
-                  />
-                  {(isLowWall || isRailing) && (
-                    <text
-                      x={midX}
-                      y={midY}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize={9}
-                      className="fill-white font-mono font-bold pointer-events-none select-none drop-shadow"
-                    >
-                      {isLowWall ? `h=${wall.height || 1.0}m` : 'Baranda'}
-                    </text>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* 3. Indicador y Grips interactivos de selección activa (CAD Smart Grips) */}
-            {isSelected && (
-              <>
-                <polygon
-                  points={pointsStr}
-                  fill="none"
-                  stroke="#60a5fa"
-                  strokeWidth={3}
-                  strokeDasharray="6 3"
-                />
-                {/* Grip Extremo Inicio (vStart) */}
-                <g
-                  className={`${isArchitectureLocked ? 'cursor-not-allowed' : 'cursor-move'} group/grip-start`}
-                  onPointerDown={(e) => {
-                    if (isArchitectureLocked) return;
-                    isDraggingObjectRef.current = true;
-                    handleGripPointerDown(e, wall.id, 'start', vStart.id);
-                  }}
-                  onPointerMove={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerMove(e);
-                  }}
-                  onPointerUp={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerUp(e);
-                    lastDragEndTimeRef.current = Date.now();
-                    isDraggingObjectRef.current = false;
-                  }}
-                  onPointerCancel={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerUp(e);
-                    lastDragEndTimeRef.current = Date.now();
-                    isDraggingObjectRef.current = false;
-                  }}
-                >
-                  {/* Hitbox táctil ergonómica invisible de 44x44px (r=22) */}
-                  <circle
-                    cx={vStart.x * zoom}
-                    cy={vStart.y * zoom}
-                    r={22}
-                    fill="transparent"
-                    pointerEvents="all"
-                  />
-                  {/* Halo visual exterior */}
-                  <circle
-                    cx={vStart.x * zoom}
-                    cy={vStart.y * zoom}
-                    r={9}
-                    fill="#ffffff"
-                    stroke={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'start' ? '#10b981' : '#2563eb'}
-                    strokeWidth={2.5}
-                    className="drop-shadow pointer-events-none group-hover/grip-start:scale-125 transition-transform"
-                  />
-                  {/* Núcleo central */}
-                  <circle
-                    cx={vStart.x * zoom}
-                    cy={vStart.y * zoom}
-                    r={4.5}
-                    fill={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'start' ? '#10b981' : '#2563eb'}
-                    className="pointer-events-none"
-                  />
-                </g>
-
-                {/* Grip Extremo Fin (vEnd) */}
-                <g
-                  className={`${isArchitectureLocked ? 'cursor-not-allowed' : 'cursor-move'} group/grip-end`}
-                  onPointerDown={(e) => {
-                    if (isArchitectureLocked) return;
-                    isDraggingObjectRef.current = true;
-                    handleGripPointerDown(e, wall.id, 'end', vEnd.id);
-                  }}
-                  onPointerMove={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerMove(e);
-                  }}
-                  onPointerUp={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerUp(e);
-                    lastDragEndTimeRef.current = Date.now();
-                    isDraggingObjectRef.current = false;
-                  }}
-                  onPointerCancel={(e) => {
-                    if (isArchitectureLocked) return;
-                    handleGripPointerUp(e);
-                    lastDragEndTimeRef.current = Date.now();
-                    isDraggingObjectRef.current = false;
-                  }}
-                >
-                  {/* Hitbox táctil ergonómica invisible de 44x44px (r=22) */}
-                  <circle
-                    cx={vEnd.x * zoom}
-                    cy={vEnd.y * zoom}
-                    r={22}
-                    fill="transparent"
-                    pointerEvents="all"
-                  />
-                  {/* Halo visual exterior */}
-                  <circle
-                    cx={vEnd.x * zoom}
-                    cy={vEnd.y * zoom}
-                    r={9}
-                    fill="#ffffff"
-                    stroke={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'end' ? '#10b981' : '#2563eb'}
-                    strokeWidth={2.5}
-                    className="drop-shadow pointer-events-none group-hover/grip-end:scale-125 transition-transform"
-                  />
-                  {/* Núcleo central */}
-                  <circle
-                    cx={vEnd.x * zoom}
-                    cy={vEnd.y * zoom}
-                    r={4.5}
-                    fill={activeDrag?.wallId === wall.id && activeDrag.draggedEnd === 'end' ? '#10b981' : '#2563eb'}
-                    className="pointer-events-none"
-                  />
-                </g>
-              </>
-            )}
-
-            {/* 4. Cota métrica al centro del muro */}
-            {(showDimensions || isSelected) && (
-              <g transform={`translate(${midX}, ${midY})`}>
-                <rect
-                  x={-24}
-                  y={-10}
-                  width={48}
-                  height={16}
-                  rx={4}
-                  fill="#ffffff"
-                  fillOpacity={0.95}
-                  stroke={isSelected ? '#2563eb' : '#cbd5e1'}
-                  strokeWidth={isSelected ? 1.5 : 0.5}
-                />
-                <text
-                  x={0}
-                  y={2}
-                  textAnchor="middle"
-                  fontSize={9}
-                  className="font-mono font-bold fill-slate-800 select-none pointer-events-none"
-                >
-                  {lenM.toFixed(2)} m
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      });
-  }, [
-    project.walls,
-    project.activeLevelId,
-    verticesMap,
-    zoom,
-    selectedEntity,
-    selectedSymbolId,
-    isConnectingConduit,
-    isCalibratingUnderlay,
-    isAddingDimension,
-    showDimensions,
-    hoveredWallId,
-    onWallClick,
-    onWallDoubleClick,
-    isArchitectureLocked,
-    activeDrag,
-    handleGripPointerDown,
-    handleGripPointerMove,
-    handleGripPointerUp
-  ]);
+  // Acciones de grips con identidad estable: delegan en la última versión de los handlers vía ref.
+  const gripHandlersRef = useRef({ handleGripPointerDown, handleGripPointerMove, handleGripPointerUp });
+  gripHandlersRef.current = { handleGripPointerDown, handleGripPointerMove, handleGripPointerUp };
+  const wallGripActions = useMemo<WallGripActions>(() => {
+    const finishDrag = (e: React.PointerEvent) => {
+      gripHandlersRef.current.handleGripPointerUp(e);
+      lastDragEndTimeRef.current = Date.now();
+      isDraggingObjectRef.current = false;
+    };
+    return {
+      onGripDown: (e, wallId, end, vertexId) => {
+        isDraggingObjectRef.current = true;
+        gripHandlersRef.current.handleGripPointerDown(e, wallId, end, vertexId);
+      },
+      onGripMove: (e) => gripHandlersRef.current.handleGripPointerMove(e),
+      onGripRelease: finishDrag
+    };
+  }, []);
 
   const isInteractionBlocked = Boolean(selectedSymbolId || isConnectingConduit || isCalibratingUnderlay || isAddingDimension);
   const activeLevelBeams = useMemo(() => (project.beams || []).filter((b) => b.levelId === project.activeLevelId), [project.beams, project.activeLevelId]);
@@ -2465,7 +2219,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
 
           <SpacesLayer spaces={activeLevelSpaces} verticesMap={verticesMap} wallsMap={wallsMap} zoom={zoom} selectedSpaceId={selectedEntity?.type === 'space' ? selectedEntity.id : null} overhangTargetSpaceId={isDrawingOverhang ? overhangSpaceId : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onSpaceClick={onSpaceClick} />
           <BeamsLayer beams={activeLevelBeams} zoom={zoom} selectedBeamId={selectedEntity?.type === 'beam' ? selectedEntity.id : null} onBeamClick={onBeamClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
-          {renderedWalls}
+          <WallsLayer walls={activeLevelWalls} verticesMap={verticesMap} zoom={zoom} selectedWallId={selectedEntity?.type === 'wall' ? selectedEntity.id : null} showDimensions={showDimensions} isArchitectureLocked={isArchitectureLocked} activeDragWallId={activeDrag?.wallId ?? null} activeDragEnd={activeDrag?.draggedEnd ?? null} gripActions={wallGripActions} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onWallClick={onWallClick} onWallDoubleClick={onWallDoubleClick} />
           <OpeningsLayer openings={project.openings} wallsMap={wallsMap} verticesMap={verticesMap} activeLevelId={project.activeLevelId} zoom={zoom} selectedOpeningId={selectedEntity?.type === 'opening' ? selectedEntity.id : null} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionInterceptedRef={isInteractionInterceptedRef} triggerPlacementRef={triggerPlacementRef} onOpeningClick={onOpeningClick} />
           <ColumnsLayer columns={activeLevelColumns} zoom={zoom} selectedColumnId={selectedEntity?.type === 'column' ? selectedEntity.id : null} onColumnClick={onColumnClick} wasDraggingRecentlyRef={wasDraggingRecentlyRef} isInteractionBlocked={isInteractionBlocked} />
           <PreviewRayLayer anchorVertex={activeAnchorVertex ?? null} distanceM={previewDistanceM} directionDeg={currentDirectionDeg} zoom={zoom} />

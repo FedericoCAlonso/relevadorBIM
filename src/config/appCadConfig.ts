@@ -156,3 +156,22 @@ export const CAD_SPACE_OVERLAY_COLORS = {
   projectionGripFill: '#0284c7',
   projectionGripStroke: '#ffffff'
 } as const;
+
+/** Estilos visuales de muros (por tipología), grips de arrastre y cotas en planta. */
+export const CAD_WALL_STYLES = {
+  standard: { fill: '#334155', fillHover: '#475569', stroke: '#1e293b', strokeWidth: 1 },
+  low_wall: { fill: '#94a3b8', fillHover: '#64748b', stroke: '#475569', strokeWidth: 1 },
+  railing: { fill: 'rgba(148, 163, 184, 0.15)', fillHover: 'rgba(148, 163, 184, 0.15)', stroke: '#475569', strokeWidth: 1.5, strokeDasharray: '8 4' },
+  selected: { fill: '#2563eb', stroke: '#1d4ed8', strokeWidth: 2, outline: '#60a5fa' },
+  gripFill: '#ffffff',
+  gripStroke: '#2563eb',
+  gripActive: '#10b981',
+  dimensionBackground: '#ffffff',
+  dimensionStroke: '#cbd5e1',
+  hitAreaPaddingPx: 24,
+  hitAreaMinWidthPx: 32,
+  gripHitRadiusPx: 22,
+  gripHaloRadiusPx: 9,
+  gripCoreRadiusPx: 4.5,
+  defaultLowWallHeightM: 1.0
+} as const;
