@@ -23,6 +23,7 @@ import {
   getSpaceAnchorPresets,
   type SpaceAnchorPreset
 } from '../models/architecture/SpaceMoveEngine';
+import { ARCHITECTURAL_WALL_CONFIG } from '../config/architecturalConfig';
 import { useElectricalSequenceStore } from './useElectricalViewModel';
 
 export type RelativeTurnType = 'right' | 'left' | 'straight' | 'custom';
@@ -32,6 +33,8 @@ export function useSurveyViewModel() {
   const [customAngleDeg, setCustomAngleDeg] = useState<number>(45);
   const [currentDistanceInput, setCurrentDistanceInput] = useState<string>('3.50');
   const [wallJustification, setWallJustification] = useState<WallJustification>('interior'); // Por defecto cara interior (luz libre)
+  const [wallThickness, setWallThickness] = useState<number>(ARCHITECTURAL_WALL_CONFIG.DEFAULT_THICKNESS_M);
+  const [measurementOrigin, setMeasurementOrigin] = useState<'visible_face' | 'axis'>('visible_face');
 
   // Herramientas adicionales
   const [selectedSymbolId, setSelectedSymbolId] = useState<string | null>(null);
@@ -212,14 +215,15 @@ export function useSurveyViewModel() {
         startCoord,
         lengthM: dist,
         angleDeg: effectiveAngleDeg,
-        thickness: 0.15,
-        justification: wallJustification
+        thickness: wallThickness,
+        justification: wallJustification,
+        referenceOrigin: measurementOrigin
       });
 
       // El store ya coloca automáticamente el extremo final como activeAnchorVertexId
       return result;
     },
-    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor, wallJustification]
+    [activeAnchorVertexId, currentDistanceInput, effectiveAngleDeg, project.vertices.length, addWallFromAnchor, wallThickness, wallJustification, measurementOrigin]
   );
 
   /**
@@ -235,10 +239,11 @@ export function useSurveyViewModel() {
     }) => {
       return addBranchWallFromOffset({
         ...params,
+        thickness: wallThickness,
         justification: wallJustification
       });
     },
-    [addBranchWallFromOffset, wallJustification]
+    [addBranchWallFromOffset, wallThickness, wallJustification]
   );
 
   /**
@@ -671,6 +676,10 @@ export function useSurveyViewModel() {
     setCurrentDistanceInput,
     wallJustification,
     setWallJustification,
+    wallThickness,
+    setWallThickness,
+    measurementOrigin,
+    setMeasurementOrigin,
     selectedSymbolId,
     setSelectedSymbolId,
     isConnectingConduit,

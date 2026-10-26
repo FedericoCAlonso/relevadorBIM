@@ -9,7 +9,13 @@
  */
 
 import type { Wall, WallVertex, Vector2D } from '../../models/architecture/Wall';
-import { getWallVector, getWallLength, getWallLeftNormal } from '../../models/architecture/Wall';
+import {
+  getWallVector,
+  getWallLength,
+  getWallLeftNormal,
+  calculateVisibleFaceCompensation
+} from '../../models/architecture/Wall';
+import { ARCHITECTURAL_WALL_CONFIG } from '../../config/architecturalConfig';
 import type { Opening } from '../../models/architecture/Opening';
 import type { Space } from '../../models/architecture/Space';
 import { findEnclosedCycles } from '../../models/architecture/Space';
@@ -30,8 +36,9 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       startCoord,
       lengthM,
       angleDeg,
-      thickness = 0.15,
-      justification = 'interior'
+      thickness = ARCHITECTURAL_WALL_CONFIG.DEFAULT_THICKNESS_M,
+      justification = 'interior',
+      referenceOrigin = 'visible_face'
     }) => {
       const { project } = get();
       if (lengthM <= 0) return null;
@@ -50,9 +57,27 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
 
       if (!vStart) return null;
 
+      // Compensación paramétrica de cara vista si se extiende desde un vértice de muro existente
+      let effectiveLengthM = lengthM;
+      if (referenceOrigin === 'visible_face' && startVertexId) {
+        const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+        const hostWall = project.walls.find(
+          (w) => w.endVertexId === startVertexId || w.startVertexId === startVertexId
+        );
+        if (hostWall) {
+          const compensation = calculateVisibleFaceCompensation({
+            hostWall,
+            anchorVertexId: startVertexId,
+            targetAngleDeg: angleDeg,
+            verticesMap
+          });
+          effectiveLengthM = Number((lengthM + compensation).toFixed(3));
+        }
+      }
+
       const rad = (angleDeg * Math.PI) / 180;
-      const targetEndX = vStart.x + Math.cos(rad) * lengthM;
-      const targetEndY = vStart.y + Math.sin(rad) * lengthM;
+      const targetEndX = vStart.x + Math.cos(rad) * effectiveLengthM;
+      const targetEndY = vStart.y + Math.sin(rad) * effectiveLengthM;
 
       const SNAP_TOLERANCE = 0.2;
       let vEnd = project.vertices.find(

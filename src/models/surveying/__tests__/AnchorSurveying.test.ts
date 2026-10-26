@@ -301,7 +301,8 @@ describe('Flujo de Relevamiento por Puntos de Referencia (useProjectStore)', () 
       startCoord: { x: 0, y: 0 },
       lengthM: 5.0,
       angleDeg: 0,
-      thickness: 0.20
+      thickness: 0.20,
+      justification: 'center'
     })!;
 
     const walls = useProjectStore.getState().project.walls;

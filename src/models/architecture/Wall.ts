@@ -192,16 +192,18 @@ export function calculateWallSnap(
     const t = vx * ux + vy * uy;
     // Distancia perpendicular (con signo: >0 izquierda, <0 derecha)
     const distNormal = vx * nx + vy * ny;
-    const absDist = Math.abs(distNormal);
 
-    // Permitir snap si el cursor cae a lo largo del muro y dentro de la tolerancia
-    if (t >= 0 && t <= len && absDist < minDistance) {
-      minDistance = absDist;
-      const side: 'left' | 'right' = distNormal >= 0 ? 'left' : 'right';
-      const halfT = wall.thickness / 2;
+    const { leftOffset, rightOffset } = getWallSideOffsets(wall);
+    const dLeft = Math.abs(distNormal - leftOffset);
+    const dRight = Math.abs(distNormal - rightOffset);
+    const closestFaceDist = Math.min(dLeft, dRight);
 
-      // Desplazar el punto snap a la superficie de la cara del muro
-      const faceOffset = side === 'left' ? halfT : -halfT;
+    // Permitir snap si el cursor cae a lo largo del muro y dentro de la tolerancia de paramento
+    if (t >= 0 && t <= len && closestFaceDist < minDistance) {
+      minDistance = closestFaceDist;
+      const side: 'left' | 'right' = dLeft <= dRight ? 'left' : 'right';
+      const faceOffset = side === 'left' ? leftOffset : rightOffset;
+
       const snappedX = vStart.x + ux * t + nx * faceOffset;
       const snappedY = vStart.y + uy * t + ny * faceOffset;
 
@@ -222,6 +224,60 @@ export function calculateWallSnap(
   }
 
   return bestResult;
+}
+
+export interface VisibleFaceCompensationParams {
+  hostWall: Wall;
+  anchorVertexId: string;
+  targetAngleDeg: number;
+  verticesMap: Map<string, WallVertex>;
+}
+
+/**
+ * Calcula la compensación métrica necesaria (en metros) cuando se traza una nueva pared
+ * desde un anclaje conectado a un muro existente, para que la cota ingresada coincida
+ * exactamente con la luz libre tomada con distanciómetro láser desde la cara vista.
+ */
+export function calculateVisibleFaceCompensation({
+  hostWall,
+  targetAngleDeg,
+  verticesMap
+}: VisibleFaceCompensationParams): number {
+  const vStart = verticesMap.get(hostWall.startVertexId);
+  const vEnd = verticesMap.get(hostWall.endVertexId);
+  if (!vStart || !vEnd) return 0;
+
+  const dx = vEnd.x - vStart.x;
+  const dy = vEnd.y - vStart.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.001) return 0;
+
+  // Normal izquierda del muro anfitrión
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  // Vector unitario de la nueva pared
+  const rad = (targetAngleDeg * Math.PI) / 180;
+  const uxNew = Math.cos(rad);
+  const uyNew = Math.sin(rad);
+
+  // Componente de la nueva pared a lo largo de la normal izquierda del muro base
+  const cn = uxNew * nx + uyNew * ny;
+
+  // Si la nueva pared es paralela al muro base, no cruza su espesor
+  if (Math.abs(cn) < 0.05) return 0;
+
+  const { leftOffset, rightOffset } = getWallSideOffsets(hostWall);
+
+  // Si se proyecta hacia la izquierda del muro base
+  if (cn > 0.05) {
+    if (leftOffset <= 0.001) return 0; // El vértice ya está en la cara izquierda
+    return Number((leftOffset / cn).toFixed(3));
+  }
+
+  // Si se proyecta hacia la derecha del muro base (cn < -0.05)
+  if (rightOffset >= -0.001) return 0; // El vértice ya está en la cara derecha
+  return Number((Math.abs(rightOffset) / Math.abs(cn)).toFixed(3));
 }
 
 

@@ -22,7 +22,11 @@ import type {
   ConductorRole,
   ConduitWaypoint
 } from '../models/electrical/ElectricalModel';
-import type { WallPlacementSnap } from '../models/architecture/Wall';
+import {
+  type WallPlacementSnap,
+  getWallLeftNormal,
+  flipWallMountedNodeSide
+} from '../models/architecture/Wall';
 import { resolveSpacePolygon, isPointInPolygon } from '../models/architecture/Space';
 import {
   CONDUIT_DIAMETERS_CATALOG,
@@ -187,10 +191,29 @@ export function placeElectricalElementInStore(
     symbolId.includes('caja-pase') ||
     symbolId.includes('aplique');
 
-  const containingSpace = project.spaces.find((space) => {
-    const poly = resolveSpacePolygon(space, verticesMap);
-    return poly.length >= 3 && isPointInPolygon({ x: worldX, y: worldY }, poly);
-  });
+  let testPoint = { x: worldX, y: worldY };
+  if (snapInfo?.wallId) {
+    const wall = project.walls.find((w) => w.id === snapInfo.wallId);
+    if (wall) {
+      const normal = getWallLeftNormal(wall, verticesMap);
+      const mult = snapInfo.side === 'right' ? -1 : 1;
+      // Probar 3 cm hacia afuera del muro en la dirección del paramento activo
+      testPoint = {
+        x: worldX + mult * 0.03 * normal.x,
+        y: worldY + mult * 0.03 * normal.y
+      };
+    }
+  }
+
+  const containingSpace =
+    project.spaces.find((space) => {
+      const poly = resolveSpacePolygon(space, verticesMap);
+      return poly.length >= 3 && isPointInPolygon(testPoint, poly);
+    }) ||
+    project.spaces.find((space) => {
+      const poly = resolveSpacePolygon(space, verticesMap);
+      return poly.length >= 3 && isPointInPolygon({ x: worldX, y: worldY }, poly);
+    });
 
   const ceilingH = containingSpace ? containingSpace.ceilingHeight : 2.70;
 
@@ -611,31 +634,10 @@ export function useElectricalViewModel() {
       const wall = project.walls.find((w) => w.id === el.wallId);
       if (!wall) return;
 
-      const vStart = verticesMap.get(wall.startVertexId);
-      const vEnd = verticesMap.get(wall.endVertexId);
-      if (!vStart || !vEnd) return;
-
-      const dx = vEnd.x - vStart.x;
-      const dy = vEnd.y - vStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len < 0.001) return;
-
-      const nx = -dy / len;
-      const ny = dx / len;
-
-      const curSide = el.side || 'left';
-      const newSide: 'left' | 'right' = curSide === 'left' ? 'right' : 'left';
-      const mult = curSide === 'left' ? -1 : 1;
-      const newX = el.x + mult * wall.thickness * nx;
-      const newY = el.y + mult * wall.thickness * ny;
-      const curRot = el.rotation || 0;
-
-      updateElectricalElement(el.id, {
-        x: Number(newX.toFixed(3)),
-        y: Number(newY.toFixed(3)),
-        side: newSide,
-        rotation: (curRot + 180) % 360
-      });
+      const flipped = flipWallMountedNodeSide(el, wall, verticesMap);
+      if (flipped) {
+        updateElectricalElement(el.id, flipped);
+      }
     },
     [project.electricalElements, project.walls, verticesMap, updateElectricalElement]
   );

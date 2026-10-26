@@ -21,7 +21,7 @@ import type { RelativeTurnType } from '../../../viewmodels/useSurveyViewModel';
 import type { OpeningSwing } from '../../../models/architecture/Opening';
 import { type DimensionLine, calculateDimensionDistance } from '../../../models/architecture/DimensionLine';
 import type { ConduitRoutingMode, ConduitRoutingPlane } from '../../../models/electrical/ElectricalModel';
-import { getWallLength } from '../../../models/architecture/Wall';
+import { getWallLength, flipWallMountedNodeSide } from '../../../models/architecture/Wall';
 import { useElectricalViewModel } from '../../../viewmodels/useElectricalViewModel';
 import { SYMBOL_CATEGORIES, getSymbolsByCategory, getSymbolById } from '../../../models/electrical/symbolsLib';
 import { AeaSymbolIcon } from '../electrical/AeaSymbolIcon';
@@ -770,33 +770,10 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                     onClick={() => {
                       const wall = project.walls.find((w) => w.id === selectedElectricalElement.wallId);
                       if (!wall) return;
-                      const vStart = verticesMap.get(wall.startVertexId);
-                      const vEnd = verticesMap.get(wall.endVertexId);
-                      if (!vStart || !vEnd) return;
-
-                      const dx = vEnd.x - vStart.x;
-                      const dy = vEnd.y - vStart.y;
-                      const len = Math.hypot(dx, dy);
-                      if (len < 0.001) return;
-
-                      const ux = dx / len;
-                      const uy = dy / len;
-                      const nx = -uy;
-                      const ny = ux;
-
-                      const curSide = selectedElectricalElement.side || 'left';
-                      const newSide: 'left' | 'right' = curSide === 'left' ? 'right' : 'left';
-                      const mult = curSide === 'left' ? -1 : 1;
-                      const newX = selectedElectricalElement.x + mult * wall.thickness * nx;
-                      const newY = selectedElectricalElement.y + mult * wall.thickness * ny;
-                      const curRot = selectedElectricalElement.rotation || 0;
-
-                      updateElectricalElement(selectedElectricalElement.id, {
-                        x: Number(newX.toFixed(3)),
-                        y: Number(newY.toFixed(3)),
-                        side: newSide,
-                        rotation: (curRot + 180) % 360
-                      });
+                      const flipped = flipWallMountedNodeSide(selectedElectricalElement, wall, verticesMap);
+                      if (flipped) {
+                        updateElectricalElement(selectedElectricalElement.id, flipped);
+                      }
                     }}
                     className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-semibold whitespace-nowrap border border-slate-300"
                     title="Invertir cara del muro"
