@@ -881,9 +881,24 @@ function resolveTargetSpace(
   nameHint?: string
 ): Space | undefined {
   if (nameHint) {
-    const hintLower = nameHint.toLowerCase();
-    const found = spaces.find((s) => s.name.toLowerCase().includes(hintLower));
+    const hintLower = nameHint.toLowerCase().trim();
+    // 1. Coincidencia exacta o por inclusión bidireccional
+    const found = spaces.find(
+      (s) =>
+        s.name.toLowerCase().includes(hintLower) ||
+        hintLower.includes(s.name.toLowerCase())
+    );
     if (found) return found;
+
+    // 2. Coincidencia por palabras clave (ej: "living" coincide con "Living Comedor")
+    const words = hintLower.split(/\s+/).filter((w) => w.length >= 3);
+    if (words.length > 0) {
+      const wordFound = spaces.find((s) => {
+        const sLower = s.name.toLowerCase();
+        return words.some((w) => sLower.includes(w));
+      });
+      if (wordFound) return wordFound;
+    }
   }
   if (activeSpaceId) {
     const active = spaces.find((s) => s.id === activeSpaceId);

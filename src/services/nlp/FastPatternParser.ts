@@ -443,8 +443,10 @@ function tryParsePlaceElement(text: string): PlaceElementIntent | null {
     intent.centeredInRoom = true;
   }
 
-  // 5. Detección opcional de nombre de ambiente destino: ej: "en cocina", "del living", "en el dormitorio"
-  const spaceMatch = text.match(/\b(?:en|del?)\s+(?:el\s+|la\s+)?(living(?:\s+comedor)?|cocina|dormitorio|pieza|habitacion|baño|bano|toilette|pasillo|hall|balcon|terraza|lavadero|comedor)\b/i);
+  // 5. Detección opcional de nombre de ambiente destino: ej: "en cocina", "del living", "al living", "a la cocina", "para el dormitorio 2"
+  const spaceMatch = text.match(
+    /\b(?:en|del?|al?|a\s+la|para(?:\s+el|\s+la)?)\s+(?:el\s+|la\s+)?(living(?:\s+comedor)?|cocina|dormitorio(?:\s+\d+)?|pieza(?:\s+\d+)?|habitacion(?:\s+\d+)?|baño|bano|toilette|pasillo|hall|balcon|terraza|lavadero|comedor|patio|galeria|estar|estudio|escritorio|oficina)\b/i
+  );
   if (spaceMatch) {
     intent.spaceName = spaceMatch[1].trim();
   }

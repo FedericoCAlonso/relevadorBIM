@@ -45,6 +45,26 @@ describe('Motor Matemático de Snap CAD (WallSnapEngine)', () => {
       const res = calculatePolarAngleSnap(draggedPoint, fixedPoint, 4.0);
       expect(res).toBeNull();
     });
+
+    it('en modo ortogonal (orthoMode: true), bloquea estrictamente a los ejes cartesianos (0°, 90°, 180°, 270°) e ignora 45°', () => {
+      const fixedPoint = { x: 0, y: 0 };
+      // Punto a ~25° de inclinación -> bloquea al eje horizontal 0°
+      const res0 = calculatePolarAngleSnap({ x: 4.0, y: 1.86 }, fixedPoint, 4.0, true);
+      expect(res0).not.toBeNull();
+      expect(res0?.angleDeg).toBe(0);
+      expect(res0?.snappedPoint.y).toBe(0);
+
+      // Punto a ~70° de inclinación -> bloquea al eje vertical 90°
+      const res90 = calculatePolarAngleSnap({ x: 1.5, y: 4.0 }, fixedPoint, 4.0, true);
+      expect(res90).not.toBeNull();
+      expect(res90?.angleDeg).toBe(90);
+      expect(res90?.snappedPoint.x).toBe(0);
+
+      // Punto a 45° -> en modo ortogonal puro nunca devuelve 45°, siempre múltiplo de 90°
+      const res45 = calculatePolarAngleSnap({ x: 3.0, y: 3.0 }, fixedPoint, 4.0, true);
+      expect(res45).not.toBeNull();
+      expect((res45?.angleDeg ?? 0) % 90).toBe(0);
+    });
   });
 
   describe('calculateWallSlideSnap (Empalme en T deslizante)', () => {

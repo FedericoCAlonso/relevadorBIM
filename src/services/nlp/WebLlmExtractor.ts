@@ -125,6 +125,8 @@ const INTENT_JSON_SCHEMA = {
     heightZM: { type: 'number' },
     circuitNumber: { type: 'string' },
     centeredInRoom: { type: 'boolean' },
+    spaceName: { type: 'string' },
+    targetSpaceName: { type: 'string' },
     routingPlane: { type: 'string', enum: ['ceiling_slab', 'floor_slab', 'wall'] },
     diameterMM: { type: 'number' },
     toElementRef: { type: 'string' },

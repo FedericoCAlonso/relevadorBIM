@@ -328,6 +328,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   const {
     activeDrag,
     activeSnapResult,
+    isOrthoMode,
+    toggleOrthoMode,
     handleGripPointerDown,
     handleGripPointerMove,
     handleGripPointerUp
@@ -336,6 +338,17 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     panOffset: pan,
     containerRef
   });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F8') {
+        e.preventDefault();
+        toggleOrthoMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleOrthoMode]);
 
   const gripHandlersRef = useRef({ handleGripPointerDown, handleGripPointerMove, handleGripPointerUp });
   useEffect(() => {
@@ -761,6 +774,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
       <CanvasFloatingControls
         isDesktop={isDesktop}
         showDimensions={showDimensions}
+        isOrthoMode={isOrthoMode}
+        onToggleOrtho={toggleOrthoMode}
         isAddingDimension={isAddingDimension}
         isArchitectureLocked={isArchitectureLocked}
         isSnapEnabled={isSnapEnabled}

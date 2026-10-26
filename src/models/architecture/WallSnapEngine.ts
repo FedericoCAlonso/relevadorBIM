@@ -48,9 +48,11 @@ export interface WallSnapOptions {
   angleToleranceDeg?: number;   // default: 4.0 deg
   gridStepM?: number;           // default: 0.05 m
   enableGrid?: boolean;         // default: false
+  orthoMode?: boolean;          // default: false (AutoCAD Ortho Mode F8: 0°, 90°, 180°, 270°)
 }
 
 export const NOTABLE_POLAR_ANGLES_DEG = CAD_SNAP_CONFIG.NOTABLE_POLAR_ANGLES_DEG;
+export const ORTHOGONAL_ANGLES_DEG = [0, 90, 180, 270] as const;
 
 /**
  * Normaliza un ángulo en grados al rango [0, 360).
@@ -70,12 +72,14 @@ export function getSmallestAngleDiffDeg(a: number, b: number): number {
 }
 
 /**
- * Calcula la imantación polar a ángulos notables (0°, 45°, 90°, etc.) respecto a un vértice fijo.
+ * Calcula la imantación polar a ángulos notables (0°, 45°, 90°, etc.) respecto a un vértice fijo,
+ * o bloqueo estricto a ejes cartesianos ortogonales si orthoMode está activado.
  */
 export function calculatePolarAngleSnap(
   point: Vector2D,
   fixedPoint: Vector2D,
-  toleranceDeg: number = CAD_SNAP_CONFIG.ANGLE_TOLERANCE_DEG
+  toleranceDeg: number = CAD_SNAP_CONFIG.ANGLE_TOLERANCE_DEG,
+  orthoMode: boolean = false
 ): { snappedPoint: Vector2D; angleDeg: number; lengthM: number } | null {
   const dx = point.x - fixedPoint.x;
   const dy = point.y - fixedPoint.y;
@@ -84,6 +88,17 @@ export function calculatePolarAngleSnap(
 
   const rawRad = Math.atan2(dy, dx);
   const rawDeg = normalizeAngleDeg((rawRad * 180) / Math.PI);
+
+  if (orthoMode) {
+    // Modo Ortogonal Puro: bloquea estrictamente al eje cartesiano más cercano (0°, 90°, 180°, 270°)
+    const nearestOrthoAngle = (Math.round(rawDeg / 90) * 90) % 360;
+    const targetRad = (nearestOrthoAngle * Math.PI) / 180;
+    const snappedPoint: Vector2D = {
+      x: Number((fixedPoint.x + lengthM * Math.cos(targetRad)).toFixed(3)),
+      y: Number((fixedPoint.y + lengthM * Math.sin(targetRad)).toFixed(3))
+    };
+    return { snappedPoint, angleDeg: nearestOrthoAngle, lengthM: Number(lengthM.toFixed(3)) };
+  }
 
   let bestAngle: number | null = null;
   let minDiff = toleranceDeg;
@@ -256,6 +271,7 @@ export function findWallDragSnap(params: {
   const angleToleranceDeg = options.angleToleranceDeg ?? CAD_SNAP_CONFIG.ANGLE_TOLERANCE_DEG;
   const enableGrid = options.enableGrid ?? false;
   const gridStepM = options.gridStepM ?? CAD_SNAP_CONFIG.GRID_STEP_M;
+  const orthoMode = options.orthoMode ?? false;
 
   const verticesMap = new Map(allVertices.map((v) => [v.id, v]));
   const excludeVertexIds = new Set<string>([draggedVertexId]);
@@ -331,8 +347,8 @@ export function findWallDragSnap(params: {
     };
   }
 
-  // 4. PRIORIDAD 4: Tracking Polar a Ángulos Notables (0°, 45°, 90°, etc.)
-  const polar = calculatePolarAngleSnap(point, fixedPoint, angleToleranceDeg);
+  // 4. PRIORIDAD 4: Tracking Polar a Ángulos Notables (o Bloqueo Ortogonal)
+  const polar = calculatePolarAngleSnap(point, fixedPoint, angleToleranceDeg, orthoMode);
   if (polar) {
     return {
       snappedPoint: polar.snappedPoint,
@@ -344,7 +360,7 @@ export function findWallDragSnap(params: {
           type: 'polar_ray',
           from: fixedPoint,
           to: polar.snappedPoint,
-          label: `${polar.angleDeg}°`
+          label: orthoMode ? `⟂ ${polar.angleDeg}°` : `${polar.angleDeg}°`
         }
       ]
     };

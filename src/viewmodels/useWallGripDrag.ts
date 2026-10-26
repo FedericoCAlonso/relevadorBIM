@@ -39,6 +39,8 @@ export function useWallGripDrag(params: {
 
   const [activeDrag, setActiveDrag] = useState<ActiveWallDragState | null>(null);
   const [activeSnapResult, setActiveSnapResult] = useState<WallSnapResult | null>(null);
+  const [isOrthoMode, setIsOrthoMode] = useState(false);
+  const toggleOrthoMode = useCallback(() => setIsOrthoMode((v) => !v), []);
 
   const activeDragRef = useRef<ActiveWallDragState | null>(null);
   const snapResultRef = useRef<WallSnapResult | null>(null);
@@ -129,14 +131,20 @@ export function useWallGripDrag(params: {
       const worldY = (clientY - rect.top - panOffset.y) / zoom;
       const rawPoint: Vector2D = { x: worldX, y: worldY };
 
-      // Evaluar snap magnético (vértices, empalmes en T, smart guides, polar)
+      const isShift = 'shiftKey' in e ? Boolean((e as React.PointerEvent).shiftKey) : false;
+      const effectiveOrtho = isOrthoMode || isShift;
+
+      // Evaluar snap magnético (vértices, empalmes en T, smart guides, polar/orto)
       const snapResult = findWallDragSnap({
         point: rawPoint,
         fixedPoint: drag.fixedVertexPos,
         draggedWallId: drag.wallId,
         draggedVertexId: drag.draggedVertexId,
         allWalls: project.walls.filter((w) => w.levelId === project.activeLevelId),
-        allVertices: project.vertices
+        allVertices: project.vertices,
+        options: {
+          orthoMode: effectiveOrtho
+        }
       });
 
       snapResultRef.current = snapResult;
@@ -145,7 +153,7 @@ export function useWallGripDrag(params: {
       // Actualizar posición en tiempo real para render fluido a 60 fps
       updateVertexPosition(drag.draggedVertexId, snapResult.snappedPoint);
     },
-    [zoom, panOffset, project.walls, project.vertices, project.activeLevelId, updateVertexPosition, containerRef]
+    [zoom, panOffset, project.walls, project.vertices, project.activeLevelId, updateVertexPosition, containerRef, isOrthoMode]
   );
 
   /**
@@ -190,6 +198,9 @@ export function useWallGripDrag(params: {
   return {
     activeDrag,
     activeSnapResult,
+    isOrthoMode,
+    setIsOrthoMode,
+    toggleOrthoMode,
     handleGripPointerDown,
     handleGripPointerMove,
     handleGripPointerUp

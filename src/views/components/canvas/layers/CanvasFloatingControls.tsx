@@ -35,6 +35,8 @@ interface CanvasFloatingControlsProps {
   onZoomOut: () => void;
   onRecenter: () => void;
   onToggleDimensions: () => void;
+  isOrthoMode?: boolean;
+  onToggleOrtho?: () => void;
   onToggleAddingDimension?: () => void;
   onToggleLockArchitecture?: () => void;
   onToggleSnap?: () => void;
@@ -63,6 +65,8 @@ export const CanvasFloatingControls: React.FC<CanvasFloatingControlsProps> = Rea
     onZoomOut,
     onRecenter,
     onToggleDimensions,
+    isOrthoMode = false,
+    onToggleOrtho,
     onToggleAddingDimension,
     onToggleLockArchitecture,
     onToggleSnap,
@@ -116,6 +120,20 @@ export const CanvasFloatingControls: React.FC<CanvasFloatingControlsProps> = Rea
           >
             <Ruler size={16} />
           </button>
+          {onToggleOrtho && (
+            <button
+              type="button"
+              onClick={onToggleOrtho}
+              className={`w-9 h-9 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all text-xs font-bold ${
+                isOrthoMode
+                  ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200 ring-2 ring-blue-400'
+                  : 'bg-white/90 text-slate-700 border-slate-200 hover:bg-white'
+              }`}
+              title={isOrthoMode ? 'Modo Ortogonal ACTIVO (⟂ F8 / Shift)' : 'Activar Modo Ortogonal (⟂ F8 / Shift)'}
+            >
+              ⟂
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleAddingDimension}
@@ -263,6 +281,21 @@ export const CanvasFloatingControls: React.FC<CanvasFloatingControlsProps> = Rea
               title={isArchitectureLocked ? 'Desbloquear arquitectura' : 'Bloquear arquitectura'}
             >
               {isArchitectureLocked ? <Lock size={14} /> : <Unlock size={14} />}
+            </button>
+          )}
+
+          {onToggleOrtho && (
+            <button
+              type="button"
+              onClick={onToggleOrtho}
+              className={`w-8 h-8 backdrop-blur-md shadow-md rounded-xl border flex items-center justify-center active:scale-95 transition-all text-xs font-bold ${
+                isOrthoMode
+                  ? 'bg-blue-600 text-white border-blue-700 shadow-blue-200 ring-2 ring-blue-400'
+                  : 'bg-white/90 text-slate-700 border-slate-200'
+              }`}
+              title={isOrthoMode ? 'Modo Ortogonal ACTIVO (⟂)' : 'Modo Ortogonal (⟂)'}
+            >
+              ⟂
             </button>
           )}
 

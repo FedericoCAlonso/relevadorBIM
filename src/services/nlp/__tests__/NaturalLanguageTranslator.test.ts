@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { executeNaturalLanguageIntent } from '../naturalLanguageTranslator';
+import { parseNaturalLanguageFast } from '../FastPatternParser';
 import { calculatePolygonArea, resolveSpacePolygon } from '../../../models/architecture/Space';
 import type {
   CreateSpaceIntent,
@@ -398,6 +399,44 @@ describe('naturalLanguageTranslator — Traductor Determinístico CAD/BIM', () =
     );
     expect(porchRes.success).toBe(true);
     expect(porchRes.message).toContain('Living');
+  });
+
+  it('debe colocar el elemento en el ambiente especificado ("al living") aunque el activeSpaceId apunte a la cocina', () => {
+    const store = useProjectStore.getState();
+    store.resetProject();
+
+    // 1. Crear Living
+    executeNaturalLanguageIntent({
+      action: 'create_space',
+      name: 'Living',
+      dimensions: { widthM: 5.0, lengthM: 4.0 }
+    });
+
+    // 2. Crear Cocina
+    executeNaturalLanguageIntent({
+      action: 'create_space',
+      name: 'Cocina',
+      dimensions: { widthM: 3.0, lengthM: 3.0 }
+    });
+
+    const spaces = useProjectStore.getState().project.spaces;
+    const living = spaces.find((s) => s.name.toLowerCase().includes('living'))!;
+    const cocina = spaces.find((s) => s.name.toLowerCase().includes('cocina'))!;
+    expect(living).toBeDefined();
+    expect(cocina).toBeDefined();
+
+    // 3. Ejecutar comando para el living cuando activeSpaceId apunta a Cocina
+    const parsed = parseNaturalLanguageFast('agregarle un centro al living');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.action).toBe('place_element');
+
+    const result = executeNaturalLanguageIntent(parsed!, { activeSpaceId: cocina.id });
+    expect(result.success).toBe(true);
+
+    // 4. Verificar que el elemento fue asignado al Living, NO a la cocina
+    const elements = useProjectStore.getState().project.electricalElements;
+    const placedElement = elements[elements.length - 1];
+    expect(placedElement.spaceId).toBe(living.id);
   });
 });
 

@@ -287,6 +287,30 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
         expect(intent.unit).toBe('V');
       }
     });
+
+    it('extrae ambiente destino con contracciones "al", "a la" y nombres compuestos', () => {
+      const intentLiving = parseNaturalLanguageFast('agregarle un centro al living');
+      expect(intentLiving).not.toBeNull();
+      expect(intentLiving?.action).toBe('place_element');
+      if (intentLiving?.action === 'place_element') {
+        expect(intentLiving.elementCategory).toBe('iluminacion_techo');
+        expect(intentLiving.spaceName).toBe('living');
+      }
+
+      const intentCocina = parseNaturalLanguageFast('poner un toma a la cocina');
+      expect(intentCocina).not.toBeNull();
+      expect(intentCocina?.action).toBe('place_element');
+      if (intentCocina?.action === 'place_element') {
+        expect(intentCocina.spaceName).toBe('cocina');
+      }
+
+      const intentDorm2 = parseNaturalLanguageFast('agregar un aplique para el dormitorio 2');
+      expect(intentDorm2).not.toBeNull();
+      expect(intentDorm2?.action).toBe('place_element');
+      if (intentDorm2?.action === 'place_element') {
+        expect(intentDorm2.spaceName).toBe('dormitorio 2');
+      }
+    });
   });
 
   it('retorna null en frases no estructuradas para delegar al LLM', () => {
