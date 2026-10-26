@@ -69,3 +69,30 @@ export const CAD_THEME_COLORS = {
   gripEndpoint: '#64748b',
   gripBorder: '#ffffff'
 } as const;
+
+/**
+ * Paleta de overlays interactivos del lienzo CAD (guías, snaps y detección de patrones).
+ * Centraliza los colores para que las capas SVG no incrusten hexadecimales.
+ */
+export const CAD_OVERLAY_COLORS = {
+  rubberBand: '#38bdf8',
+  guidePolarRay: '#2563eb',
+  guideWallAxis: '#f59e0b',
+  guideDefault: '#06b6d4',
+  labelBackground: '#ffffff',
+  badgeBackground: '#0f172a',
+  badgeText: '#f8fafc',
+  snapVertex: '#10b981',
+  snapVertexFill: 'rgba(16, 185, 129, 0.18)',
+  snapVertexBadge: '#065f46',
+  snapVertexBadgeText: '#ecfdf5',
+  snapWall: '#f59e0b',
+  snapWallFill: 'rgba(245, 158, 11, 0.22)',
+  snapWallBadge: '#78350f',
+  snapWallBadgeText: '#fef3c7',
+  patternMatchFill: 'rgba(6, 182, 212, 0.12)',
+  patternMatchStroke: '#06b6d4',
+  patternMatchCentroid: '#0891b2',
+  patternDismiss: '#ef4444',
+  white: '#ffffff'
+} as const;
