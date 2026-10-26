@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Cable, SlidersHorizontal, GitBranch, Trash2 } from 'lucide-react';
+import { Cable, SlidersHorizontal, GitBranch, Trash2, Compass, Info } from 'lucide-react';
 import {
   CONDUIT_QUICK_DIAMETERS,
   CONDUIT_MATERIALS_CATALOG,
@@ -30,7 +30,14 @@ export const ConduitInspectorPanel: React.FC<ConduitInspectorPanelProps> = memo(
   onUndoEditingConduitWaypoint
 }) => {
   const { project, updateConduit, deleteConduit } = useProjectStore();
-  const { conduitBreakdown, conduitOccupancy, conduitFromElement, conduitToElement } = useElectricalViewModel();
+  const {
+    conduitBreakdown,
+    conduitOccupancy,
+    conduitFromElement,
+    conduitToElement,
+    conduitRouteStats,
+    autoRouteConduitWithAStar
+  } = useElectricalViewModel();
 
   const elFrom = conduitFromElement;
   const elTo = conduitToElement;
@@ -198,25 +205,60 @@ export const ConduitInspectorPanel: React.FC<ConduitInspectorPanelProps> = memo(
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onStartEditingConduitRoute?.(selectedConduit.id)}
-                className="flex-1 py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
-                title="Agregar o desplazar quiebres intermedios en el lienzo"
-              >
-                <span>✏️</span>
-                <span>Editar Quiebres</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onStartRedesigningConduitRoute?.(selectedConduit.id)}
-                className="py-1 px-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
-                title="Redibujar la trayectoria completa desde la boca inicial"
-              >
-                <span>🔄</span>
-                <span>Rediseñar</span>
-              </button>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onStartEditingConduitRoute?.(selectedConduit.id)}
+                  className="flex-1 py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                  title="Agregar o desplazar quiebres intermedios en el lienzo"
+                >
+                  <span>✏️</span>
+                  <span>Editar Quiebres</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStartRedesigningConduitRoute?.(selectedConduit.id)}
+                  className="py-1 px-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Redibujar la trayectoria completa desde la boca inicial"
+                >
+                  <span>🔄</span>
+                  <span>Rediseñar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => autoRouteConduitWithAStar(selectedConduit.id)}
+                  className="py-1 px-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                  title="Calcular ruta ortogonal óptima evitando columnas y obstáculos con A*"
+                >
+                  <Compass size={12} />
+                  <span>Auto A*</span>
+                </button>
+              </div>
+
+              {conduitRouteStats && (
+                <div className="bg-amber-100/60 border border-amber-200/80 rounded-xl p-2 text-[10px] space-y-1">
+                  <div className="flex justify-between items-center text-amber-900 font-bold">
+                    <span>Curvas a 90° del tramo:</span>
+                    <span className="font-mono">{conduitRouteStats.turnsCount} / 3 máx</span>
+                  </div>
+                  {conduitRouteStats.junctionBoxes.length > 0 && (
+                    <div className="pt-1 border-t border-amber-200 text-amber-950 space-y-0.5">
+                      <div className="flex items-center gap-1 font-bold">
+                        <Info size={11} className="text-amber-700 shrink-0" />
+                        <span>Sugerencia técnica ({conduitRouteStats.junctionBoxes.length} caja(s) de paso):</span>
+                      </div>
+                      <ul className="list-disc pl-3 text-[9px] text-amber-800 space-y-0.5">
+                        {conduitRouteStats.junctionBoxes.map((jb, idx) => (
+                          <li key={idx}>
+                            Paso {idx + 1} en ({jb.x.toFixed(2)}, {jb.y.toFixed(2)}) m — {jb.reason === 'excess_turns' ? 'Límite > 3 curvas' : 'Tramo > 12 m'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

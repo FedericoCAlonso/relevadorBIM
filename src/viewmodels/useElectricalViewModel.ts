@@ -57,6 +57,15 @@ import {
   type BranchUpdatePayload
 } from '../models/electrical/electricalBranch';
 import { resolveDefaultRoutingPlane } from '../models/electrical/conduitRouting';
+import {
+  routeConduitAStar,
+  detectJunctionBoxes,
+  type AssistedRouteResult,
+  type RouteOptimizationOptions,
+  type JunctionBoxSuggestion
+} from '../models/electrical/conduitAStarRouter';
+
+export type { AssistedRouteResult, RouteOptimizationOptions, JunctionBoxSuggestion };
 
 export interface ElectricalSequenceStoreState {
   sequencePrefix: string;
@@ -484,6 +493,23 @@ export function useElectricalViewModel() {
     });
   }, [selectedConduit]);
 
+  // Estadísticas técnicas de trazado y cajas de paso recomendadas según AEA 771.12.3
+  const conduitRouteStats = useMemo(() => {
+    if (!selectedConduit || !conduitFromElement || !conduitToElement) return null;
+    const waypoints = selectedConduit.waypoints || [];
+    const polyline = [
+      { x: conduitFromElement.x, y: conduitFromElement.y },
+      ...waypoints,
+      { x: conduitToElement.x, y: conduitToElement.y }
+    ];
+    const turnsCount = waypoints.length;
+    const junctionBoxes = detectJunctionBoxes(polyline);
+    return {
+      turnsCount,
+      junctionBoxes
+    };
+  }, [selectedConduit, conduitFromElement, conduitToElement]);
+
   // Medidas normalizadas válidas para el material de conducto seleccionado
   const conduitAvailableSizes = useMemo<readonly ConduitSizeOption[]>(() => {
     if (!selectedConduit) return [];
@@ -845,6 +871,63 @@ export function useElectricalViewModel() {
     [updateConduit]
   );
 
+  /**
+   * Calcula y aplica automáticamente la ruta ortogonal asistida (A*) a una canalización.
+   * Evita interferencias estructurales (columnas) y vanos de aberturas, minimizando curvas a 90°.
+   */
+  const autoRouteConduitWithAStar = useCallback(
+    (conduitId: string, customOptions?: RouteOptimizationOptions): AssistedRouteResult | null => {
+      const conduit = project.conduits.find((c) => c.id === conduitId);
+      if (!conduit) return null;
+
+      const fromEl =
+        project.electricalElements.find((e) => e.id === conduit.fromElementId) ||
+        project.panels.find((p) => p.id === conduit.fromElementId);
+      const toEl =
+        project.electricalElements.find((e) => e.id === conduit.toElementId) ||
+        project.panels.find((p) => p.id === conduit.toElementId);
+
+      if (!fromEl || !toEl) return null;
+
+      const activeLevelId = fromEl.levelId;
+      const levelWalls = project.walls.filter((w) => w.levelId === activeLevelId);
+      const levelColumns = project.columns?.filter((c) => c.levelId === activeLevelId) || [];
+      const levelBeams = project.beams?.filter((b) => b.levelId === activeLevelId) || [];
+      const levelOpenings = project.openings.filter((o) =>
+        levelWalls.some((w) => w.id === o.wallId)
+      );
+
+      const result = routeConduitAStar({
+        start: { x: fromEl.x, y: fromEl.y },
+        goal: { x: toEl.x, y: toEl.y },
+        routingPlane: conduit.routingPlane || 'wall',
+        walls: levelWalls,
+        vertices: project.vertices,
+        columns: levelColumns,
+        beams: levelBeams,
+        openings: levelOpenings,
+        options: customOptions
+      });
+
+      updateConduit(conduitId, {
+        waypoints: result.waypoints.length > 0 ? result.waypoints : undefined
+      });
+
+      return result;
+    },
+    [
+      project.conduits,
+      project.electricalElements,
+      project.panels,
+      project.walls,
+      project.columns,
+      project.beams,
+      project.openings,
+      project.vertices,
+      updateConduit
+    ]
+  );
+
   /** Formatea la etiqueta de la boca según el modo de visualización configurado */
   const getFormattedElementLabel = useCallback(
     (element: ElectricalElement): string => {
@@ -875,6 +958,7 @@ export function useElectricalViewModel() {
     conduitBreakdown,
     conduitOccupancy,
     conduitAvailableSizes,
+    conduitRouteStats,
     circuits: project.circuits,
     conduits: project.conduits,
     elements: project.electricalElements,
@@ -973,6 +1057,7 @@ export function useElectricalViewModel() {
     setConduitRoutingPlane,
     setConduitRiserTerminal,
     setConduitWaypoints,
+    autoRouteConduitWithAStar,
 
     // Gestión de Tableros Eléctricos
     panels: project.panels,

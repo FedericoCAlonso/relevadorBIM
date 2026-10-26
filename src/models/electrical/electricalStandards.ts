@@ -314,7 +314,31 @@ export const AEA_CALCULATION_CONSTANTS = {
   /** Carga unitaria estimada para centro de luz (VA / W) */
   DEFAULT_POWER_CENTRO_LUZ_W: 150,
   /** Carga unitaria estimada para aplique de pared (VA / W) */
-  DEFAULT_POWER_APLIQUE_W: 100
+  DEFAULT_POWER_APLIQUE_W: 100,
+  /** Límite reglamentario AEA de curvas continuas de 90° entre bocas/cajas consecutivas (sumatoria <= 270°) */
+  MAX_CONDUIT_BENDS_WITHOUT_JUNCTION_BOX: 3,
+  /** Distancia máxima en metros de tramo recto sin intercalar caja de paso (AEA 771.12.3) */
+  MAX_CONDUIT_STRAIGHT_RUN_M: 12.0
+} as const;
+
+/** Parámetros y Factores de Fricción para el Motor de Ruteo Asistido Ortogonal (A* 2.5D) */
+export const CONDUIT_ROUTING_CONSTANTS = {
+  /** Resolución métrica estándar de la cuadrícula de búsqueda (m) */
+  DEFAULT_GRID_STEP_M: 0.10,
+  /** Distancia de seguridad a bordes de elementos estructurales y vanos (m) */
+  DEFAULT_OBSTACLE_CLEARANCE_M: 0.05,
+  /** Penalización de costo equivalente en metros por cada curva de 90° para evitar quiebres y zigzag */
+  DEFAULT_TURN_PENALTY_M: 0.50,
+  /** Multiplicador de costo al discurrir por dentro de muros en tendido de pared */
+  WALL_ATTRACTION_FACTOR: 0.35,
+  /** Multiplicador de penalización por atravesar ambiente abierto en modo pared */
+  OPEN_SPACE_WALL_PENALTY: 3.0,
+  /** Margen espacial exterior al área envolvente entre bocas para explorar desvíos (m) */
+  BOUNDING_MARGIN_M: 1.5,
+  /** Límite reglamentario de curvas a 90° sin caja de paso según AEA 771.12.3 */
+  MAX_TURNS_WITHOUT_BOX: 3,
+  /** Límite reglamentario de longitud recta sin caja de paso en metros */
+  MAX_STRAIGHT_RUN_M: 12.0
 } as const;
 
 /** Catálogo Oficial de Materiales de Canalización (Orden Reglamentario Solicitado) */

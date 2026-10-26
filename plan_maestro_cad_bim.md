@@ -148,7 +148,7 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
 4. **Control de Calidad Automatizado:**
    - Suite de pruebas unitarias (`src/config/__tests__/config.test.ts`) con 100% de éxito y cero advertencias de linter (`oxlint`).
 
-### Fase 4: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D) (En curso / Próxima prioridad)
+### Fase 4: Motor de Ruteo Ortogonal de Conductos (A\* Pathfinding en Grafo 2.5D) (Completado)
 *(Generación asistida y optimizada de recorridos según restricciones de tecnología y normativa)*
 1. **Grafo Ortogonal 2.5D:** Construcción de nodos de navegación tridimensional conectando planos de losa, contrapiso y paramentos verticales de muros.
 2. **Matriz de Fricción y Costos:** Penalizaciones topológicas según tecnología de canalización (embutido en ladrillo vs a la vista vs bandeja perforada).
@@ -166,8 +166,8 @@ Actualmente, el panel lateral y los selectores tienen divisiones técnicas hist�
 - [x] La vista de alzado de muro proyecta fielmente aberturas, cajas y cañerías con sus cotas $Z$ métricas reales (Fase 3).
 - [x] La manipulación de cajas en la vista de alzado actualiza bidireccionalmente la planta CAD y el estado centralizado del proyecto (Fase 3).
 - [x] El plano de cielorraso reflejado (RCP) permite replantear luminarias con cotas ortogonales y presets de distribución (Fase 3).
-- [ ] Construcción del grafo tridimensional 2.5D para ruteo ortogonal automático entre bocas y tableros (Fase 4).
-- [ ] Cálculo de camino óptimo con penalizaciones por tecnología y exclusiones constructivas (Fase 4).
-- [ ] Detección e inserción automática de cajas de paso intermedias por límite de curvas y metraje AEA (Fase 4).
+- [x] Construcción del grafo tridimensional 2.5D para ruteo ortogonal automático entre bocas y tableros (Fase 4).
+- [x] Cálculo de camino óptimo con penalizaciones por tecnología y exclusiones constructivas (Fase 4).
+- [x] Detección e inserción automática de cajas de paso intermedias por límite de curvas y metraje AEA (Fase 4).
 - [x] Ningún cálculo de vectores ni opciones hardcodeadas residen en componentes `.tsx` de la vista.
 - [x] El suite completo de pruebas unitarias (`npm test`) y la compilación (`npm run build`) pasan al 100% sin advertencias.
