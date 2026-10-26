@@ -11,6 +11,7 @@ import { useProjectStore } from './useProjectStore';
 import {
   detectPatternMatchesWithExemplars,
   createPatternExemplar,
+  coRegisterExemplarToAnchor,
   calculateImageMoments,
   calculateEigenSignature,
   extractNormalizedPatch,
@@ -182,7 +183,11 @@ export function usePatternDetectorViewModel() {
           activeUnderlay.imageUrl
         );
 
-        const newExemplar = createPatternExemplar(mask, width, boxPx, false, height, rgbaData);
+        const anchor = positiveExemplars[0];
+        const newExemplar = anchor && isAddingSample
+          ? (coRegisterExemplarToAnchor(mask, width, height, boxPx, anchor, rgbaData) ||
+             createPatternExemplar(mask, width, boxPx, false, height, rgbaData))
+          : createPatternExemplar(mask, width, boxPx, false, height, rgbaData);
 
         if (!newExemplar) {
           throw new Error('La región seleccionada no contiene suficiente trazo de tinta o color para extraer un símbolo.');
@@ -283,7 +288,11 @@ export function usePatternDetectorViewModel() {
           };
         }
 
-        const newExemplar = createPatternExemplar(mask, width, finalBox, false, height, rgbaData);
+        const anchor = positiveExemplars[0];
+        const newExemplar = anchor && isAddingSample
+          ? (coRegisterExemplarToAnchor(mask, width, height, finalBox, anchor, rgbaData) ||
+             createPatternExemplar(mask, width, finalBox, false, height, rgbaData))
+          : createPatternExemplar(mask, width, finalBox, false, height, rgbaData);
 
         if (!newExemplar) {
           throw new Error('No se detectó suficiente trazo o símbolo en el punto clickeado. Intentá hacer clic más cerca del centro del símbolo.');

@@ -13,8 +13,11 @@ import {
 } from '../../models/underlay/GramSvd';
 import {
   extractNormalizedPatch,
-  calculateImageMoments
+  calculateImageMoments,
+  createPatternExemplar,
+  coRegisterExemplarToAnchor
 } from '../../models/underlay/PatternDetector';
+import { computeGramSvdConsensus } from '../../models/underlay/GramSvd';
 
 describe('Auto-muestreo Asistido y Snap Magnético (Smart Assisted Placement)', () => {
   beforeEach(() => {
@@ -225,6 +228,47 @@ describe('Auto-muestreo Asistido y Snap Magnético (Smart Assisted Placement)', 
       expect(patch.colorChannels!.g[patchCenterIdx]).toBeCloseTo(1.0, 1);
       expect(patch.colorChannels!.b[patchCenterIdx]).toBeCloseTo(1.0, 1);
       expect(patch.colorChannels!.r[patchCenterIdx]).toBeCloseTo(0.0, 1);
+    });
+
+    it('debe co-registrar automáticamente muestras adicionales positivas contra el ejemplar ancla', () => {
+      const width = 120;
+      const height = 120;
+      const binary = new Uint8Array(width * height);
+
+      // Símbolo 1 en (30, 30)
+      for (let y = 25; y <= 35; y++) {
+        for (let x = 25; x <= 35; x++) {
+          if (Math.hypot(x - 30, y - 30) <= 4) binary[y * width + x] = 1;
+        }
+      }
+
+      // Símbolo 2 en (80, 80)
+      for (let y = 75; y <= 85; y++) {
+        for (let x = 75; x <= 85; x++) {
+          if (Math.hypot(x - 80, y - 80) <= 4) binary[y * width + x] = 1;
+        }
+      }
+
+      // Muestra ancla inicial
+      const anchorBox = { x: 22, y: 22, width: 16, height: 16 };
+      const anchor = createPatternExemplar(binary, width, anchorBox, false, height)!;
+      expect(anchor).not.toBeNull();
+
+      // Muestra 2 capturada con leve desfasaje de selección
+      const sample2Box = { x: 74, y: 71, width: 16, height: 16 };
+      const alignedSample2 = coRegisterExemplarToAnchor(
+        binary,
+        width,
+        height,
+        sample2Box,
+        anchor
+      )!;
+
+      expect(alignedSample2).not.toBeNull();
+      // El consenso SVD de las dos muestras co-registradas debe tener pureza > 0.85
+      const consensus = computeGramSvdConsensus([anchor.patch, alignedSample2.patch]);
+      expect(consensus).not.toBeNull();
+      expect(consensus!.purityRatio).toBeGreaterThan(0.85);
     });
   });
 });

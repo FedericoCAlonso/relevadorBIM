@@ -317,9 +317,11 @@ export function alignPatchEccEuclidean(
 
         const idx = pv * N + pu;
 
-        // Gradiente numérico central sobre el parche normalizado
-        const gradX = (warpedNormalized[pv * N + uNext] - warpedNormalized[pv * N + uPrev]) / (uNext - uPrev || 1);
-        const gradY = (warpedNormalized[vNext * N + pu] - warpedNormalized[vPrev * N + pu]) / (vNext - vPrev || 1);
+        // Gradiente numérico central sobre el parche normalizado, escalado a píxeles de imagen reales
+        const deltaU = (uNext - uPrev) * stepU || stepU;
+        const deltaV = (vNext - vPrev) * stepV || stepV;
+        const gradX = (warpedNormalized[pv * N + uNext] - warpedNormalized[pv * N + uPrev]) / deltaU;
+        const gradY = (warpedNormalized[vNext * N + pu] - warpedNormalized[vPrev * N + pu]) / deltaV;
 
         // Jacobiano del mapeo euclídeo respecto a [tx, ty, dTheta]:
         // dx'/dtx = 1, dy'/dtx = 0
