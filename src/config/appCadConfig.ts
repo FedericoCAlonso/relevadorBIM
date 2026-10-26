@@ -166,7 +166,12 @@ export const CAD_SPACE_OVERLAY_COLORS = {
   projectionLabelStroke: '#0284c7',
   projectionLabelText: '#0284c7',
   projectionGripFill: '#0284c7',
-  projectionGripStroke: '#ffffff'
+  projectionGripStroke: '#ffffff',
+  wallBadgeFill: '#ffffff',
+  wallBadgeStroke: '#2563eb',
+  wallBadgeText: '#1e40af',
+  wallBadgeHoverFill: '#2563eb',
+  wallBadgeHoverText: '#ffffff'
 } as const;
 
 /** Estilos visuales de muros (por tipología), grips de arrastre y cotas en planta. */

@@ -9,6 +9,8 @@ import {
   calculatePolygonCentroid,
   computeCeilingProjection
 } from '../../../../models/architecture/Space';
+import { calculateSpaceWallReferences } from '../../../../models/architecture/spaceWallReference';
+import { useWallElevationStore } from '../../../../viewmodels/useWallElevationViewModel';
 import type { Wall, WallVertex } from '../../../../models/architecture/Wall';
 import {
   getSpaceSurfaceKind,
@@ -141,6 +143,72 @@ export const SpacesLayer: React.FC<SpacesLayerProps> = React.memo(
                 {isSelected && <circle cx={lineMidX} cy={lineMidY} r={5} fill={C.projectionGripFill} stroke={C.projectionGripStroke} strokeWidth={1.5} />}
               </g>
             )}
+
+            {/* Badges de Referencia a Paredes (Pared A, Pared B...) - Solo visibles al seleccionar el ambiente */}
+            {isSelected && (() => {
+              const wallRefs = calculateSpaceWallReferences(space, verticesMap, Array.from(wallsMap.values()));
+              return (
+                <g className="space-wall-badges select-none">
+                  {wallRefs.map((ref) => {
+                    const bx = ref.badgePosition.x * zoom;
+                    const by = ref.badgePosition.y * zoom;
+                    const mx = ref.midPoint.x * zoom;
+                    const my = ref.midPoint.y * zoom;
+
+                    return (
+                      <g
+                        key={ref.letter}
+                        className="cursor-pointer group/wall-badge"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (ref.wallId) {
+                            useWallElevationStore.getState().openElevation(ref.wallId);
+                          }
+                        }}
+                      >
+                        <title>{`${ref.fullName} (${ref.compassOrientation} · ${ref.lengthM.toFixed(2)} m)${ref.wallId ? ' · Clic para ver alzado' : ''}`}</title>
+
+                        {/* Línea conectora punteada entre la pared y el badge flotante */}
+                        <line
+                          x1={mx}
+                          y1={my}
+                          x2={bx}
+                          y2={by}
+                          stroke={C.wallBadgeStroke}
+                          strokeWidth={1}
+                          strokeDasharray="2 2"
+                          opacity={0.6}
+                          className="pointer-events-none"
+                        />
+
+                        {/* Círculo del Badge */}
+                        <circle
+                          cx={bx}
+                          cy={by}
+                          r={10}
+                          fill={C.wallBadgeFill}
+                          stroke={C.wallBadgeStroke}
+                          strokeWidth={1.5}
+                          className="drop-shadow-xs group-hover/wall-badge:fill-blue-600 transition-colors"
+                        />
+
+                        {/* Letra identificadora (A, B, C...) */}
+                        <text
+                          x={bx}
+                          y={by + 3.5}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fontWeight="bold"
+                          className="font-mono fill-blue-700 group-hover/wall-badge:fill-white transition-colors pointer-events-none"
+                        >
+                          {ref.letter}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })()}
 
             <text x={centroid.x * zoom} y={centroid.y * zoom - 6} textAnchor="middle" className="text-xs font-bold fill-slate-700 pointer-events-none select-none" fontSize={12}>
               {space.name}

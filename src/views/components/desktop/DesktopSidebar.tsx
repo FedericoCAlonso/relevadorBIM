@@ -286,6 +286,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             verticesMap={verticesMap}
             wallsMap={wallsMap}
             selectedSpaceId={selectedEntity?.type === 'space' ? selectedEntity.id : null}
+            onSelectSpace={(id) => setSelectedEntity({ type: 'space', id })}
             onAutoDetectSpaces={autoDetectSpaces}
             onUpdateSpace={updateSpace}
             onStartDrawingOverhang={onStartDrawingOverhang}

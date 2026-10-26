@@ -18,7 +18,9 @@ import {
   Layers,
   PenTool,
   Repeat,
-  Move
+  Move,
+  Ruler,
+  Eye
 } from 'lucide-react';
 import { ARCHITECTURAL_SPACE_CONFIG } from '../../../../config';
 import type { Space } from '../../../../models/architecture/Space';
@@ -34,6 +36,8 @@ import {
 import type { Wall, WallVertex } from '../../../../models/architecture/Wall';
 import { getWallLength } from '../../../../models/architecture/Wall';
 import { calculateProjectLimitSurface } from '../../../../models/electrical/electricalStandards';
+import { calculateSpaceWallReferences } from '../../../../models/architecture/spaceWallReference';
+import { useWallElevationStore } from '../../../../viewmodels/useWallElevationViewModel';
 import {
   SPACE_ANCHOR_OPTIONS,
   type SpaceAnchorPreset
@@ -45,6 +49,7 @@ export interface SpacesTabPanelProps {
   verticesMap: Map<string, WallVertex>;
   wallsMap: Map<string, Wall>;
   selectedSpaceId: string | null;
+  onSelectSpace?: (spaceId: string) => void;
   onAutoDetectSpaces: () => void;
   onUpdateSpace: (spaceId: string, updates: Partial<Space>) => void;
   onStartDrawingOverhang?: (spaceId: string) => void;
@@ -57,6 +62,7 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
     verticesMap,
     wallsMap,
     selectedSpaceId,
+    onSelectSpace,
     onAutoDetectSpaces,
     onUpdateSpace,
     onStartDrawingOverhang,
@@ -128,11 +134,13 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
             const isOpenAir = isSpaceOpenAir(space);
             const isSemi = isSpaceSemiCovered(space);
             const coverOption = getSpaceCoverOption(space.coverType);
+            const spaceWallRefs = calculateSpaceWallReferences(space, verticesMap, wallsMap);
 
             return (
               <div
                 key={space.id}
-                className={`rounded-2xl p-3 space-y-2.5 transition-all ${
+                onClick={() => onSelectSpace?.(space.id)}
+                className={`rounded-2xl p-3 space-y-2.5 transition-all cursor-default ${
                   isSelected
                     ? 'bg-blue-50/80 border-2 border-blue-500 shadow-sm'
                     : 'bg-slate-50 border border-slate-200 hover:border-slate-300'
@@ -532,6 +540,57 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
                         >
                           {hp.toFixed(2)}m
                         </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Referencias Relativas de Paredes (Pared A, B, C...) - Divulgación Progresiva */}
+                {isSelected && spaceWallRefs.length > 0 && (
+                  <div className="pt-2 border-t border-slate-200/80 space-y-1.5 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                      <span className="flex items-center gap-1">
+                        <Ruler size={12} className="text-blue-600" />
+                        <span>Paredes del Ambiente ({spaceWallRefs.length})</span>
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-normal">Secuencia horaria</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-1">
+                      {spaceWallRefs.map((wRef) => (
+                        <div
+                          key={wRef.letter}
+                          className="flex items-center justify-between p-1.5 bg-white border border-slate-200 rounded-lg text-[11px] shadow-2xs hover:border-slate-300 transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-800 font-bold font-mono text-[9px] flex items-center justify-center shrink-0">
+                              {wRef.letter}
+                            </span>
+                            <div className="truncate">
+                              <span className="font-semibold text-slate-800 block truncate leading-tight">
+                                {wRef.shortLabel}
+                              </span>
+                              <span className="text-[9px] text-slate-400 block font-mono truncate leading-tight">
+                                {wRef.compassOrientation} · {wRef.lengthM.toFixed(2)} m
+                              </span>
+                            </div>
+                          </div>
+
+                          {wRef.wallId && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                useWallElevationStore.getState().openElevation(wRef.wallId!);
+                              }}
+                              className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-bold transition-colors cursor-pointer shrink-0 ml-1"
+                              title="Abrir vista de alzado 2D de la pared"
+                            >
+                              <Eye size={10} />
+                              <span>Alzado</span>
+                            </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </div>

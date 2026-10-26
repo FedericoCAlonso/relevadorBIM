@@ -24,6 +24,8 @@ import {
   type SpaceAnchorPreset
 } from '../../../models/architecture/SpaceMoveEngine';
 import { getRecommendedIPForCover } from '../../../models/electrical/electricalStandards';
+import { calculateSpaceWallReferences } from '../../../models/architecture/spaceWallReference';
+import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 import { useCeilingPlanStore } from '../../../viewmodels/useCeilingPlanViewModel';
 import {
   X,
@@ -39,7 +41,8 @@ import {
   Cloud,
   PenTool,
   Repeat,
-  Move
+  Move,
+  Eye
 } from 'lucide-react';
 
 interface SpaceEditModalProps {
@@ -68,6 +71,10 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
   const wallsMap = useMemo(() => {
     return new Map(project.walls.map((w) => [w.id, w]));
   }, [project.walls]);
+
+  const spaceWallRefs = useMemo(() => {
+    return space ? calculateSpaceWallReferences(space, verticesMap, project.walls) : [];
+  }, [space, verticesMap, project.walls]);
 
   if (!spaceId || !space) return null;
 
@@ -499,6 +506,55 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
             <p className="text-[11px] text-slate-600 leading-snug">
               Hueco de losa o patio técnico de ventilación. No computa para superficie habitable ni límite.
             </p>
+          </div>
+        )}
+
+        {/* Referencias Relativas de Paredes (Pared A, B, C...) */}
+        {spaceWallRefs.length > 0 && (
+          <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+              <span className="flex items-center gap-1.5">
+                <Ruler size={14} className="text-blue-600" />
+                <span>Paredes del Ambiente</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Secuencia horaria</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {spaceWallRefs.map((wRef) => (
+                <div
+                  key={wRef.letter}
+                  className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-xl text-xs shadow-2xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold font-mono text-[10px] flex items-center justify-center shrink-0">
+                      {wRef.letter}
+                    </span>
+                    <div className="truncate">
+                      <span className="font-semibold text-slate-800 block truncate">{wRef.shortLabel}</span>
+                      <span className="text-[10px] text-slate-400 block font-mono truncate">
+                        {wRef.compassOrientation} · {wRef.lengthM.toFixed(2)} m
+                      </span>
+                    </div>
+                  </div>
+
+                  {wRef.wallId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        useWallElevationStore.getState().openElevation(wRef.wallId!);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer shrink-0 ml-1"
+                      title="Ver alzado y elevación 2D de la pared"
+                    >
+                      <Eye size={12} />
+                      <span>Alzado</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
