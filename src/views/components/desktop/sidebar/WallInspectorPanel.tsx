@@ -36,11 +36,17 @@ export interface WallInspectorPanelProps {
   selectedWall: Wall | null | undefined;
   verticesMap: Map<string, WallVertex>;
   allOpenings: ReadonlyArray<Opening>;
+  selectedWallAnchorMode?: 'start' | 'end' | 'center';
   onUpdateWall: (wallId: string, updates: Partial<Wall>) => void;
-  onUpdateWallLength: (wallId: string, newLengthM: number) => void;
+  onUpdateWallLength: (
+    wallId: string,
+    newLengthM: number,
+    anchorMode?: 'start' | 'end' | 'center' | string
+  ) => void;
   onRotateWall: (wallId: string, deltaAngleDeg: number) => void;
   onInvertWallDirection: (wallId: string) => void;
   onDeleteWall: (wallId: string) => void;
+  onSetWallAnchorMode: (mode: 'start' | 'end' | 'center') => void;
   onSetActiveAnchorVertexId: (vertexId: string | null) => void;
   onAddOpeningReferenced: (params: {
     hostWallId: string;
@@ -65,11 +71,13 @@ export const WallInspectorPanel: React.FC<WallInspectorPanelProps> = React.memo(
     selectedWall,
     verticesMap,
     allOpenings,
+    selectedWallAnchorMode = 'start',
     onUpdateWall,
     onUpdateWallLength,
     onRotateWall,
     onInvertWallDirection,
     onDeleteWall,
+    onSetWallAnchorMode,
     onSetActiveAnchorVertexId,
     onAddOpeningReferenced,
     onDeleteOpening,
@@ -147,6 +155,9 @@ export const WallInspectorPanel: React.FC<WallInspectorPanelProps> = React.memo(
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-[10px] font-bold text-slate-600">LONGITUD DEL MURO</label>
+            <span className="text-[10px] text-slate-400 font-mono">
+              Fijo: {selectedWallAnchorMode === 'end' ? 'Extremo B' : selectedWallAnchorMode === 'center' ? 'Centro' : 'Extremo A'}
+            </span>
           </div>
           <div className="relative">
             <input
@@ -163,6 +174,63 @@ export const WallInspectorPanel: React.FC<WallInspectorPanelProps> = React.memo(
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
               m
             </span>
+          </div>
+
+          {/* Selector táctil de punto de anclaje */}
+          <div className="grid grid-cols-3 gap-1 pt-1.5">
+            <button
+              type="button"
+              onClick={() => onSetWallAnchorMode('start')}
+              className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all text-center cursor-pointer ${
+                selectedWallAnchorMode !== 'end' && selectedWallAnchorMode !== 'center'
+                  ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Fijar Extremo A (vStart) y estirar Extremo B"
+            >
+              🔒 Extremo A
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetWallAnchorMode('center')}
+              className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all text-center cursor-pointer ${
+                selectedWallAnchorMode === 'center'
+                  ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Modificación simétrica desde el centro del muro"
+            >
+              ↔ Centro
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetWallAnchorMode('end')}
+              className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all text-center cursor-pointer ${
+                selectedWallAnchorMode === 'end'
+                  ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Fijar Extremo B (vEnd) y estirar Extremo A"
+            >
+              🔒 Extremo B
+            </button>
+          </div>
+
+          {/* Ajuste fino por Deltas rápidos */}
+          <div className="grid grid-cols-4 gap-1 pt-1.5">
+            {[-0.10, -0.05, 0.05, 0.10].map((delta) => {
+              const sign = delta > 0 ? `+${delta.toFixed(2)}` : `${delta.toFixed(2)}`;
+              return (
+                <button
+                  key={delta}
+                  type="button"
+                  onClick={() => onUpdateWallLength(selectedWall.id, Math.max(0.10, wallLen + delta))}
+                  className="py-1 px-1 rounded-lg text-[10px] font-mono font-bold border bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 transition-colors text-center cursor-pointer"
+                >
+                  {sign}m
+                </button>
+              );
+            })}
           </div>
         </div>
 

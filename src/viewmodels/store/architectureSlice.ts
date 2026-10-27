@@ -21,6 +21,7 @@ import type { Opening } from '../../models/architecture/Opening';
 import type { Space } from '../../models/architecture/Space';
 import { findEnclosedCycles } from '../../models/architecture/Space';
 import { translateSpace } from '../../models/architecture/SpaceMoveEngine';
+import { resizeSpaceOrthogonal as resizeSpaceOrthogonalHelper } from '../../models/architecture/SpaceOrthogonalResize';
 import { adjustOpeningOnWallResize } from '../../models/architecture/WallSnapEngine';
 import type { StructuralColumn, StructuralBeam } from '../../models/architecture/StructuralElement';
 import {
@@ -32,6 +33,9 @@ import {
 
 export function createArchitectureSlice(set: StoreSet, get: StoreGet): ArchitectureSlice {
   return {
+    selectedWallAnchorMode: 'start',
+    setSelectedWallAnchorMode: (mode) => set({ selectedWallAnchorMode: mode }),
+
     addWallFromAnchor: ({
       startVertexId,
       startCoord,
@@ -432,7 +436,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       get().autoDetectSpaces();
     },
 
-    updateWallLength: (wallId, newLengthM) => {
+    updateWallLength: (wallId, newLengthM, anchorMode) => {
       const { project } = get();
       const wall = project.walls.find((w) => w.id === wallId);
       if (!wall || newLengthM <= 0) return;
@@ -446,18 +450,69 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       const currentLen = Math.hypot(currentDx, currentDy);
       if (currentLen === 0) return;
 
-      const ratio = newLengthM / currentLen;
-      const newEndX = vStart.x + currentDx * ratio;
-      const newEndY = vStart.y + currentDy * ratio;
+      // Resolver el modo de anclaje (prioridad: explícito -> modo seleccionado en el store -> 'start')
+      let resolvedAnchor: 'start' | 'end' | 'center' = 'start';
+      if (anchorMode === 'start' || anchorMode === 'end' || anchorMode === 'center') {
+        resolvedAnchor = anchorMode;
+      } else if (typeof anchorMode === 'string') {
+        if (anchorMode === wall.endVertexId) resolvedAnchor = 'end';
+        else if (anchorMode === wall.startVertexId) resolvedAnchor = 'start';
+      } else {
+        resolvedAnchor = get().selectedWallAnchorMode || 'start';
+      }
+
+      const dirX = currentDx / currentLen;
+      const dirY = currentDy / currentLen;
+
+      let newStartX = vStart.x;
+      let newStartY = vStart.y;
+      let newEndX = vEnd.x;
+      let newEndY = vEnd.y;
+      let draggedEndForOpenings: 'start' | 'end' = 'end';
+
+      if (resolvedAnchor === 'start') {
+        // vStart queda fijo, vEnd se desplaza
+        newEndX = Number((vStart.x + dirX * newLengthM).toFixed(3));
+        newEndY = Number((vStart.y + dirY * newLengthM).toFixed(3));
+        draggedEndForOpenings = 'end';
+      } else if (resolvedAnchor === 'end') {
+        // vEnd queda fijo, vStart se desplaza
+        newStartX = Number((vEnd.x - dirX * newLengthM).toFixed(3));
+        newStartY = Number((vEnd.y - dirY * newLengthM).toFixed(3));
+        draggedEndForOpenings = 'start';
+      } else if (resolvedAnchor === 'center') {
+        // Centro queda fijo, ambos se desplazan simétricamente
+        const midX = (vStart.x + vEnd.x) / 2;
+        const midY = (vStart.y + vEnd.y) / 2;
+        const halfLen = newLengthM / 2;
+        newStartX = Number((midX - dirX * halfLen).toFixed(3));
+        newStartY = Number((midY - dirY * halfLen).toFixed(3));
+        newEndX = Number((midX + dirX * halfLen).toFixed(3));
+        newEndY = Number((midY + dirY * halfLen).toFixed(3));
+        draggedEndForOpenings = 'end';
+      }
+
+      // Reajustar aberturas en la pared
+      const updatedOpenings = project.openings.map((op) => {
+        if (op.wallId !== wallId) return op;
+        const adjustedDistance = adjustOpeningOnWallResize({
+          opening: op,
+          draggedEnd: draggedEndForOpenings,
+          oldLength: currentLen,
+          newLength: newLengthM
+        });
+        return { ...op, distanceAlongWall: adjustedDistance };
+      });
 
       set({
         project: {
           ...project,
-          vertices: project.vertices.map((v) =>
-            v.id === vEnd.id
-              ? { ...v, x: Number(newEndX.toFixed(3)), y: Number(newEndY.toFixed(3)) }
-              : v
-          ),
+          vertices: project.vertices.map((v) => {
+            if (v.id === vStart.id) return { ...v, x: newStartX, y: newStartY };
+            if (v.id === vEnd.id) return { ...v, x: newEndX, y: newEndY };
+            return v;
+          }),
+          openings: updatedOpenings,
           meta: { ...project.meta, updatedAt: Date.now() }
         }
       });
@@ -833,6 +888,16 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
           meta: { ...state.project.meta, updatedAt: Date.now() }
         }
       })),
+
+    resizeSpaceOrthogonal: (params) => {
+      const { project } = get();
+      const updatedProject = resizeSpaceOrthogonalHelper({
+        ...params,
+        project
+      });
+      set({ project: updatedProject });
+      get().autoDetectSpaces();
+    },
 
     autoDetectSpaces: () => {
       const { project } = get();

@@ -173,7 +173,13 @@ export interface ArchitectureSlice {
   batchUpdateWalls: (wallIds: string[], updates: Partial<Wall>) => void;
   batchUpdateWallLengths: (wallIds: string[], targetLengthM: number, mode?: 'absolute' | 'delta') => void;
   batchDeleteWalls: (wallIds: string[]) => void;
-  updateWallLength: (wallId: string, newLengthM: number) => void;
+  selectedWallAnchorMode: 'start' | 'end' | 'center';
+  setSelectedWallAnchorMode: (mode: 'start' | 'end' | 'center') => void;
+  updateWallLength: (
+    wallId: string,
+    newLengthM: number,
+    anchorMode?: 'start' | 'end' | 'center' | string
+  ) => void;
   updateVertexPosition: (vertexId: string, newPos: Vector2D) => void;
   splitSharedVertexForWall: (wallId: string, vertexId: string) => string;
   commitWallVertexDrag: (params: {
@@ -199,6 +205,12 @@ export interface ArchitectureSlice {
   deleteBeam: (beamId: string) => void;
 
   updateSpace: (spaceId: string, updates: Partial<Space>) => void;
+  resizeSpaceOrthogonal: (params: {
+    spaceId: string;
+    axis: 'width' | 'length';
+    newDimensionM: number;
+    direction?: 'positive' | 'negative' | 'center';
+  }) => void;
   autoDetectSpaces: () => void;
   moveSpace: (spaceId: string, delta: Vector2D) => void;
 

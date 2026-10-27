@@ -40,7 +40,8 @@ export function useWallGripDrag(params: {
     updateVertexPosition,
     splitSharedVertexForWall,
     commitWallVertexDrag,
-    setSelectedEntity
+    setSelectedEntity,
+    setSelectedWallAnchorMode
   } = useProjectStore();
 
   const [activeDrag, setActiveDrag] = useState<ActiveWallDragState | null>(null);
@@ -51,6 +52,9 @@ export function useWallGripDrag(params: {
   const activeDragRef = useRef<ActiveWallDragState | null>(null);
   const snapResultRef = useRef<WallSnapResult | null>(null);
   const lastSnapTypeRef = useRef<string>('none');
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const hasMovedFarRef = useRef(false);
+  const initialVertexIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     activeDragRef.current = activeDrag;
@@ -93,12 +97,13 @@ export function useWallGripDrag(params: {
       const fixedVertexPos = draggedEnd === 'start' ? { x: vEnd.x, y: vEnd.y } : { x: vStart.x, y: vStart.y };
       const currentPos = draggedEnd === 'start' ? { x: vStart.x, y: vStart.y } : { x: vEnd.x, y: vEnd.y };
 
-      // Si el extremo es compartido, independizarlo para permitir libertad en tramos comunes
-      const actualVertexId = splitSharedVertexForWall(wallId, vertexId);
+      pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+      hasMovedFarRef.current = false;
+      initialVertexIdRef.current = vertexId;
 
       const state: ActiveWallDragState = {
         wallId,
-        draggedVertexId: actualVertexId,
+        draggedVertexId: vertexId,
         draggedEnd,
         fixedVertexPos,
         oldLength,
@@ -115,7 +120,7 @@ export function useWallGripDrag(params: {
       setActiveDrag(state);
       setActiveSnapResult(null);
     },
-    [project.walls, project.vertices, splitSharedVertexForWall, setSelectedEntity]
+    [project.walls, project.vertices, setSelectedEntity]
   );
 
   /**
@@ -126,6 +131,20 @@ export function useWallGripDrag(params: {
       const drag = activeDragRef.current;
       const targetContainer = containerElement || containerRef?.current;
       if (!drag || !targetContainer) return;
+
+      if (!hasMovedFarRef.current && pointerDownPosRef.current) {
+        const moveDist = Math.hypot(
+          e.clientX - pointerDownPosRef.current.x,
+          e.clientY - pointerDownPosRef.current.y
+        );
+        if (moveDist < 4) {
+          return;
+        }
+        hasMovedFarRef.current = true;
+        // Ahora que se confirmó el arrastre intencional, independizar el vértice si es compartido
+        const newVertexId = splitSharedVertexForWall(drag.wallId, drag.draggedVertexId);
+        drag.draggedVertexId = newVertexId;
+      }
 
       e.stopPropagation();
       e.preventDefault();
@@ -206,7 +225,17 @@ export function useWallGripDrag(params: {
       // Actualizar posición en tiempo real para render fluido a 60 fps
       updateVertexPosition(drag.draggedVertexId, snapResult.snappedPoint);
     },
-    [zoom, panOffset, project.walls, project.vertices, project.activeLevelId, updateVertexPosition, containerRef, isOrthoMode]
+    [
+      zoom,
+      panOffset,
+      project.walls,
+      project.vertices,
+      project.activeLevelId,
+      updateVertexPosition,
+      splitSharedVertexForWall,
+      containerRef,
+      isOrthoMode
+    ]
   );
 
   /**
@@ -222,6 +251,18 @@ export function useWallGripDrag(params: {
         (e.currentTarget as Element).releasePointerCapture(e.pointerId);
       } catch {
         // Ignorar
+      }
+
+      if (!hasMovedFarRef.current) {
+        // Fue un toque/clic sin arrastre: fijar este extremo como punto de anclaje para edición
+        setSelectedWallAnchorMode(drag.draggedEnd);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(10);
+        }
+        lastSnapTypeRef.current = 'none';
+        setActiveDrag(null);
+        setActiveSnapResult(null);
+        return;
       }
 
       const snap = snapResultRef.current;
@@ -246,7 +287,7 @@ export function useWallGripDrag(params: {
       setActiveDrag(null);
       setActiveSnapResult(null);
     },
-    [commitWallVertexDrag]
+    [commitWallVertexDrag, setSelectedWallAnchorMode]
   );
 
   // Listener global de ventana durante arrastre para evitar que pérdidas de captura en táctil interrumpan el gesto

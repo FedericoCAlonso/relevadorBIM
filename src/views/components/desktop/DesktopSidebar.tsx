@@ -79,6 +79,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     batchUpdateWalls,
     batchUpdateWallLengths,
     batchDeleteWalls,
+    selectedWallAnchorMode,
+    setSelectedWallAnchorMode,
     addOpeningReferenced,
     addBranchWallFromOffset,
     updateWall,
@@ -94,6 +96,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     updateOpening,
     deleteOpening,
     updateSpace,
+    resizeSpaceOrthogonal,
     autoDetectSpaces,
     addColumn,
     updateColumn,
@@ -291,11 +294,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 selectedWall={selectedWall}
                 verticesMap={verticesMap}
                 allOpenings={project.openings}
+                selectedWallAnchorMode={selectedWallAnchorMode}
                 onUpdateWall={updateWall}
                 onUpdateWallLength={updateWallLength}
                 onRotateWall={rotateWall}
                 onInvertWallDirection={invertWallDirection}
                 onDeleteWall={deleteWall}
+                onSetWallAnchorMode={setSelectedWallAnchorMode}
                 onSetActiveAnchorVertexId={setActiveAnchorVertexId}
                 onAddOpeningReferenced={addOpeningReferenced}
                 onDeleteOpening={deleteOpening}
@@ -315,6 +320,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             onSelectSpace={(id) => setSelectedEntity({ type: 'space', id })}
             onAutoDetectSpaces={autoDetectSpaces}
             onUpdateSpace={updateSpace}
+            onResizeSpaceOrthogonal={resizeSpaceOrthogonal}
             onStartDrawingOverhang={onStartDrawingOverhang}
             onStartMovingSpace={onStartMovingSpace}
           />

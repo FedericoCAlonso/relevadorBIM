@@ -208,6 +208,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     toggleSelectEntity,
     activeAnchorVertexId,
     setActiveAnchorVertexId,
+    selectedWallAnchorMode,
     showDimensions,
     toggleDimensions,
     deleteDimensionLine,
@@ -556,6 +557,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             zoom={zoom}
             selectedWallId={selectedEntity?.type === 'wall' ? selectedEntity.id : null}
             selectedWallIds={selectedEntityMap.get('wall')}
+            selectedWallAnchorMode={selectedWallAnchorMode}
             showDimensions={showDimensions}
             isArchitectureLocked={isArchitectureLocked}
             activeDrag={activeDrag}

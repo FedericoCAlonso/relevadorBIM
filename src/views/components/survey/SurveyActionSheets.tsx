@@ -54,6 +54,8 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
     rotateWall,
     invertWallDirection,
     deleteWall,
+    selectedWallAnchorMode,
+    setSelectedWallAnchorMode,
     setActiveAnchorVertexId,
     updateOpening,
     deleteOpening
@@ -162,7 +164,12 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
 
               {/* Longitud */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">LONGITUD DEL MURO</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-500">LONGITUD DEL MURO</label>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Fijo: {selectedWallAnchorMode === 'end' ? 'Extremo B' : selectedWallAnchorMode === 'center' ? 'Centro' : 'Extremo A'}
+                  </span>
+                </div>
                 <div className="relative">
                   <input
                     type="number"
@@ -178,6 +185,60 @@ export const SurveyActionSheets: React.FC<SurveyActionSheetsProps> = ({
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 pointer-events-none">
                     m
                   </span>
+                </div>
+
+                {/* Selector táctil de punto de anclaje */}
+                <div className="grid grid-cols-3 gap-1 pt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWallAnchorMode('start')}
+                    className={`py-1.5 px-1.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                      selectedWallAnchorMode !== 'end' && selectedWallAnchorMode !== 'center'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    🔒 Extremo A
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWallAnchorMode('center')}
+                    className={`py-1.5 px-1.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                      selectedWallAnchorMode === 'center'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ↔ Centro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWallAnchorMode('end')}
+                    className={`py-1.5 px-1.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                      selectedWallAnchorMode === 'end'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    🔒 Extremo B
+                  </button>
+                </div>
+
+                {/* Ajuste fino por Deltas rápidos */}
+                <div className="grid grid-cols-4 gap-1 pt-1.5">
+                  {[-0.10, -0.05, 0.05, 0.10].map((delta) => {
+                    const sign = delta > 0 ? `+${delta.toFixed(2)}` : `${delta.toFixed(2)}`;
+                    return (
+                      <button
+                        key={delta}
+                        type="button"
+                        onClick={() => updateWallLength(selectedWall.id, Math.max(0.10, wallLen + delta))}
+                        className="py-1 px-1 rounded-xl text-xs font-mono font-bold border bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 transition-colors text-center cursor-pointer"
+                      >
+                        {sign}m
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -42,6 +42,7 @@ import {
   SPACE_ANCHOR_OPTIONS,
   type SpaceAnchorPreset
 } from '../../../../models/architecture/SpaceMoveEngine';
+import { getSpaceOrthogonalDimensions } from '../../../../models/architecture/SpaceOrthogonalResize';
 import { useCeilingPlanStore } from '../../../../viewmodels/useCeilingPlanViewModel';
 
 export interface SpacesTabPanelProps {
@@ -52,6 +53,12 @@ export interface SpacesTabPanelProps {
   onSelectSpace?: (spaceId: string) => void;
   onAutoDetectSpaces: () => void;
   onUpdateSpace: (spaceId: string, updates: Partial<Space>) => void;
+  onResizeSpaceOrthogonal?: (params: {
+    spaceId: string;
+    axis: 'width' | 'length';
+    newDimensionM: number;
+    direction?: 'positive' | 'negative' | 'center';
+  }) => void;
   onStartDrawingOverhang?: (spaceId: string) => void;
   onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
 }
@@ -65,6 +72,7 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
     onSelectSpace,
     onAutoDetectSpaces,
     onUpdateSpace,
+    onResizeSpaceOrthogonal,
     onStartDrawingOverhang,
     onStartMovingSpace
   }) => {
@@ -211,6 +219,145 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
                     </button>
                   ))}
                 </div>
+
+                {/* Dimensiones Ortogonales del Ambiente */}
+                {isSelected &&
+                  onResizeSpaceOrthogonal &&
+                  (() => {
+                    const dims = getSpaceOrthogonalDimensions(space, verticesMap);
+                    if (dims.widthM <= 0 || dims.lengthM <= 0) return null;
+                    return (
+                      <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                            <Ruler size={12} className="text-blue-600" />
+                            <span>Dimensiones Ortogonales</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded">
+                            {dims.widthM.toFixed(2)}m × {dims.lengthM.toFixed(2)}m
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5 text-xs">
+                          {/* Ancho X */}
+                          <div className="space-y-1 bg-white p-2 rounded-lg border border-blue-100">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-700">
+                              <span>Ancho (X)</span>
+                              <span className="font-mono text-blue-600">{dims.widthM.toFixed(2)}m</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'width',
+                                    newDimensionM: Math.max(0.5, dims.widthM - 0.1),
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[10px] font-mono font-bold text-slate-700 text-center cursor-pointer"
+                                title="Reducir 10 cm (-X)"
+                              >
+                                -0.10
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'width',
+                                    newDimensionM: dims.widthM + 0.1,
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-mono font-bold text-center cursor-pointer"
+                                title="Aumentar 10 cm (+X)"
+                              >
+                                +0.10
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'width',
+                                    newDimensionM: dims.widthM + 0.5,
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded text-[10px] font-mono font-bold text-center cursor-pointer"
+                                title="Aumentar 50 cm (+X)"
+                              >
+                                +0.50
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Largo Y */}
+                          <div className="space-y-1 bg-white p-2 rounded-lg border border-blue-100">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-700">
+                              <span>Largo (Y)</span>
+                              <span className="font-mono text-blue-600">{dims.lengthM.toFixed(2)}m</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'length',
+                                    newDimensionM: Math.max(0.5, dims.lengthM - 0.1),
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[10px] font-mono font-bold text-slate-700 text-center cursor-pointer"
+                                title="Reducir 10 cm (-Y)"
+                              >
+                                -0.10
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'length',
+                                    newDimensionM: dims.lengthM + 0.1,
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-mono font-bold text-center cursor-pointer"
+                                title="Aumentar 10 cm (+Y)"
+                              >
+                                +0.10
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onResizeSpaceOrthogonal({
+                                    spaceId: space.id,
+                                    axis: 'length',
+                                    newDimensionM: dims.lengthM + 0.5,
+                                    direction: 'positive'
+                                  });
+                                }}
+                                className="flex-1 py-0.5 px-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded text-[10px] font-mono font-bold text-center cursor-pointer"
+                                title="Aumentar 50 cm (+Y)"
+                              >
+                                +0.50
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                 <div className="space-y-1.5 pt-1 border-t border-slate-200/80">
                   <div className="flex items-center justify-between">

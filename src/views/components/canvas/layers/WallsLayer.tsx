@@ -23,6 +23,7 @@ export interface WallsLayerProps {
   zoom: number;
   selectedWallId: string | null;
   selectedWallIds?: ReadonlySet<string>;
+  selectedWallAnchorMode?: 'start' | 'end' | 'center';
   showDimensions: boolean;
   isArchitectureLocked: boolean;
   activeDrag?: ActiveWallDragState | null;
@@ -43,12 +44,23 @@ interface WallGripProps {
   wallId: string;
   vertexId: string;
   isDragged: boolean;
+  isAnchor: boolean;
   isLocked: boolean;
   actions: WallGripActions;
 }
 
-const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDragged, isLocked, actions }) => {
-  const accent = isDragged ? W.gripActive : W.gripStroke;
+const WallGrip: React.FC<WallGripProps> = ({
+  x,
+  y,
+  end,
+  wallId,
+  vertexId,
+  isDragged,
+  isAnchor,
+  isLocked,
+  actions
+}) => {
+  const accent = isDragged ? W.gripActive : isAnchor ? '#2563eb' : '#059669';
   const group = end === 'start' ? 'group/grip-start' : 'group/grip-end';
   const hover = end === 'start' ? 'group-hover/grip-start:scale-125' : 'group-hover/grip-end:scale-125';
   const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -64,6 +76,21 @@ const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDrag
     >
       {/* Hitbox táctil ergonómica amplia */}
       <circle cx={x} cy={y} r={hitRadius} fill="transparent" pointerEvents="all" />
+
+      {/* Halo exterior de anclaje fijo */}
+      {isAnchor && (
+        <circle
+          cx={x}
+          cy={y}
+          r={W.gripHaloRadiusPx + 4}
+          fill="none"
+          stroke="#2563eb"
+          strokeWidth={1.5}
+          strokeDasharray="3 2"
+          className="pointer-events-none animate-pulse"
+        />
+      )}
+
       {/* Halo visual exterior */}
       <circle
         cx={x}
@@ -71,11 +98,42 @@ const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDrag
         r={W.gripHaloRadiusPx}
         fill={W.gripFill}
         stroke={accent}
-        strokeWidth={2.5}
+        strokeWidth={isAnchor ? 3 : 2}
         className={`drop-shadow pointer-events-none ${hover} transition-transform`}
       />
+
       {/* Núcleo central */}
       <circle cx={x} cy={y} r={W.gripCoreRadiusPx} fill={accent} className="pointer-events-none" />
+
+      {/* Insignia indicadora de rol de nodo (Fijo vs Móvil) */}
+      {!isDragged && (
+        <g transform={`translate(${x}, ${y - 17})`} className="pointer-events-none select-none">
+          <rect
+            x={isAnchor ? -18 : -20}
+            y={-8}
+            width={isAnchor ? 36 : 40}
+            height={16}
+            rx={4}
+            fill={isAnchor ? '#1e3a8a' : '#065f46'}
+            fillOpacity={0.92}
+            stroke={isAnchor ? '#60a5fa' : '#34d399'}
+            strokeWidth={1}
+            className="drop-shadow-sm"
+          />
+          <text
+            x={0}
+            y={0.5}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={8}
+            fontWeight="bold"
+            fontFamily="monospace"
+            fill="#ffffff"
+          >
+            {isAnchor ? '🔒 Fijo' : '↔ Móvil'}
+          </text>
+        </g>
+      )}
     </g>
   );
 };
@@ -87,6 +145,7 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
     zoom,
     selectedWallId,
     selectedWallIds,
+    selectedWallAnchorMode,
     showDimensions,
     isArchitectureLocked,
     activeDrag,
@@ -173,8 +232,28 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                   <polygon points={pointsStr} fill="none" stroke={W.selected.outline} strokeWidth={3} strokeDasharray="6 3" />
                   {isSingleWallSelected && (
                     <>
-                      <WallGrip x={vStart.x * zoom} y={vStart.y * zoom} end="start" wallId={wall.id} vertexId={vStart.id} isDragged={draggedEnd === 'start'} isLocked={isArchitectureLocked} actions={gripActions} />
-                      <WallGrip x={vEnd.x * zoom} y={vEnd.y * zoom} end="end" wallId={wall.id} vertexId={vEnd.id} isDragged={draggedEnd === 'end'} isLocked={isArchitectureLocked} actions={gripActions} />
+                      <WallGrip
+                        x={vStart.x * zoom}
+                        y={vStart.y * zoom}
+                        end="start"
+                        wallId={wall.id}
+                        vertexId={vStart.id}
+                        isDragged={draggedEnd === 'start'}
+                        isAnchor={selectedWallAnchorMode !== 'end'}
+                        isLocked={isArchitectureLocked}
+                        actions={gripActions}
+                      />
+                      <WallGrip
+                        x={vEnd.x * zoom}
+                        y={vEnd.y * zoom}
+                        end="end"
+                        wallId={wall.id}
+                        vertexId={vEnd.id}
+                        isDragged={draggedEnd === 'end'}
+                        isAnchor={selectedWallAnchorMode === 'end'}
+                        isLocked={isArchitectureLocked}
+                        actions={gripActions}
+                      />
                     </>
                   )}
                   {selectedWallIds && selectedWallIds.size > 1 && (
