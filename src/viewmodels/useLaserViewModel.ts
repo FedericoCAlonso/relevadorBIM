@@ -43,10 +43,15 @@ export function useLaserViewModel(onMeasurementReceived?: (distanceM: number) =>
     laserBluetoothService.simulateMeasurement(valM);
   }, []);
 
+  const clearError = useCallback(() => {
+    laserBluetoothService.clearError();
+  }, []);
+
   return {
     status,
     connect,
     disconnect,
-    simulateMeasurement
+    simulateMeasurement,
+    clearError
   };
 }

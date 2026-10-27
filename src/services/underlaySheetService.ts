@@ -6,8 +6,6 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import {
   type UnderlaySheet,
   type CropBoxPx,
@@ -15,9 +13,16 @@ import {
   UNDERLAY_CONSTANTS
 } from '../models/underlay/UnderlaySheet';
 
-// Inicialización segura del worker de pdfjs en entorno cliente
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+/**
+ * Carga dinámica del motor PDF.js bajo demanda para no penalizar el bundle inicial de arranque.
+ */
+async function getPdfJs() {
+  const pdfjsLib = await import('pdfjs-dist');
+  const { default: pdfWorkerUrl } = await import('pdfjs-dist/build/pdf.worker.mjs?url');
+  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  }
+  return pdfjsLib;
 }
 
 /**
@@ -61,6 +66,7 @@ function loadImageFile(file: File): Promise<{ dataUrl: string; widthPx: number; 
  * y lo convierte a DataURL PNG.
  */
 async function loadPdfFile(file: File, pageNumber = 1): Promise<{ dataUrl: string; widthPx: number; heightPx: number }> {
+  const pdfjsLib = await getPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdfDoc = await loadingTask.promise;

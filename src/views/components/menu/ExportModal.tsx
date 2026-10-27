@@ -27,7 +27,8 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Cpu
+  Cpu,
+  Printer
 } from 'lucide-react';
 
 interface ExportModalProps {
@@ -35,13 +36,15 @@ interface ExportModalProps {
   onClose: () => void;
   onOpenComputo: () => void;
   onOpenElectricalReport?: () => void;
+  onOpenBlueprintPrint?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   onOpenComputo,
-  onOpenElectricalReport
+  onOpenElectricalReport,
+  onOpenBlueprintPrint
 }) => {
   const { project } = useProjectStore();
   const { exportReportCsv } = useElectricalReportViewModel();
@@ -104,6 +107,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Lista de Tarjetas de Exportación */}
         <div className="p-4 overflow-y-auto space-y-3 text-xs">
+          {/* 0. LÁMINA TÉCNICA DE OBRA & PDF CON CARÁTULA */}
+          <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200 rounded-2xl flex items-center justify-between gap-3 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+                <Printer size={20} />
+              </div>
+              <div>
+                <strong className="text-slate-900 text-xs block">Lámina de Obra & PDF (AEA / IRAM)</strong>
+                <span className="text-[11px] text-slate-500 block">
+                  Plano oficial con Carátula, Cuadro de Cargas y Simbología
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenBlueprintPrint?.();
+              }}
+              className="flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-xl shadow-xs transition-all flex-shrink-0 cursor-pointer"
+            >
+              <Printer size={14} />
+              <span>Ver Lámina</span>
+            </button>
+          </div>
+
           {/* 1. PLANO CAD DXF */}
           <div className="p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 transition-colors">
             <div className="flex items-center gap-3">

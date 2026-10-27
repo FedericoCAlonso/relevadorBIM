@@ -34,4 +34,17 @@ describe('laserBluetoothService & useLaserViewModel contract', () => {
     laserBluetoothService.simulateMeasurement(2.10);
     expect(onMeasurement).toHaveBeenCalledTimes(1);
   });
+
+  it('notifica error explicativo y permite limpiarlo cuando Web Bluetooth no está disponible', async () => {
+    laserBluetoothService.clearError();
+    expect(laserBluetoothService.getStatus().error).toBeNull();
+
+    await laserBluetoothService.connect();
+    const status = laserBluetoothService.getStatus();
+    expect(status.error).toBeTruthy();
+    expect(status.error).toContain('Web Bluetooth');
+
+    laserBluetoothService.clearError();
+    expect(laserBluetoothService.getStatus().error).toBeNull();
+  });
 });

@@ -32,7 +32,8 @@ import {
   WifiOff,
   DownloadCloud,
   Smartphone,
-  RefreshCw
+  RefreshCw,
+  Printer
 } from 'lucide-react';
 
 interface MainMenuModalProps {
@@ -40,6 +41,7 @@ interface MainMenuModalProps {
   onClose: () => void;
   onOpenSettings: () => void;
   onOpenExport: () => void;
+  onOpenBlueprintPrint?: () => void;
   onOpenComputo: () => void;
   onOpenCircuits?: () => void;
   onOpenElectricalReport?: () => void;
@@ -64,6 +66,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onClose,
   onOpenSettings,
   onOpenExport,
+  onOpenBlueprintPrint,
   onOpenComputo,
   onOpenCircuits,
   onOpenElectricalReport,
@@ -327,6 +330,26 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
               📤 Salidas Técnicas y Cómputo
             </span>
+
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenBlueprintPrint?.();
+              }}
+              className="w-full flex items-center justify-between p-3 bg-blue-50/70 hover:bg-blue-100/70 rounded-2xl border border-blue-200 transition-all text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+                  <Printer size={16} />
+                </div>
+                <div>
+                  <div className="font-bold text-blue-950">Imprimir Lámina de Obra (PDF)</div>
+                  <div className="text-[11px] text-blue-700">Plano reglamentario con carátula y cuadro AEA</div>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-blue-400" />
+            </button>
 
             <button
               type="button"

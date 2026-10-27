@@ -47,7 +47,8 @@ import {
   ArrowUpDown,
   Layers,
   Building2,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import { useWallElevationStore } from '../../../viewmodels/useWallElevationViewModel';
 
@@ -170,7 +171,7 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     onChangeDistance(distM.toFixed(3));
   }, [onChangeDistance]);
 
-  const { status, connect, disconnect } = useLaserViewModel(handleLaserMeasurement);
+  const { status, connect, disconnect, clearError } = useLaserViewModel(handleLaserMeasurement);
 
   const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
 
@@ -228,6 +229,27 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
       dropHeightM: 0.40
     });
     setSelectedEntity({ type: 'beam', id });
+  };
+
+  const renderLaserErrorToast = () => {
+    if (!status.error) return null;
+    return (
+      <div className="fixed bottom-24 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md bg-slate-900/95 text-white p-3 rounded-2xl border border-amber-500/80 shadow-2xl z-50 flex items-start gap-2.5 text-xs animate-in slide-in-from-bottom duration-200">
+        <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-amber-200">Distanciómetro Láser</p>
+          <p className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">{status.error}</p>
+        </div>
+        <button
+          type="button"
+          onClick={clearError}
+          className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 shrink-0 cursor-pointer"
+          title="Cerrar aviso"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    );
   };
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1203,10 +1225,12 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   const selectedSymDef = selectedSymbolId ? getSymbolById(selectedSymbolId) : null;
 
   return (
-    <footer
-      className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation w-full max-w-full overflow-hidden"
-      style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
-    >
+    <>
+      {renderLaserErrorToast()}
+      <footer
+        className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-2xl p-2 sm:p-2.5 flex flex-col gap-2 z-20 touch-manipulation w-full max-w-full overflow-hidden"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
       {/* ─── PESTAÑAS DE MODO PRINCIPAL + BLUETOOTH / ACCIONES ─── */}
       <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-100 w-full min-w-0">
         <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
@@ -1541,5 +1565,6 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         </>
       )}
     </footer>
+    </>
   );
 };

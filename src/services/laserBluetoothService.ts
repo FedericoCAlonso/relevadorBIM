@@ -53,11 +53,24 @@ class LaserBluetoothService {
   }
 
   /**
+   * Limpia cualquier error activo en el estado.
+   */
+  public clearError(): void {
+    if (this.status.error) {
+      this.status.error = null;
+      this.notifyStatus();
+    }
+  }
+
+  /**
    * Conecta al distanciómetro vía Web Bluetooth API nativa de Chrome / Android.
    */
   public async connect(): Promise<void> {
+    const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
     if (!navigator.bluetooth) {
-      this.status.error = 'Web Bluetooth no está soportado en este navegador. Usa Chrome o Edge.';
+      this.status.error = isIos
+        ? 'Safari en iOS no incluye Web Bluetooth de forma nativa. Para conectar tu distanciómetro láser en iPhone o iPad, abre RelevadorBIM desde un navegador con soporte BLE como Bluefy o WebBLE.'
+        : 'Web Bluetooth no está soportado en este navegador. Usa Chrome o Edge.';
       this.notifyStatus();
       return;
     }

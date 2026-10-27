@@ -7,7 +7,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useProjectStore } from './viewmodels/useProjectStore';
 import { useSurveyViewModel } from './viewmodels/useSurveyViewModel';
 import { useMediaQuery } from './viewmodels/useMediaQuery';
@@ -21,6 +21,7 @@ import { ComputoModal } from './views/components/survey/ComputoModal';
 import { MainMenuModal } from './views/components/menu/MainMenuModal';
 import { ProjectSettingsModal } from './views/components/menu/ProjectSettingsModal';
 import { ExportModal } from './views/components/menu/ExportModal';
+import { BlueprintPrintModal } from './views/components/print/BlueprintPrintModal';
 import { ElectricalElementModal } from './views/components/electrical/ElectricalElementModal';
 import { ConduitModal } from './views/components/electrical/ConduitModal';
 import { BranchEditModal } from './views/components/electrical/BranchEditModal';
@@ -38,8 +39,11 @@ import { UnderlayAdjustModal } from './views/components/underlay/UnderlayAdjustM
 import { useElectricalViewModel } from './viewmodels/useElectricalViewModel';
 import { useVoiceAssistantViewModel } from './viewmodels/useVoiceAssistantViewModel';
 import { usePwaViewModel } from './viewmodels/usePwaViewModel';
-import { VoiceAssistantModal } from './views/components/nlp/VoiceAssistantModal';
 import { VoiceConfirmationToast } from './views/components/nlp/VoiceConfirmationToast';
+
+const VoiceAssistantModal = lazy(() =>
+  import('./views/components/nlp/VoiceAssistantModal').then((m) => ({ default: m.VoiceAssistantModal }))
+);
 import { getSymbolById } from './models/electrical/symbolsLib';
 import { X, Mic } from 'lucide-react';
 
@@ -190,6 +194,7 @@ export function App() {
   const [showMainMenu, setShowMainMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showBlueprintPrintModal, setShowBlueprintPrintModal] = useState(false);
   const [showTeeModal, setShowTeeModal] = useState(false);
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [showElementModal, setShowElementModal] = useState(false);
@@ -986,6 +991,7 @@ export function App() {
         onClose={() => setShowMainMenu(false)}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenExport={() => setShowExportModal(true)}
+        onOpenBlueprintPrint={() => setShowBlueprintPrintModal(true)}
         onOpenComputo={() => setShowComputoModal(true)}
         onOpenCircuits={() => setShowCircuitsModal(true)}
         onOpenElectricalReport={() => setShowElectricalReportModal(true)}
@@ -1058,6 +1064,13 @@ export function App() {
         onClose={() => setShowExportModal(false)}
         onOpenComputo={() => setShowComputoModal(true)}
         onOpenElectricalReport={() => setShowElectricalReportModal(true)}
+        onOpenBlueprintPrint={() => setShowBlueprintPrintModal(true)}
+      />
+
+      {/* Lámina Técnica de Obra e Impresión / PDF con Carátula IRAM / AEA */}
+      <BlueprintPrintModal
+        isOpen={showBlueprintPrintModal}
+        onClose={() => setShowBlueprintPrintModal(false)}
       />
 
       {/* Memoria de Cálculo Eléctrico y Cuadro de Cargas AEA 90364-771 */}
@@ -1127,24 +1140,26 @@ export function App() {
       </button>
 
       {/* 16. Modal y Toast de Voz en Lenguaje Natural */}
-      <VoiceAssistantModal
-        isOpen={voiceAssistant.isModalOpen}
-        onClose={() => voiceAssistant.setIsModalOpen(false)}
-        inputText={voiceAssistant.inputText}
-        setInputText={voiceAssistant.setInputText}
-        isProcessing={voiceAssistant.isProcessing}
-        engineMode={voiceAssistant.engineMode}
-        setEngineMode={voiceAssistant.setEngineMode}
-        llmStatus={voiceAssistant.llmStatus}
-        llmProgress={voiceAssistant.llmProgress}
-        lastResult={voiceAssistant.lastResult}
-        speech={voiceAssistant.speech}
-        spaces={voiceAssistant.spaces}
-        targetSpaceId={voiceAssistant.targetSpaceId}
-        onSelectSpace={voiceAssistant.setTargetSpaceId}
-        onExecute={voiceAssistant.executeCommand}
-        onInitLocalModel={voiceAssistant.initLocalModel}
-      />
+      <Suspense fallback={null}>
+        <VoiceAssistantModal
+          isOpen={voiceAssistant.isModalOpen}
+          onClose={() => voiceAssistant.setIsModalOpen(false)}
+          inputText={voiceAssistant.inputText}
+          setInputText={voiceAssistant.setInputText}
+          isProcessing={voiceAssistant.isProcessing}
+          engineMode={voiceAssistant.engineMode}
+          setEngineMode={voiceAssistant.setEngineMode}
+          llmStatus={voiceAssistant.llmStatus}
+          llmProgress={voiceAssistant.llmProgress}
+          lastResult={voiceAssistant.lastResult}
+          speech={voiceAssistant.speech}
+          spaces={voiceAssistant.spaces}
+          targetSpaceId={voiceAssistant.targetSpaceId}
+          onSelectSpace={voiceAssistant.setTargetSpaceId}
+          onExecute={voiceAssistant.executeCommand}
+          onInitLocalModel={voiceAssistant.initLocalModel}
+        />
+      </Suspense>
 
       <VoiceConfirmationToast
         pending={voiceAssistant.pendingConfirmation}

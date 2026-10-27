@@ -76,5 +76,32 @@ export default defineConfig({
         skipWaiting: true
       }
     })
-  ]
+  ],
+  build: {
+    modulePreload: {
+      resolveDependencies: (_url, deps) => {
+        return deps.filter(
+          (dep) => !dep.includes('vendor-pdfjs') && !dep.includes('vendor-mlc-llm')
+        );
+      }
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('@mlc-ai/web-llm')) {
+              return 'vendor-mlc-llm';
+            }
+            if (id.includes('pdfjs-dist')) {
+              return 'vendor-pdfjs';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 });
