@@ -136,6 +136,8 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
     project,
     selectedEntity,
     selectedEntities,
+    isMultiSelectMode,
+    toggleMultiSelectMode,
     setSelectedEntity,
     clearSelection,
     undo,
@@ -489,6 +491,15 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
   // CASO 1A: INSPECTOR DE SELECCIÓN POR LOTE (Múltiples elementos)
   // ═════════════════════════════════════════════════════════════════════════
   if (selectedEntities.length > 1) {
+    const selectedWalls = project.walls.filter((w) =>
+      selectedEntities.some((se) => se.type === 'wall' && se.id === w.id)
+    );
+    const areOnlyWalls = selectedWalls.length === selectedEntities.length;
+    const totalWallLen = selectedWalls.reduce(
+      (acc, w) => acc + getWallLength(w, verticesMap),
+      0
+    );
+
     return (
       <footer
         className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-indigo-500/60 shadow-2xl p-2.5 flex flex-col gap-2 z-20 touch-manipulation text-white animate-in slide-in-from-bottom duration-150 w-full max-w-full overflow-hidden"
@@ -497,7 +508,11 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
         <div className="flex items-center justify-between text-xs px-1 w-full min-w-0">
           <div className="flex items-center gap-1.5 font-bold text-indigo-300 truncate min-w-0">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping shrink-0" />
-            <span className="truncate">📦 Lote: {selectedEntities.length} elementos seleccionados</span>
+            <span className="truncate">
+              {areOnlyWalls
+                ? `🧱 ${selectedWalls.length} paredes seleccionadas (${totalWallLen.toFixed(1)} m)`
+                : `📦 Lote: ${selectedEntities.length} elementos seleccionados`}
+            </span>
           </div>
           <button
             type="button"
@@ -567,14 +582,29 @@ export const ThumbSurveyDock: React.FC<ThumbSurveyDockProps> = ({
                   <span className="font-mono font-bold text-blue-950 shrink-0">{wallLen.toFixed(2)}m</span>
                   <span className="text-slate-400 text-[11px] truncate">({Math.round(selectedWall.thickness * 100)}cm)</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedEntity(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
-                  title="Cerrar selección"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={toggleMultiSelectMode}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
+                      isMultiSelectMode
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                    }`}
+                    title="Activar selección múltiple de paredes en el plano"
+                  >
+                    <Layers size={11} />
+                    <span>+ Lote</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEntity(null)}
+                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg shrink-0 ml-1"
+                    title="Cerrar selección"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full min-w-0">

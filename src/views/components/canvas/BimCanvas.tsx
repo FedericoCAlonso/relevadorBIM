@@ -95,7 +95,7 @@ interface BimCanvasProps {
   onCancelProvisionalSampleBox?: () => void;
   detectedPatternMatches?: DetectedPatternMatch[];
   onDismissPatternMatch?: (matchId: string) => void;
-  onWallClick?: (wallId: string) => void;
+  onWallClick?: (wallId: string, event?: React.MouseEvent) => void;
   onWallDoubleClick?: (wallId: string) => void;
   onOpeningClick?: (openingId: string) => void;
   onSpaceClick?: (spaceId: string) => void;
@@ -555,8 +555,10 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             verticesMap={verticesMap}
             zoom={zoom}
             selectedWallId={selectedEntity?.type === 'wall' ? selectedEntity.id : null}
+            selectedWallIds={selectedEntityMap.get('wall')}
             showDimensions={showDimensions}
             isArchitectureLocked={isArchitectureLocked}
+            activeDrag={activeDrag}
             activeDragWallId={activeDrag?.wallId ?? null}
             activeDragEnd={activeDrag?.draggedEnd ?? null}
             gripActions={wallGripActions}

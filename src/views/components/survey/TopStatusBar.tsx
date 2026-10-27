@@ -23,7 +23,7 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
   onOpenVoiceAssistant,
   isOnline = true
 }) => {
-  const { project, labelDisplayMode, setLabelDisplayMode, selectedEntities } = useProjectStore();
+  const { project, labelDisplayMode, setLabelDisplayMode, selectedEntities, isMultiSelectMode } = useProjectStore();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const cycleLabelMode = () => {
@@ -136,12 +136,14 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
             onClick={onOpenBatchSelect}
             className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
               selectedEntities.length > 0
-                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-300'
+                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-300 shadow-2xs'
+                : isMultiSelectMode
+                ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-400 ring-2 ring-blue-300'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
             }`}
-            title="Seleccionar por Filtro o Criterio (Circuito, Caño, Boca, Estado)"
+            title="Seleccionar por Filtro o Criterio (Paredes, Circuito, Caño, Boca, Estado)"
           >
-            <Filter size={13} className={selectedEntities.length > 0 ? 'text-indigo-600' : 'text-slate-500'} />
+            <Filter size={13} className={selectedEntities.length > 0 ? 'text-indigo-600' : isMultiSelectMode ? 'text-blue-600' : 'text-slate-500'} />
             {selectedEntities.length > 0 && (
               <span className="font-bold text-[10px] sm:text-[11px] text-indigo-700">
                 {selectedEntities.length}

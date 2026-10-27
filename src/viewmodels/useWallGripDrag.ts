@@ -11,6 +11,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useProjectStore } from './useProjectStore';
 import { findWallDragSnap, type WallSnapResult } from '../models/architecture/WallSnapEngine';
 import type { Vector2D } from '../models/architecture/Wall';
+import { CAD_WALL_STYLES } from '../config/appCadConfig';
 
 export interface ActiveWallDragState {
   wallId: string;
@@ -19,6 +20,11 @@ export interface ActiveWallDragState {
   fixedVertexPos: Vector2D;
   oldLength: number;
   pointerType: string;
+  touchClientPos?: { x: number; y: number };
+  currentPointWorld?: Vector2D;
+  currentLengthM?: number;
+  currentAngleDeg?: number;
+  snapLabel?: string;
 }
 
 export function useWallGripDrag(params: {
@@ -44,6 +50,7 @@ export function useWallGripDrag(params: {
 
   const activeDragRef = useRef<ActiveWallDragState | null>(null);
   const snapResultRef = useRef<WallSnapResult | null>(null);
+  const lastSnapTypeRef = useRef<string>('none');
 
   useEffect(() => {
     activeDragRef.current = activeDrag;
@@ -84,6 +91,7 @@ export function useWallGripDrag(params: {
 
       const oldLength = Math.hypot(vEnd.x - vStart.x, vEnd.y - vStart.y);
       const fixedVertexPos = draggedEnd === 'start' ? { x: vEnd.x, y: vEnd.y } : { x: vStart.x, y: vStart.y };
+      const currentPos = draggedEnd === 'start' ? { x: vStart.x, y: vStart.y } : { x: vEnd.x, y: vEnd.y };
 
       // Si el extremo es compartido, independizarlo para permitir libertad en tramos comunes
       const actualVertexId = splitSharedVertexForWall(wallId, vertexId);
@@ -94,11 +102,16 @@ export function useWallGripDrag(params: {
         draggedEnd,
         fixedVertexPos,
         oldLength,
-        pointerType: e.pointerType || 'mouse'
+        pointerType: e.pointerType || 'mouse',
+        touchClientPos: { x: e.clientX, y: e.clientY },
+        currentPointWorld: currentPos,
+        currentLengthM: oldLength,
+        currentAngleDeg: 0
       };
 
       activeDragRef.current = state;
       snapResultRef.current = null;
+      lastSnapTypeRef.current = 'none';
       setActiveDrag(state);
       setActiveSnapResult(null);
     },
@@ -106,7 +119,7 @@ export function useWallGripDrag(params: {
   );
 
   /**
-   * Procesa el movimiento del puntero, aplicando offset táctil si es touch y evaluando el snap.
+   * Procesa el movimiento del puntero, aplicando offset ergonómico táctil y evaluando el snap.
    */
   const handleGripPointerMove = useCallback(
     (e: React.PointerEvent, containerElement?: HTMLElement | null) => {
@@ -118,17 +131,19 @@ export function useWallGripDrag(params: {
       e.preventDefault();
 
       const rect = targetContainer.getBoundingClientRect();
-      let clientX = e.clientX;
-      let clientY = e.clientY;
+      const rawTouchX = e.clientX;
+      const rawTouchY = e.clientY;
+      let targetClientX = rawTouchX;
+      let targetClientY = rawTouchY;
 
-      // En dispositivos touch (dedo), elevar el punto 28px para que la yema no tape el vértice
+      // En dispositivos touch (dedo), elevamos el punto métrico para que la yema no tape el vértice
       if (drag.pointerType === 'touch') {
-        clientY -= 28;
+        targetClientY -= CAD_WALL_STYLES.gripTouchElevationOffsetPx;
       }
 
       // Convertir coordenadas de pantalla a coordenadas del mundo (metros)
-      const worldX = (clientX - rect.left - panOffset.x) / zoom;
-      const worldY = (clientY - rect.top - panOffset.y) / zoom;
+      const worldX = (targetClientX - rect.left - panOffset.x) / zoom;
+      const worldY = (targetClientY - rect.top - panOffset.y) / zoom;
       const rawPoint: Vector2D = { x: worldX, y: worldY };
 
       const isShift = 'shiftKey' in e ? Boolean((e as React.PointerEvent).shiftKey) : false;
@@ -147,8 +162,46 @@ export function useWallGripDrag(params: {
         }
       });
 
+      const snapped = snapResult.snappedPoint;
+      const dx = snapped.x - drag.fixedVertexPos.x;
+      const dy = snapped.y - drag.fixedVertexPos.y;
+      const currentLengthM = Math.hypot(dx, dy);
+      let currentAngleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+      if (currentAngleDeg < 0) currentAngleDeg += 360;
+
+      let snapLabel: string | undefined;
+      if (snapResult.targetType === 'vertex') snapLabel = 'Empalme Vértice';
+      else if (snapResult.targetType === 'wall_slide') snapLabel = 'Deslizar en Muro';
+      else if (snapResult.targetType === 'smart_guide') snapLabel = 'Guía Inteligente';
+      else if (snapResult.targetType === 'polar_angle') snapLabel = 'Ángulo Orto/Polar';
+      else if (snapResult.targetType === 'grid') snapLabel = 'Grilla';
+
+      // Feedback háptico en tiempo real al entrar en una zona de snap magnético
+      if (
+        snapResult.targetType !== 'none' &&
+        lastSnapTypeRef.current !== snapResult.targetType &&
+        typeof navigator !== 'undefined' &&
+        navigator.vibrate
+      ) {
+        navigator.vibrate(8);
+      }
+      lastSnapTypeRef.current = snapResult.targetType;
+
       snapResultRef.current = snapResult;
       setActiveSnapResult(snapResult);
+
+      setActiveDrag((prev) =>
+        prev
+          ? {
+              ...prev,
+              touchClientPos: { x: rawTouchX, y: rawTouchY },
+              currentPointWorld: snapped,
+              currentLengthM,
+              currentAngleDeg,
+              snapLabel
+            }
+          : null
+      );
 
       // Actualizar posición en tiempo real para render fluido a 60 fps
       updateVertexPosition(drag.draggedVertexId, snapResult.snappedPoint);
@@ -175,9 +228,9 @@ export function useWallGripDrag(params: {
       const finalPos = snap ? snap.snappedPoint : drag.fixedVertexPos;
       const mergeWithVertexId = snap?.targetType === 'vertex' ? snap.targetVertexId : undefined;
 
-      // Si encajó con éxito en un vértice o muro, disparar micro-vibración háptica
+      // Si encajó con éxito en un vértice o muro, disparar micro-vibración háptica final
       if (snap && snap.targetType !== 'none' && typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(10);
+        navigator.vibrate(12);
       }
 
       commitWallVertexDrag({
@@ -189,11 +242,33 @@ export function useWallGripDrag(params: {
         oldLength: drag.oldLength
       });
 
+      lastSnapTypeRef.current = 'none';
       setActiveDrag(null);
       setActiveSnapResult(null);
     },
     [commitWallVertexDrag]
   );
+
+  // Listener global de ventana durante arrastre para evitar que pérdidas de captura en táctil interrumpan el gesto
+  useEffect(() => {
+    if (!activeDrag) return;
+    const onWindowPointerMove = (e: PointerEvent) => {
+      handleGripPointerMove(e as unknown as React.PointerEvent);
+    };
+    const onWindowPointerUp = (e: PointerEvent) => {
+      handleGripPointerUp(e as unknown as React.PointerEvent);
+    };
+
+    window.addEventListener('pointermove', onWindowPointerMove, { passive: false });
+    window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('pointercancel', onWindowPointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('pointercancel', onWindowPointerUp);
+    };
+  }, [activeDrag, handleGripPointerMove, handleGripPointerUp]);
 
   return {
     activeDrag,

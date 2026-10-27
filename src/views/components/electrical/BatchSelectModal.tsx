@@ -16,7 +16,8 @@ import {
   Box,
   Layers,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Ruler
 } from 'lucide-react';
 
 interface BatchSelectModalProps {
@@ -34,6 +35,7 @@ export const BatchSelectModal: React.FC<BatchSelectModalProps> = ({
     project,
     selectedEntities,
     selectByCriteria,
+    setSelectedEntities,
     clearSelection
   } = useProjectStore();
 
@@ -96,6 +98,18 @@ export const BatchSelectModal: React.FC<BatchSelectModalProps> = ({
     return { existente, proyectado, aReemplazar };
   }, [project.electricalElements, project.conduits]);
 
+  // Agrupación de paredes por espesor en el nivel activo
+  const wallThicknessStats = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const w of project.walls) {
+      if (w.levelId !== project.activeLevelId) continue;
+      map.set(w.thickness, (map.get(w.thickness) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([thickness, count]) => ({ thickness, count }))
+      .sort((a, b) => a.thickness - b.thickness);
+  }, [project.walls, project.activeLevelId]);
+
   if (!isOpen) return null;
 
   return (
@@ -123,6 +137,45 @@ export const BatchSelectModal: React.FC<BatchSelectModalProps> = ({
 
         {/* Contenido scrolleable */}
         <div className="p-5 overflow-y-auto space-y-5 text-xs">
+          {/* SECCIÓN 0: PAREDES Y MUROS */}
+          {project.walls.some((w) => w.levelId === project.activeLevelId) && (
+            <div>
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-2">
+                <Ruler size={14} className="text-blue-600" />
+                <span>
+                  Paredes del Nivel ({project.walls.filter((w) => w.levelId === project.activeLevelId).length})
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lvlWalls = project.walls.filter((w) => w.levelId === project.activeLevelId);
+                    setSelectedEntities(lvlWalls.map((w) => ({ type: 'wall', id: w.id })));
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-800 text-[11px] font-bold transition-all cursor-pointer"
+                >
+                  Todas las paredes ({project.walls.filter((w) => w.levelId === project.activeLevelId).length})
+                </button>
+                {wallThicknessStats.map(({ thickness, count }) => (
+                  <button
+                    key={thickness}
+                    type="button"
+                    onClick={() => {
+                      const matching = project.walls.filter(
+                        (w) => w.levelId === project.activeLevelId && Math.abs(w.thickness - thickness) < 0.001
+                      );
+                      setSelectedEntities(matching.map((w) => ({ type: 'wall', id: w.id })));
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-slate-700 text-[11px] font-medium transition-all cursor-pointer"
+                  >
+                    Espesor {thickness.toFixed(2)}m ({count})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* SECCIÓN 1: FILTRAR POR CIRCUITO */}
           <div>
             <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-2">

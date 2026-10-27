@@ -52,6 +52,7 @@ export function App() {
     project,
     selectedEntity,
     selectedEntities,
+    isMultiSelectMode,
     setSelectedEntity,
     toggleSelectEntity,
     clearSelection,
@@ -637,7 +638,10 @@ export function App() {
             onCancelProvisionalSampleBox={cancelProvisionalSampleBox}
             detectedPatternMatches={detectedPatternMatches}
             onDismissPatternMatch={dismissPatternMatch}
-            onWallClick={(wallId) => setSelectedEntity({ type: 'wall', id: wallId })}
+            onWallClick={(wallId, e) => {
+              const isMulti = Boolean(e?.shiftKey || e?.ctrlKey || e?.metaKey || isMultiSelectMode);
+              toggleSelectEntity({ type: 'wall', id: wallId }, isMulti);
+            }}
             onWallDoubleClick={(wallId) => useWallElevationStore.getState().openElevation(wallId)}
             onOpeningClick={(openingId) => setSelectedEntity({ type: 'opening', id: openingId })}
             onSpaceClick={(spaceId) => {

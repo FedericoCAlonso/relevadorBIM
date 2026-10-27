@@ -17,6 +17,7 @@ import { WallSurveyPanel } from './sidebar/WallSurveyPanel';
 import { StructuralInspectorPanel } from './sidebar/StructuralInspectorPanel';
 import { OpeningInspectorPanel } from './sidebar/OpeningInspectorPanel';
 import { WallInspectorPanel } from './sidebar/WallInspectorPanel';
+import { BulkWallEditPanel } from '../architecture/BulkWallEditPanel';
 import { SpacesTabPanel } from './sidebar/SpacesTabPanel';
 import { ElectricalTabPanel } from './sidebar/ElectricalTabPanel';
 
@@ -73,6 +74,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     project,
     activeAnchorVertexId,
     selectedEntity,
+    selectedEntities,
+    clearSelection,
+    batchUpdateWalls,
+    batchDeleteWalls,
     addOpeningReferenced,
     addBranchWallFromOffset,
     updateWall,
@@ -128,6 +133,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const wallsMap = useMemo(
     () => new Map(project.walls.map((w) => [w.id, w])),
     [project.walls]
+  );
+
+  const selectedWalls = useMemo(
+    () => project.walls.filter((w) => selectedEntities.some((se) => se.type === 'wall' && se.id === w.id)),
+    [project.walls, selectedEntities]
   );
 
   const selectedWall = selectedEntity?.type === 'wall'
@@ -260,7 +270,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               />
             )}
 
-            {selectedWall && (
+            {selectedWalls.length > 1 ? (
+              <BulkWallEditPanel
+                selectedWalls={selectedWalls}
+                verticesMap={verticesMap}
+                onBatchUpdate={(updates) => batchUpdateWalls(selectedWalls.map((w) => w.id), updates)}
+                onBatchDelete={() => batchDeleteWalls(selectedWalls.map((w) => w.id))}
+                onDeselectAll={clearSelection}
+              />
+            ) : selectedWall ? (
               <WallInspectorPanel
                 selectedWall={selectedWall}
                 verticesMap={verticesMap}
@@ -275,7 +293,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 onDeleteOpening={deleteOpening}
                 onAddBranchWallFromOffset={addBranchWallFromOffset}
               />
-            )}
+            ) : null}
           </>
         )}
 

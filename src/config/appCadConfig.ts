@@ -189,6 +189,8 @@ export const CAD_WALL_STYLES = {
   hitAreaPaddingPx: 24,
   hitAreaMinWidthPx: 32,
   gripHitRadiusPx: 22,
+  gripTouchHitRadiusPx: 30,
+  gripTouchElevationOffsetPx: 38,
   gripHaloRadiusPx: 9,
   gripCoreRadiusPx: 4.5,
   defaultLowWallHeightM: 1.0

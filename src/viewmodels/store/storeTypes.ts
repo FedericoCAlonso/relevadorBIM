@@ -92,6 +92,7 @@ export interface HistoryAndMetaSlice {
 export interface SelectionAndCatalogSlice {
   selectedEntity: SelectedEntity | null;
   selectedEntities: SelectedEntity[];
+  isMultiSelectMode: boolean;
   activeAnchorVertexId: string | null;
   showDimensions: boolean;
   labelDisplayMode: LabelDisplayMode;
@@ -107,6 +108,8 @@ export interface SelectionAndCatalogSlice {
   setShowDimensions: (show: boolean) => void;
   toggleDimensions: () => void;
   setLabelDisplayMode: (mode: LabelDisplayMode) => void;
+  setMultiSelectMode: (active: boolean) => void;
+  toggleMultiSelectMode: () => void;
 
   addConduitType: (def: ConduitTypeDefinition) => void;
   removeConduitType: (id: string) => void;
@@ -167,6 +170,8 @@ export interface ArchitectureSlice {
   }) => Opening | null;
 
   updateWall: (wallId: string, updates: Partial<Wall>) => void;
+  batchUpdateWalls: (wallIds: string[], updates: Partial<Wall>) => void;
+  batchDeleteWalls: (wallIds: string[]) => void;
   updateWallLength: (wallId: string, newLengthM: number) => void;
   updateVertexPosition: (vertexId: string, newPos: Vector2D) => void;
   splitSharedVertexForWall: (wallId: string, vertexId: string) => string;

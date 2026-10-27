@@ -326,6 +326,50 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       }));
     },
 
+    batchUpdateWalls: (wallIds, updates) => {
+      if (wallIds.length === 0 || Object.keys(updates).length === 0) return;
+      const targetIds = new Set(wallIds);
+      set((state) => ({
+        project: {
+          ...state.project,
+          walls: state.project.walls.map((w) =>
+            targetIds.has(w.id) ? { ...w, ...updates } : w
+          ),
+          meta: { ...state.project.meta, updatedAt: Date.now() }
+        }
+      }));
+    },
+
+    batchDeleteWalls: (wallIds) => {
+      if (wallIds.length === 0) return;
+      const targetIds = new Set(wallIds);
+      set((state) => {
+        const remainingWalls = state.project.walls.filter((w) => !targetIds.has(w.id));
+        const usedVertexIds = new Set<string>();
+        remainingWalls.forEach((w) => {
+          usedVertexIds.add(w.startVertexId);
+          usedVertexIds.add(w.endVertexId);
+        });
+        const remainingVertices = state.project.vertices.filter((v) => usedVertexIds.has(v.id));
+        const remainingOpenings = state.project.openings.filter((op) => !targetIds.has(op.wallId));
+        return {
+          project: {
+            ...state.project,
+            walls: remainingWalls,
+            vertices: remainingVertices,
+            openings: remainingOpenings,
+            meta: { ...state.project.meta, updatedAt: Date.now() }
+          },
+          selectedEntities: state.selectedEntities.filter((e) => !targetIds.has(e.id)),
+          selectedEntity:
+            state.selectedEntity && targetIds.has(state.selectedEntity.id)
+              ? null
+              : state.selectedEntity
+        };
+      });
+      get().autoDetectSpaces();
+    },
+
     updateWallLength: (wallId, newLengthM) => {
       const { project } = get();
       const wall = project.walls.find((w) => w.id === wallId);

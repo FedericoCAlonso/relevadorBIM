@@ -8,6 +8,7 @@ import { getWallPolygon, getWallLength } from '../../../../models/architecture/W
 import { computeResolvedWallPolygons } from '../../../../models/architecture/WallCornerEngine';
 import { getWallBodyStyle, getWallTypologyLabel } from '../../../../models/architecture/wallRenderModel';
 import { CAD_WALL_STYLES as W } from '../../../../config';
+import type { ActiveWallDragState } from '../../../../viewmodels/useWallGripDrag';
 
 /** Acciones de arrastre de extremos; deben tener identidad estable entre renders. */
 export interface WallGripActions {
@@ -16,20 +17,22 @@ export interface WallGripActions {
   onGripRelease: (e: React.PointerEvent) => void;
 }
 
-interface WallsLayerProps {
+export interface WallsLayerProps {
   walls: Wall[];
   verticesMap: Map<string, WallVertex>;
   zoom: number;
   selectedWallId: string | null;
+  selectedWallIds?: ReadonlySet<string>;
   showDimensions: boolean;
   isArchitectureLocked: boolean;
+  activeDrag?: ActiveWallDragState | null;
   activeDragWallId: string | null;
   activeDragEnd: 'start' | 'end' | null;
   gripActions: WallGripActions;
   wasDraggingRecentlyRef: React.RefObject<() => boolean>;
   isInteractionInterceptedRef: React.RefObject<boolean>;
   triggerPlacementRef: React.RefObject<(clientX: number, clientY: number) => void>;
-  onWallClick?: (id: string) => void;
+  onWallClick?: (id: string, e: React.MouseEvent) => void;
   onWallDoubleClick?: (id: string) => void;
 }
 
@@ -48,6 +51,9 @@ const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDrag
   const accent = isDragged ? W.gripActive : W.gripStroke;
   const group = end === 'start' ? 'group/grip-start' : 'group/grip-end';
   const hover = end === 'start' ? 'group-hover/grip-start:scale-125' : 'group-hover/grip-end:scale-125';
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const hitRadius = isTouchDevice ? W.gripTouchHitRadiusPx : W.gripHitRadiusPx;
+
   return (
     <g
       className={`${isLocked ? 'cursor-not-allowed' : 'cursor-move'} ${group}`}
@@ -56,8 +62,8 @@ const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDrag
       onPointerUp={(e) => !isLocked && actions.onGripRelease(e)}
       onPointerCancel={(e) => !isLocked && actions.onGripRelease(e)}
     >
-      {/* Hitbox táctil ergonómica invisible */}
-      <circle cx={x} cy={y} r={W.gripHitRadiusPx} fill="transparent" pointerEvents="all" />
+      {/* Hitbox táctil ergonómica amplia */}
+      <circle cx={x} cy={y} r={hitRadius} fill="transparent" pointerEvents="all" />
       {/* Halo visual exterior */}
       <circle
         cx={x}
@@ -75,7 +81,24 @@ const WallGrip: React.FC<WallGripProps> = ({ x, y, end, wallId, vertexId, isDrag
 };
 
 export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
-  ({ walls, verticesMap, zoom, selectedWallId, showDimensions, isArchitectureLocked, activeDragWallId, activeDragEnd, gripActions, wasDraggingRecentlyRef, isInteractionInterceptedRef, triggerPlacementRef, onWallClick, onWallDoubleClick }) => {
+  ({
+    walls,
+    verticesMap,
+    zoom,
+    selectedWallId,
+    selectedWallIds,
+    showDimensions,
+    isArchitectureLocked,
+    activeDrag,
+    activeDragWallId,
+    activeDragEnd,
+    gripActions,
+    wasDraggingRecentlyRef,
+    isInteractionInterceptedRef,
+    triggerPlacementRef,
+    onWallClick,
+    onWallDoubleClick
+  }) => {
     const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
     const resolvedPolys = computeResolvedWallPolygons(walls, verticesMap);
 
@@ -89,7 +112,8 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
 
           const pointsStr = poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
           const lenM = getWallLength(wall, verticesMap);
-          const isSelected = selectedWallId === wall.id;
+          const isSelected = selectedWallIds ? selectedWallIds.has(wall.id) : selectedWallId === wall.id;
+          const isSingleWallSelected = (selectedWallIds ? selectedWallIds.size === 1 : Boolean(selectedWallId)) && isSelected;
           const midX = ((vStart.x + vEnd.x) / 2) * zoom;
           const midY = ((vStart.y + vEnd.y) / 2) * zoom;
           const body = getWallBodyStyle(wall, isSelected, hoveredWallId === wall.id);
@@ -109,7 +133,7 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                   return;
                 }
                 e.stopPropagation();
-                onWallClick?.(wall.id);
+                onWallClick?.(wall.id, e);
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
@@ -143,12 +167,22 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                 </text>
               )}
 
-              {/* 3. Indicador y Grips interactivos de selección activa (CAD Smart Grips) */}
+              {/* 3. Indicador y Grips interactivos de selección activa */}
               {isSelected && (
                 <>
                   <polygon points={pointsStr} fill="none" stroke={W.selected.outline} strokeWidth={3} strokeDasharray="6 3" />
-                  <WallGrip x={vStart.x * zoom} y={vStart.y * zoom} end="start" wallId={wall.id} vertexId={vStart.id} isDragged={draggedEnd === 'start'} isLocked={isArchitectureLocked} actions={gripActions} />
-                  <WallGrip x={vEnd.x * zoom} y={vEnd.y * zoom} end="end" wallId={wall.id} vertexId={vEnd.id} isDragged={draggedEnd === 'end'} isLocked={isArchitectureLocked} actions={gripActions} />
+                  {isSingleWallSelected && (
+                    <>
+                      <WallGrip x={vStart.x * zoom} y={vStart.y * zoom} end="start" wallId={wall.id} vertexId={vStart.id} isDragged={draggedEnd === 'start'} isLocked={isArchitectureLocked} actions={gripActions} />
+                      <WallGrip x={vEnd.x * zoom} y={vEnd.y * zoom} end="end" wallId={wall.id} vertexId={vEnd.id} isDragged={draggedEnd === 'end'} isLocked={isArchitectureLocked} actions={gripActions} />
+                    </>
+                  )}
+                  {selectedWallIds && selectedWallIds.size > 1 && (
+                    <g transform={`translate(${midX}, ${midY - 14})`}>
+                      <circle r={8} fill="#2563eb" stroke="#ffffff" strokeWidth={1.5} className="drop-shadow" />
+                      <path d="M-3 0 L-1 2 L3 -2" fill="none" stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  )}
                 </>
               )}
 
@@ -174,6 +208,83 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
             </g>
           );
         })}
+
+        {/* 5. Overlay ergonómico de arrastre táctil (Touch Reticle, Stem & Mini-HUD) */}
+        {activeDrag && activeDrag.pointerType === 'touch' && activeDrag.currentPointWorld && (
+          <g className="pointer-events-none select-none">
+            <line
+              x1={activeDrag.currentPointWorld.x * zoom}
+              y1={activeDrag.currentPointWorld.y * zoom + W.gripTouchElevationOffsetPx}
+              x2={activeDrag.currentPointWorld.x * zoom}
+              y2={activeDrag.currentPointWorld.y * zoom}
+              stroke="#3b82f6"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              opacity={0.85}
+            />
+            <circle
+              cx={activeDrag.currentPointWorld.x * zoom}
+              cy={activeDrag.currentPointWorld.y * zoom + W.gripTouchElevationOffsetPx}
+              r={16}
+              fill="#3b82f6"
+              fillOpacity={0.12}
+              stroke="#3b82f6"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+            />
+            <circle
+              cx={activeDrag.currentPointWorld.x * zoom}
+              cy={activeDrag.currentPointWorld.y * zoom}
+              r={15}
+              fill="none"
+              stroke="#2563eb"
+              strokeWidth={2}
+              strokeDasharray="5 3"
+            />
+            <line
+              x1={activeDrag.currentPointWorld.x * zoom - 8}
+              y1={activeDrag.currentPointWorld.y * zoom}
+              x2={activeDrag.currentPointWorld.x * zoom + 8}
+              y2={activeDrag.currentPointWorld.y * zoom}
+              stroke="#2563eb"
+              strokeWidth={1.5}
+            />
+            <line
+              x1={activeDrag.currentPointWorld.x * zoom}
+              y1={activeDrag.currentPointWorld.y * zoom - 8}
+              x2={activeDrag.currentPointWorld.x * zoom}
+              y2={activeDrag.currentPointWorld.y * zoom + 8}
+              stroke="#2563eb"
+              strokeWidth={1.5}
+            />
+            <g transform={`translate(${activeDrag.currentPointWorld.x * zoom}, ${activeDrag.currentPointWorld.y * zoom - 24})`}>
+              <rect
+                x={-55}
+                y={-11}
+                width={110}
+                height={22}
+                rx={6}
+                fill="#0f172a"
+                fillOpacity={0.94}
+                stroke="#38bdf8"
+                strokeWidth={1}
+              />
+              <text
+                x={0}
+                y={1}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={10}
+                fontFamily="monospace"
+                fontWeight="bold"
+                fill="#ffffff"
+              >
+                {activeDrag.currentLengthM !== undefined ? `${activeDrag.currentLengthM.toFixed(2)}m` : ''}
+                {activeDrag.snapLabel ? ` · ${activeDrag.snapLabel}` : ` · ${activeDrag.currentAngleDeg?.toFixed(0)}°`}
+              </text>
+            </g>
+          </g>
+        )}
       </>
     );
   }

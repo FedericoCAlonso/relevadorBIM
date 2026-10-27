@@ -23,6 +23,7 @@ export function createSelectionAndCatalogSlice(
   return {
     selectedEntity: null,
     selectedEntities: [],
+    isMultiSelectMode: false,
     activeAnchorVertexId: null,
     showDimensions: true,
     labelDisplayMode: 'full',
@@ -30,6 +31,8 @@ export function createSelectionAndCatalogSlice(
     setShowDimensions: (show) => set({ showDimensions: show }),
     toggleDimensions: () => set((state) => ({ showDimensions: !state.showDimensions })),
     setLabelDisplayMode: (labelDisplayMode) => set({ labelDisplayMode }),
+    setMultiSelectMode: (active) => set({ isMultiSelectMode: active }),
+    toggleMultiSelectMode: () => set((state) => ({ isMultiSelectMode: !state.isMultiSelectMode })),
 
     setSelectedEntity: (entity) =>
       set({

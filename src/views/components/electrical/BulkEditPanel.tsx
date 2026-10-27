@@ -23,6 +23,7 @@ import {
   Sparkles,
   RotateCcw
 } from 'lucide-react';
+import { BulkWallEditPanel } from '../architecture/BulkWallEditPanel';
 
 interface BulkEditPanelProps {
   onDeselectAll?: () => void;
@@ -33,6 +34,8 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
     project,
     selectedEntities,
     clearSelection,
+    batchUpdateWalls,
+    batchDeleteWalls,
     batchUpdateConduits,
     batchUpdateElectricalElements,
     batchDeriveConduitConductors,
@@ -55,6 +58,16 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
   const selectedElementIds = useMemo(
     () => selectedEntities.filter((e) => e.type === 'electrical_element').map((e) => e.id),
     [selectedEntities]
+  );
+
+  const selectedWalls = useMemo(
+    () => project.walls.filter((w) => selectedEntities.some((se) => se.type === 'wall' && se.id === w.id)),
+    [project.walls, selectedEntities]
+  );
+
+  const verticesMap = useMemo(
+    () => new Map(project.vertices.map((v) => [v.id, v])),
+    [project.vertices]
   );
 
   const selectedConduits = useMemo(
@@ -140,36 +153,54 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
   };
 
   return (
-    <div className="bg-indigo-50/80 border-2 border-indigo-400 rounded-2xl p-3.5 space-y-3.5 shadow-sm text-xs animate-in fade-in duration-150">
-      {/* Encabezado */}
-      <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-indigo-600 text-white rounded-xl shadow-xs">
-            <Layers size={18} />
-          </div>
-          <div>
-            <span className="font-bold text-indigo-950 block text-xs">
-              Edición en Lote ({selectedEntities.length})
-            </span>
-            <span className="text-[10px] text-indigo-700">
-              {selectedConduitIds.length} caños · {selectedElementIds.length} bocas
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
+    <div className="space-y-3">
+      {selectedWalls.length > 0 && (
+        <BulkWallEditPanel
+          selectedWalls={selectedWalls}
+          verticesMap={verticesMap}
+          onBatchUpdate={(updates) => batchUpdateWalls(selectedWalls.map((w) => w.id), updates)}
+          onBatchDelete={() => {
+            batchDeleteWalls(selectedWalls.map((w) => w.id));
+            onDeselectAll?.();
+          }}
+          onDeselectAll={() => {
             clearSelection();
             onDeselectAll?.();
           }}
-          className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white/80 hover:bg-white px-2 py-1 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-          title="Deseleccionar todos los elementos"
-        >
-          <RotateCcw size={12} />
-          Limpiar
-        </button>
-      </div>
+        />
+      )}
+
+      {(selectedConduitIds.length > 0 || selectedElementIds.length > 0) && (
+        <div className="bg-indigo-50/80 border-2 border-indigo-400 rounded-2xl p-3.5 space-y-3.5 shadow-sm text-xs animate-in fade-in duration-150">
+          {/* Encabezado */}
+          <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <Layers size={18} />
+              </div>
+              <div>
+                <span className="font-bold text-indigo-950 block text-xs">
+                  Instalación Eléctrica en Lote
+                </span>
+                <span className="text-[10px] text-indigo-700">
+                  {selectedConduitIds.length} caños · {selectedElementIds.length} bocas
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                clearSelection();
+                onDeselectAll?.();
+              }}
+              className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white/80 hover:bg-white px-2 py-1 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+              title="Deseleccionar todos los elementos"
+            >
+              <RotateCcw size={12} />
+              Limpiar
+            </button>
+          </div>
 
       {/* Notificación de acción rápida */}
       {notification && (
@@ -336,5 +367,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
         <span>Eliminar {selectedEntities.length} elementos seleccionados</span>
       </button>
     </div>
+    )}
+  </div>
   );
 };
