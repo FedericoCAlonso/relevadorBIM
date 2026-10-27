@@ -215,6 +215,7 @@ export interface ArchitectureSlice {
   }) => void;
   autoDetectSpaces: () => void;
   moveSpace: (spaceId: string, delta: Vector2D) => void;
+  deleteSpace: (spaceId: string) => void;
 
   addDimensionLine: (dimension: DimensionLine) => void;
   updateDimensionLine: (dimensionId: string, updates: Partial<DimensionLine>) => void;

@@ -68,7 +68,8 @@ export function App() {
     deleteConduit,
     deleteDimensionLine,
     deleteColumn,
-    deleteBeam
+    deleteBeam,
+    deleteSpace
   } = useProjectStore();
 
   const {
@@ -311,6 +312,7 @@ export function App() {
           e.preventDefault();
           selectedEntities.forEach((entity) => {
             if (entity.type === 'wall') deleteWall(entity.id);
+            else if (entity.type === 'space') deleteSpace(entity.id);
             else if (entity.type === 'opening') deleteOpening(entity.id);
             else if (entity.type === 'electrical_element') deleteElectricalElement(entity.id);
             else if (entity.type === 'conduit') deleteConduit(entity.id);
@@ -324,6 +326,7 @@ export function App() {
         if (selectedEntity) {
           e.preventDefault();
           if (selectedEntity.type === 'wall') deleteWall(selectedEntity.id);
+          else if (selectedEntity.type === 'space') deleteSpace(selectedEntity.id);
           else if (selectedEntity.type === 'opening') deleteOpening(selectedEntity.id);
           else if (selectedEntity.type === 'electrical_element') deleteElectricalElement(selectedEntity.id);
           else if (selectedEntity.type === 'conduit') deleteConduit(selectedEntity.id);
@@ -624,6 +627,7 @@ export function App() {
             isMovingSpace={isMovingSpace}
             movingSpaceId={movingSpaceId}
             movingBasePoint={movingBasePoint}
+            onStartMovingSpace={startMovingSpace}
             onMoveSpaceCanvasClick={handleMoveSpaceCanvasClick}
             onCancelMovingSpace={cancelMovingSpace}
             isSamplingPattern={isSamplingPattern}

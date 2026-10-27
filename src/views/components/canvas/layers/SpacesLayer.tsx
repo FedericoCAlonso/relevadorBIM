@@ -19,6 +19,7 @@ import {
   getSpaceInfoLabel,
   getPolygonBounds
 } from '../../../../models/architecture/spaceRenderModel';
+import type { SpaceAnchorPreset } from '../../../../models/architecture/SpaceMoveEngine';
 import { ARCHITECTURAL_SPACE_STYLES, CAD_SPACE_OVERLAY_COLORS as C } from '../../../../config';
 
 interface SpacesLayerProps {
@@ -39,6 +40,8 @@ interface SpacesLayerProps {
     newDimensionM: number;
     direction?: 'positive' | 'negative' | 'center';
   }) => void;
+  onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
+  onDeleteSpace?: (spaceId: string) => void;
 }
 
 const toPoints = (poly: ReadonlyArray<{ x: number; y: number }>, zoom: number): string =>
@@ -56,7 +59,9 @@ export const SpacesLayer: React.FC<SpacesLayerProps> = React.memo(
     isInteractionInterceptedRef,
     triggerPlacementRef,
     onSpaceClick,
-    onResizeSpaceOrthogonal
+    onResizeSpaceOrthogonal,
+    onStartMovingSpace,
+    onDeleteSpace
   }) => (
     <>
       {spaces.map((space) => {
@@ -384,6 +389,78 @@ export const SpacesLayer: React.FC<SpacesLayerProps> = React.memo(
             <text x={centroid.x * zoom} y={centroid.y * zoom + 12} textAnchor="middle" className="text-[10px] font-mono fill-slate-500 pointer-events-none select-none" fontSize={10}>
               {getSpaceInfoLabel(space, kind, area, partialProjection)}
             </text>
+
+            {/* Pastilla contextual de acciones rápidas (Mover / Borrar) al seleccionar ambiente */}
+            {isSelected && !isDrawingTarget && (
+              <g
+                transform={`translate(${centroid.x * zoom}, ${centroid.y * zoom - 28})`}
+                className="select-none cursor-pointer"
+              >
+                {onStartMovingSpace && (
+                  <g
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStartMovingSpace(space.id, 'center');
+                    }}
+                    className="group/move-btn"
+                  >
+                    <rect
+                      x={onDeleteSpace ? -48 : -24}
+                      y={-10}
+                      width={44}
+                      height={20}
+                      rx={6}
+                      fill={C.actionMoveFill}
+                      className="drop-shadow-xs hover:opacity-90 transition-opacity"
+                    />
+                    <text
+                      x={onDeleteSpace ? -26 : -2}
+                      y={4}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontWeight="bold"
+                      fill={C.actionMoveText}
+                      className="font-sans pointer-events-none"
+                    >
+                      Mover
+                    </text>
+                  </g>
+                )}
+
+                {onDeleteSpace && (
+                  <g
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`¿Eliminar ambiente "${space.name}"? Los muros compartidos se preservarán intactos.`)) {
+                        onDeleteSpace(space.id);
+                      }
+                    }}
+                    className="group/del-btn"
+                  >
+                    <rect
+                      x={onStartMovingSpace ? 4 : -22}
+                      y={-10}
+                      width={44}
+                      height={20}
+                      rx={6}
+                      fill={C.actionDeleteFill}
+                      className="drop-shadow-xs hover:opacity-90 transition-opacity"
+                    />
+                    <text
+                      x={onStartMovingSpace ? 26 : 0}
+                      y={4}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontWeight="bold"
+                      fill={C.actionDeleteText}
+                      className="font-sans pointer-events-none"
+                    >
+                      Borrar
+                    </text>
+                  </g>
+                )}
+              </g>
+            )}
           </g>
         );
       })}

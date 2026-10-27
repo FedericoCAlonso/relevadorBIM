@@ -20,7 +20,8 @@ import {
   Repeat,
   Move,
   Ruler,
-  Eye
+  Eye,
+  Trash2
 } from 'lucide-react';
 import { ARCHITECTURAL_SPACE_CONFIG } from '../../../../config';
 import type { Space } from '../../../../models/architecture/Space';
@@ -62,6 +63,7 @@ export interface SpacesTabPanelProps {
   }) => void;
   onStartDrawingOverhang?: (spaceId: string) => void;
   onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
+  onDeleteSpace?: (spaceId: string) => void;
 }
 
 export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
@@ -75,7 +77,8 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
     onUpdateSpace,
     onResizeSpaceOrthogonal,
     onStartDrawingOverhang,
-    onStartMovingSpace
+    onStartMovingSpace,
+    onDeleteSpace
   }) => {
     const limitSurfaceBreakdown = calculateProjectLimitSurface(
       activeLevelSpaces as Space[],
@@ -186,6 +189,21 @@ export const SpacesTabPanel: React.FC<SpacesTabPanelProps> = React.memo(
                       >
                         <Cloud size={11} />
                         <span>RCP</span>
+                      </button>
+                    )}
+                    {onDeleteSpace && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`¿Eliminar el ambiente "${space.name}"? Los muros compartidos con otros ambientes se preservarán intactos.`)) {
+                            onDeleteSpace(space.id);
+                          }
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar ambiente (preserva muros compartidos)"
+                      >
+                        <Trash2 size={13} />
                       </button>
                     )}
                   </div>

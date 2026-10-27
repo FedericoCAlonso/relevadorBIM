@@ -21,6 +21,7 @@ import type { Opening } from '../../models/architecture/Opening';
 import type { Space } from '../../models/architecture/Space';
 import { findEnclosedCycles } from '../../models/architecture/Space';
 import { translateSpace } from '../../models/architecture/SpaceMoveEngine';
+import { deleteSpaceFromProject } from '../../models/architecture/SpaceDeleteEngine';
 import { resizeSpaceOrthogonal as resizeSpaceOrthogonalHelper } from '../../models/architecture/SpaceOrthogonalResize';
 import { adjustOpeningOnWallResize } from '../../models/architecture/WallSnapEngine';
 import type { StructuralColumn, StructuralBeam } from '../../models/architecture/StructuralElement';
@@ -965,10 +966,25 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       });
     },
 
-    moveSpace: (spaceId, delta) =>
+    moveSpace: (spaceId, delta) => {
       set((state) => ({
         project: translateSpace({ spaceId, delta, project: state.project })
-      })),
+      }));
+      get().autoDetectSpaces();
+    },
+
+    deleteSpace: (spaceId) => {
+      const { project, selectedEntity, selectedEntities } = get();
+      const result = deleteSpaceFromProject(spaceId, project);
+      set({
+        project: result.project,
+        selectedEntity: selectedEntity?.id === spaceId ? null : selectedEntity,
+        selectedEntities: selectedEntities.filter(
+          (e) => e.id !== spaceId && !result.deletedWallIds.includes(e.id)
+        )
+      });
+      get().autoDetectSpaces();
+    },
 
     addDimensionLine: (dimension) =>
       set((state) => ({

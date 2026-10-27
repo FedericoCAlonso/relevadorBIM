@@ -157,4 +157,58 @@ describe('SpaceMoveViewModel — Reubicación de Ambientes con Punto Base y Sopo
     const minDormX = Math.min(...dormVertices.map((v) => v.x));
     expect(minDormX).toBeCloseTo(24, 1); // 4 + 20 = 24
   });
+
+  it('4. useProjectStore.deleteSpace elimina un ambiente preservando el muro compartido con el vecino', () => {
+    const store = useProjectStore.getState();
+
+    // Agregar Dormitorio vecino que comparte w2 con Cocina
+    const v5: WallVertex = { id: 'v5', x: 8, y: 0 };
+    const v6: WallVertex = { id: 'v6', x: 8, y: 4 };
+
+    const w5: Wall = { id: 'w5', levelId: 'lvl-1', startVertexId: 'v2', endVertexId: 'v5', thickness: 0.15, height: 2.6 };
+    const w6: Wall = { id: 'w6', levelId: 'lvl-1', startVertexId: 'v5', endVertexId: 'v6', thickness: 0.15, height: 2.6 };
+    const w7: Wall = { id: 'w7', levelId: 'lvl-1', startVertexId: 'v6', endVertexId: 'v3', thickness: 0.15, height: 2.6 };
+
+    const spDormitorio: Space = {
+      id: 'sp-2',
+      name: 'Dormitorio',
+      category: 'dormitorio',
+      levelId: 'lvl-1',
+      ceilingHeight: 2.6,
+      floorElevation: 0,
+      wallIds: ['w2', 'w5', 'w6', 'w7'],
+      boundaryVertexIds: ['v2', 'v5', 'v6', 'v3']
+    };
+
+    store.loadProject({
+      ...store.project,
+      vertices: [...store.project.vertices, v5, v6],
+      walls: [...store.project.walls, w5, w6, w7],
+      spaces: [...store.project.spaces, spDormitorio]
+    });
+
+    // Eliminar Dormitorio (sp-2)
+    store.deleteSpace('sp-2');
+
+    const updated = useProjectStore.getState().project;
+
+    // sp-2 debe haber sido eliminado
+    expect(updated.spaces.some((s) => s.id === 'sp-2')).toBe(false);
+
+    // Cocina (sp-1) debe continuar existiendo con su muro w2 intacto
+    const cocina = updated.spaces.find((s) => s.id === 'sp-1');
+    expect(cocina).toBeDefined();
+    expect(updated.walls.some((w) => w.id === 'w2')).toBe(true);
+
+    // Muros exclusivos de Dormitorio (w5, w6, w7) deben haberse borrado
+    expect(updated.walls.some((w) => w.id === 'w5')).toBe(false);
+    expect(updated.walls.some((w) => w.id === 'w6')).toBe(false);
+    expect(updated.walls.some((w) => w.id === 'w7')).toBe(false);
+
+    // Vértices exclusivos v5 y v6 borrados; v2 y v3 conservados
+    expect(updated.vertices.some((v) => v.id === 'v5')).toBe(false);
+    expect(updated.vertices.some((v) => v.id === 'v6')).toBe(false);
+    expect(updated.vertices.some((v) => v.id === 'v2')).toBe(true);
+    expect(updated.vertices.some((v) => v.id === 'v3')).toBe(true);
+  });
 });

@@ -425,7 +425,15 @@ export function useCadCanvasInteractions({
       return;
     }
 
-    if (selectedSymbolId && e.touches.length === 1 && containerRef.current) {
+    const isInteractivePlacementActive = Boolean(
+      selectedSymbolId ||
+      isMovingSpace ||
+      isAddingDimension ||
+      isDrawingOverhang ||
+      isCalibratingUnderlay
+    );
+
+    if (isInteractivePlacementActive && e.touches.length === 1 && containerRef.current) {
       const t = e.touches[0];
       placementTouchRef.current = {
         startX: t.clientX,
@@ -491,7 +499,15 @@ export function useCadCanvasInteractions({
       return;
     }
 
-    if (selectedSymbolId && placementTouchRef.current && e.touches.length === 1) {
+    const isInteractivePlacementActive = Boolean(
+      selectedSymbolId ||
+      isMovingSpace ||
+      isAddingDimension ||
+      isDrawingOverhang ||
+      isCalibratingUnderlay
+    );
+
+    if (isInteractivePlacementActive && placementTouchRef.current && e.touches.length === 1) {
       const t = e.touches[0];
       const dx = t.clientX - placementTouchRef.current.startX;
       const dy = t.clientY - placementTouchRef.current.startY;
@@ -635,7 +651,7 @@ export function useCadCanvasInteractions({
       activeNodeDragRef.current = null;
     }
 
-    if (selectedSymbolId && placementTouchRef.current) {
+    if (placementTouchRef.current) {
       const pt = placementTouchRef.current;
       placementTouchRef.current = null;
       isDraggingObjectRef.current = false;

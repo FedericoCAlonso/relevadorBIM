@@ -179,7 +179,11 @@ export const CAD_SPACE_OVERLAY_COLORS = {
   pushHandleMinusText: '#475569',
   pushHandlePlusFill: '#2563eb',
   pushHandlePlusStroke: '#1d4ed8',
-  pushHandlePlusText: '#ffffff'
+  pushHandlePlusText: '#ffffff',
+  actionMoveFill: '#2563eb',
+  actionMoveText: '#ffffff',
+  actionDeleteFill: '#ef4444',
+  actionDeleteText: '#ffffff'
 } as const;
 
 /** Estilos visuales de muros (por tipología), grips de arrastre y cotas en planta. */

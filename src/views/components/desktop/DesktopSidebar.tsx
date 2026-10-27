@@ -88,6 +88,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     rotateWall,
     invertWallDirection,
     deleteWall,
+    deleteSpace,
     undo,
     redo,
     canUndo,
@@ -323,6 +324,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             onResizeSpaceOrthogonal={resizeSpaceOrthogonal}
             onStartDrawingOverhang={onStartDrawingOverhang}
             onStartMovingSpace={onStartMovingSpace}
+            onDeleteSpace={deleteSpace}
           />
         )}
 

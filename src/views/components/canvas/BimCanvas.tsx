@@ -33,6 +33,7 @@ import { PatternSamplingOverlayLayer } from './layers/PatternSamplingOverlayLaye
 import { InteractiveDraftLayer } from './layers/InteractiveDraftLayer';
 import { CanvasModeBanners } from './layers/CanvasModeBanners';
 import { CanvasFloatingControls } from './layers/CanvasFloatingControls';
+import type { SpaceAnchorPreset } from '../../../models/architecture/SpaceMoveEngine';
 
 export type { WallPlacementSnap };
 
@@ -73,6 +74,7 @@ interface BimCanvasProps {
   isMovingSpace?: boolean;
   movingSpaceId?: string | null;
   movingBasePoint?: { x: number; y: number } | null;
+  onStartMovingSpace?: (spaceId: string, initialAnchorPreset?: SpaceAnchorPreset) => void;
   onMoveSpaceCanvasClick?: (worldX: number, worldY: number) => void;
   onCancelMovingSpace?: () => void;
   isSamplingPattern?: boolean;
@@ -161,6 +163,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
   isMovingSpace = false,
   movingSpaceId = null,
   movingBasePoint = null,
+  onStartMovingSpace,
   onMoveSpaceCanvasClick,
   onCancelMovingSpace,
   isSamplingPattern = false,
@@ -215,7 +218,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     labelDisplayMode,
     updateElectricalElement,
     updatePanel,
-    resizeSpaceOrthogonal
+    resizeSpaceOrthogonal,
+    deleteSpace
   } = useProjectStore();
 
   const selectedEntityMap = useMemo(() => {
@@ -544,6 +548,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             triggerPlacementRef={triggerPlacementRef}
             onSpaceClick={onSpaceClick}
             onResizeSpaceOrthogonal={resizeSpaceOrthogonal}
+            onStartMovingSpace={onStartMovingSpace}
+            onDeleteSpace={deleteSpace}
           />
           <BeamsLayer
             beams={activeLevelBeams}

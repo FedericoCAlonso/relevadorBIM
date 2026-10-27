@@ -44,7 +44,8 @@ import {
   PenTool,
   Repeat,
   Move,
-  Eye
+  Eye,
+  Trash2
 } from 'lucide-react';
 
 interface SpaceEditModalProps {
@@ -60,7 +61,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
   onStartDrawingOverhang,
   onStartMovingSpace
 }) => {
-  const { project, updateSpace, resizeSpaceOrthogonal } = useProjectStore();
+  const { project, updateSpace, resizeSpaceOrthogonal, deleteSpace } = useProjectStore();
 
   const space = useMemo(() => {
     return spaceId ? project.spaces.find((s) => s.id === spaceId) : null;
@@ -592,7 +593,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                     onClose();
                     onStartMovingSpace(space.id, opt.id);
                   }}
-                  className="py-1.5 px-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center"
+                  className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center ${
+                    opt.id === 'center'
+                      ? 'bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100'
+                      : 'bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300'
+                  }`}
                   title={`Mover tomando como punto base ${opt.label}`}
                 >
                   {opt.shortLabel}
@@ -616,6 +621,25 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
             <span>VER PLANO DE CIELORRASO REFLEJADO (RCP)</span>
           </button>
         )}
+
+        {/* Botón de Eliminar Ambiente */}
+        <button
+          type="button"
+          onClick={() => {
+            if (
+              window.confirm(
+                `¿Eliminar el ambiente "${space.name}"? Los muros compartidos con ambientes vecinos se preservarán intactos.`
+              )
+            ) {
+              deleteSpace(space.id);
+              onClose();
+            }
+          }}
+          className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl shadow-2xs flex items-center justify-center gap-2 transition-all cursor-pointer mt-1"
+        >
+          <Trash2 size={15} className="text-rose-600" />
+          <span>ELIMINAR AMBIENTE (PRESERVA MUROS COMPARTIDOS)</span>
+        </button>
 
         {/* Botón de Guardar / Aceptar */}
         <button

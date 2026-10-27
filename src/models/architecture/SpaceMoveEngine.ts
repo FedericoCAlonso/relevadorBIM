@@ -13,6 +13,7 @@ import type { BuildingProject } from './BuildingProject';
 import type { Vector2D, Wall, WallVertex } from './Wall';
 import type { Space } from './Space';
 import { isPointInPolygon, resolveSpacePolygon } from './Space';
+import { isWallSharedWithOtherSpaces } from './SpaceDeleteEngine';
 
 export type SpaceAnchorPreset = 'sw' | 'nw' | 'se' | 'ne' | 'center';
 
@@ -103,16 +104,27 @@ export function detachSpaceBoundary(
   const otherSpaces = project.spaces.filter((s) => s.id !== spaceId);
 
   // 1. Muros compartidos por este espacio y algún otro espacio
-  const sharedWallIds = new Set(
-    space.wallIds.filter((wId) => otherSpaces.some((s) => s.wallIds.includes(wId)))
-  );
+  const sharedWallIds = new Set<string>();
+  for (const wId of space.wallIds) {
+    const w = project.walls.find((wall) => wall.id === wId);
+    if (w && isWallSharedWithOtherSpaces(w, otherSpaces)) {
+      sharedWallIds.add(wId);
+    }
+  }
 
   // 2. Vértices compartidos con muros que no pertenecen a este espacio o usados por otros espacios
   const spaceWallIdsSet = new Set(space.wallIds);
+  const spaceWalls = project.walls.filter((w) => spaceWallIdsSet.has(w.id));
   const externalWalls = project.walls.filter((w) => !spaceWallIdsSet.has(w.id));
   const sharedVertexIds = new Set<string>();
 
-  for (const vId of space.boundaryVertexIds) {
+  const allSpaceVertexIds = new Set([
+    ...space.boundaryVertexIds,
+    ...spaceWalls.map((w) => w.startVertexId),
+    ...spaceWalls.map((w) => w.endVertexId)
+  ]);
+
+  for (const vId of allSpaceVertexIds) {
     if (otherSpaces.some((s) => s.boundaryVertexIds.includes(vId))) {
       sharedVertexIds.add(vId);
     } else if (externalWalls.some((w) => w.startVertexId === vId || w.endVertexId === vId)) {
@@ -146,6 +158,7 @@ export function detachSpaceBoundary(
 
   // Clonar muros compartidos y reasignar conexiones
   const newWalls = [...project.walls];
+  const newOpenings = [...project.openings];
   const updatedSpaceWallIds: string[] = [];
 
   for (const wId of space.wallIds) {
@@ -166,6 +179,16 @@ export function detachSpaceBoundary(
       };
       newWalls.push(clonedWall);
       updatedSpaceWallIds.push(clonedWallId);
+
+      // Clonar aberturas sobre el muro compartido para el ambiente desacoplado
+      const openingsOnWall = project.openings.filter((op) => op.wallId === wId);
+      for (const op of openingsOnWall) {
+        newOpenings.push({
+          ...op,
+          id: generateId('op-detach'),
+          wallId: clonedWallId
+        });
+      }
     } else {
       if (mappedStart !== w.startVertexId || mappedEnd !== w.endVertexId) {
         const wallIdx = newWalls.findIndex((wall) => wall.id === wId);
@@ -198,6 +221,7 @@ export function detachSpaceBoundary(
     ...project,
     vertices: newVertices,
     walls: newWalls,
+    openings: newOpenings,
     spaces: updatedSpaces,
     meta: { ...project.meta, updatedAt: Date.now() }
   };
@@ -305,9 +329,31 @@ export function translateSpace(params: {
     return c;
   });
 
+  // 7. Trasladar línea de proyección de techo / alero si existe
+  let updatedSpaces = detachedProject.spaces;
+  if (targetSpace.ceilingProjection?.projectionLine) {
+    const [p1, p2] = targetSpace.ceilingProjection.projectionLine;
+    const updatedProjectionLine: [Vector2D, Vector2D] = [
+      { x: Number((p1.x + delta.x).toFixed(3)), y: Number((p1.y + delta.y).toFixed(3)) },
+      { x: Number((p2.x + delta.x).toFixed(3)), y: Number((p2.y + delta.y).toFixed(3)) }
+    ];
+    updatedSpaces = updatedSpaces.map((s) =>
+      s.id === spaceId
+        ? {
+            ...s,
+            ceilingProjection: {
+              ...s.ceilingProjection!,
+              projectionLine: updatedProjectionLine
+            }
+          }
+        : s
+    );
+  }
+
   return {
     ...detachedProject,
     vertices: updatedVertices,
+    spaces: updatedSpaces,
     electricalElements: updatedElectricalElements,
     panels: updatedPanels,
     conduits: updatedConduits,
