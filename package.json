@@ -1,6 +1,7 @@
 {
   "name": "relevadorbim",
   "private": true,
+  "license": "UNLICENSED",
   "version": "1.0.0",
   "homepage": "https://FedericoCAlonso.github.io/relevadorBIM/",
   "type": "module",

@@ -77,3 +77,10 @@ npm run build
 # Despliegue a GitHub Pages
 npm run deploy
 ```
+
+---
+
+## 📄 Licencia
+
+**Software Privado y Propietario** — Todos los derechos reservados © 2026 Federico C. Alonso. Prohibida su reproducción, uso o distribución sin autorización expresa.
+
