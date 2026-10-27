@@ -8,7 +8,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import {
   ROOM_NAME_SUGGESTIONS,
@@ -68,6 +68,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
   const dims = useMemo(() => {
     return space ? getSpaceOrthogonalDimensions(space, project) : { widthM: 0, lengthM: 0, minX: 0, maxX: 0, minY: 0, maxY: 0 };
   }, [space, project]);
+
+  const [widthInput, setWidthInput] = useState('');
+  const [lengthInput, setLengthInput] = useState('');
+  const [widthDir, setWidthDir] = useState<'positive' | 'negative' | 'center'>('positive');
+  const [lengthDir, setLengthDir] = useState<'positive' | 'negative' | 'center'>('positive');
 
   const verticesMap = useMemo(() => {
     return new Map(project.vertices.map((v) => [v.id, v]));
@@ -182,12 +187,101 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               {/* Eje X: Ancho */}
-              <div className="space-y-1 bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+              <div className="space-y-1.5 bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
                   <span>Ancho (Eje X)</span>
-                  <span className="font-mono text-blue-600">{dims.widthM.toFixed(2)}m</span>
+                  <span className="font-mono text-blue-600 font-bold">{dims.widthM.toFixed(2)}m</span>
                 </div>
+
+                {/* Input numérico directo + selector de sentido */}
                 <div className="flex items-center gap-1">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.50"
+                      max="50.0"
+                      value={widthInput}
+                      onChange={(e) => setWidthInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = parseFloat(widthInput);
+                          if (!isNaN(val) && val >= 0.5) {
+                            resizeSpaceOrthogonal({
+                              spaceId: space.id,
+                              axis: 'width',
+                              newDimensionM: Number(val.toFixed(2)),
+                              direction: widthDir
+                            });
+                            setWidthInput('');
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        if (widthInput) {
+                          const val = parseFloat(widthInput);
+                          if (!isNaN(val) && val >= 0.5) {
+                            resizeSpaceOrthogonal({
+                              spaceId: space.id,
+                              axis: 'width',
+                              newDimensionM: Number(val.toFixed(2)),
+                              direction: widthDir
+                            });
+                            setWidthInput('');
+                          }
+                        }
+                      }}
+                      placeholder={dims.widthM.toFixed(2)}
+                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 pr-5"
+                    />
+                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 pointer-events-none">
+                      m
+                    </span>
+                  </div>
+
+                  {/* Selector de dirección */}
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setWidthDir('negative')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        widthDir === 'negative'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer hacia el Oeste (← Izquierda)"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWidthDir('center')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        widthDir === 'center'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer simétrico desde el centro (↔)"
+                    >
+                      ↔
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWidthDir('positive')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        widthDir === 'positive'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer hacia el Este (→ Derecha)"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
+
+                {/* Deltas rápidos */}
+                <div className="flex items-center gap-1 pt-0.5">
                   <button
                     type="button"
                     onClick={() =>
@@ -195,7 +289,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'width',
                         newDimensionM: Math.max(0.5, dims.widthM - 0.1),
-                        direction: 'positive'
+                        direction: widthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-[11px] text-slate-700 text-center cursor-pointer"
@@ -210,11 +304,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'width',
                         newDimensionM: dims.widthM + 0.1,
-                        direction: 'positive'
+                        direction: widthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-mono font-bold text-[11px] text-center cursor-pointer shadow-xs"
-                    title="Aumentar 10 cm (+X)"
+                    title="Aumentar 10 cm"
                   >
                     +0.10
                   </button>
@@ -225,11 +319,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'width',
                         newDimensionM: dims.widthM + 0.5,
-                        direction: 'positive'
+                        direction: widthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg font-mono font-bold text-[11px] text-center cursor-pointer"
-                    title="Aumentar 50 cm (+X)"
+                    title="Aumentar 50 cm"
                   >
                     +0.50
                   </button>
@@ -237,12 +331,101 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
               </div>
 
               {/* Eje Y: Largo */}
-              <div className="space-y-1 bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+              <div className="space-y-1.5 bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
                   <span>Largo (Eje Y)</span>
-                  <span className="font-mono text-blue-600">{dims.lengthM.toFixed(2)}m</span>
+                  <span className="font-mono text-blue-600 font-bold">{dims.lengthM.toFixed(2)}m</span>
                 </div>
+
+                {/* Input numérico directo + selector de sentido */}
                 <div className="flex items-center gap-1">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.50"
+                      max="50.0"
+                      value={lengthInput}
+                      onChange={(e) => setLengthInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = parseFloat(lengthInput);
+                          if (!isNaN(val) && val >= 0.5) {
+                            resizeSpaceOrthogonal({
+                              spaceId: space.id,
+                              axis: 'length',
+                              newDimensionM: Number(val.toFixed(2)),
+                              direction: lengthDir
+                            });
+                            setLengthInput('');
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        if (lengthInput) {
+                          const val = parseFloat(lengthInput);
+                          if (!isNaN(val) && val >= 0.5) {
+                            resizeSpaceOrthogonal({
+                              spaceId: space.id,
+                              axis: 'length',
+                              newDimensionM: Number(val.toFixed(2)),
+                              direction: lengthDir
+                            });
+                            setLengthInput('');
+                          }
+                        }
+                      }}
+                      placeholder={dims.lengthM.toFixed(2)}
+                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 pr-5"
+                    />
+                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 pointer-events-none">
+                      m
+                    </span>
+                  </div>
+
+                  {/* Selector de dirección */}
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setLengthDir('negative')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        lengthDir === 'negative'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer hacia el Norte (↑ Arriba)"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLengthDir('center')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        lengthDir === 'center'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer simétrico desde el centro (↕)"
+                    >
+                      ↕
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLengthDir('positive')}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        lengthDir === 'positive'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Crecer hacia el Sur (↓ Abajo)"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+
+                {/* Deltas rápidos */}
+                <div className="flex items-center gap-1 pt-0.5">
                   <button
                     type="button"
                     onClick={() =>
@@ -250,7 +433,7 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'length',
                         newDimensionM: Math.max(0.5, dims.lengthM - 0.1),
-                        direction: 'positive'
+                        direction: lengthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-[11px] text-slate-700 text-center cursor-pointer"
@@ -265,11 +448,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'length',
                         newDimensionM: dims.lengthM + 0.1,
-                        direction: 'positive'
+                        direction: lengthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-mono font-bold text-[11px] text-center cursor-pointer shadow-xs"
-                    title="Aumentar 10 cm (+Y)"
+                    title="Aumentar 10 cm"
                   >
                     +0.10
                   </button>
@@ -280,11 +463,11 @@ export const SpaceEditModal: React.FC<SpaceEditModalProps> = ({
                         spaceId: space.id,
                         axis: 'length',
                         newDimensionM: dims.lengthM + 0.5,
-                        direction: 'positive'
+                        direction: lengthDir
                       })
                     }
                     className="flex-1 py-1 px-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg font-mono font-bold text-[11px] text-center cursor-pointer"
-                    title="Aumentar 50 cm (+Y)"
+                    title="Aumentar 50 cm"
                   >
                     +0.50
                   </button>

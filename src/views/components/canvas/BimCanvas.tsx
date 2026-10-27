@@ -214,7 +214,8 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
     deleteDimensionLine,
     labelDisplayMode,
     updateElectricalElement,
-    updatePanel
+    updatePanel,
+    resizeSpaceOrthogonal
   } = useProjectStore();
 
   const selectedEntityMap = useMemo(() => {
@@ -542,6 +543,7 @@ export const BimCanvas: React.FC<BimCanvasProps> = ({
             isInteractionInterceptedRef={isInteractionInterceptedRef}
             triggerPlacementRef={triggerPlacementRef}
             onSpaceClick={onSpaceClick}
+            onResizeSpaceOrthogonal={resizeSpaceOrthogonal}
           />
           <BeamsLayer
             beams={activeLevelBeams}

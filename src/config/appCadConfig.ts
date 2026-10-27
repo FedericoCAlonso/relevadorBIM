@@ -171,7 +171,15 @@ export const CAD_SPACE_OVERLAY_COLORS = {
   wallBadgeStroke: '#2563eb',
   wallBadgeText: '#1e40af',
   wallBadgeHoverFill: '#2563eb',
-  wallBadgeHoverText: '#ffffff'
+  wallBadgeHoverText: '#ffffff',
+  pushHandlePillFill: '#ffffff',
+  pushHandlePillStroke: '#93c5fd',
+  pushHandleMinusFill: '#f8fafc',
+  pushHandleMinusStroke: '#cbd5e1',
+  pushHandleMinusText: '#475569',
+  pushHandlePlusFill: '#2563eb',
+  pushHandlePlusStroke: '#1d4ed8',
+  pushHandlePlusText: '#ffffff'
 } as const;
 
 /** Estilos visuales de muros (por tipología), grips de arrastre y cotas en planta. */

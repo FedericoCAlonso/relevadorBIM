@@ -9,6 +9,7 @@ import {
   calculatePolygonCentroid,
   computeCeilingProjection
 } from '../../../../models/architecture/Space';
+import { getSpaceOrthogonalDimensions } from '../../../../models/architecture/SpaceOrthogonalResize';
 import { calculateSpaceWallReferences } from '../../../../models/architecture/spaceWallReference';
 import { useWallElevationStore } from '../../../../viewmodels/useWallElevationViewModel';
 import type { Wall, WallVertex } from '../../../../models/architecture/Wall';
@@ -32,13 +33,31 @@ interface SpacesLayerProps {
   isInteractionInterceptedRef: React.RefObject<boolean>;
   triggerPlacementRef: React.RefObject<(clientX: number, clientY: number) => void>;
   onSpaceClick?: (id: string) => void;
+  onResizeSpaceOrthogonal?: (params: {
+    spaceId: string;
+    axis: 'width' | 'length';
+    newDimensionM: number;
+    direction?: 'positive' | 'negative' | 'center';
+  }) => void;
 }
 
 const toPoints = (poly: ReadonlyArray<{ x: number; y: number }>, zoom: number): string =>
   poly.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ');
 
 export const SpacesLayer: React.FC<SpacesLayerProps> = React.memo(
-  ({ spaces, verticesMap, wallsMap, zoom, selectedSpaceId, overhangTargetSpaceId, wasDraggingRecentlyRef, isInteractionInterceptedRef, triggerPlacementRef, onSpaceClick }) => (
+  ({
+    spaces,
+    verticesMap,
+    wallsMap,
+    zoom,
+    selectedSpaceId,
+    overhangTargetSpaceId,
+    wasDraggingRecentlyRef,
+    isInteractionInterceptedRef,
+    triggerPlacementRef,
+    onSpaceClick,
+    onResizeSpaceOrthogonal
+  }) => (
     <>
       {spaces.map((space) => {
         const poly = resolveSpacePolygon(space, verticesMap);
@@ -206,6 +225,155 @@ export const SpacesLayer: React.FC<SpacesLayerProps> = React.memo(
                       </g>
                     );
                   })}
+                </g>
+              );
+            })()}
+
+            {/* Manijas interactivas de Push-Pull Ortogonal (4 caras: Oeste, Este, Norte, Sur) */}
+            {isSelected && !isDrawingTarget && onResizeSpaceOrthogonal && (() => {
+              const dims = getSpaceOrthogonalDimensions(space, verticesMap);
+              if (dims.widthM < 0.5 || dims.lengthM < 0.5) return null;
+
+              const midX = ((dims.minX + dims.maxX) / 2) * zoom;
+              const midY = ((dims.minY + dims.maxY) / 2) * zoom;
+              const westX = dims.minX * zoom;
+              const eastX = dims.maxX * zoom;
+              const northY = dims.minY * zoom;
+              const southY = dims.maxY * zoom;
+
+              const handles = [
+                {
+                  id: 'west',
+                  cx: westX,
+                  cy: midY,
+                  axis: 'width' as const,
+                  direction: 'negative' as const,
+                  name: 'Oeste (←)',
+                  currentM: dims.widthM
+                },
+                {
+                  id: 'east',
+                  cx: eastX,
+                  cy: midY,
+                  axis: 'width' as const,
+                  direction: 'positive' as const,
+                  name: 'Este (→)',
+                  currentM: dims.widthM
+                },
+                {
+                  id: 'north',
+                  cx: midX,
+                  cy: northY,
+                  axis: 'length' as const,
+                  direction: 'negative' as const,
+                  name: 'Norte (↑)',
+                  currentM: dims.lengthM
+                },
+                {
+                  id: 'south',
+                  cx: midX,
+                  cy: southY,
+                  axis: 'length' as const,
+                  direction: 'positive' as const,
+                  name: 'Sur (↓)',
+                  currentM: dims.lengthM
+                }
+              ];
+
+              return (
+                <g className="space-push-handles select-none">
+                  {handles.map((h) => (
+                    <g
+                      key={h.id}
+                      transform={`translate(${h.cx}, ${h.cy})`}
+                      className="cursor-pointer"
+                    >
+                      {/* Píldora de fondo */}
+                      <rect
+                        x={-20}
+                        y={-10}
+                        width={40}
+                        height={20}
+                        rx={10}
+                        fill={C.pushHandlePillFill}
+                        stroke={C.pushHandlePillStroke}
+                        strokeWidth={1.5}
+                        className="drop-shadow-xs"
+                      />
+
+                      {/* Botón Reducir (-) */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onResizeSpaceOrthogonal({
+                            spaceId: space.id,
+                            axis: h.axis,
+                            newDimensionM: Math.max(0.5, Number((h.currentM - 0.1).toFixed(2))),
+                            direction: h.direction
+                          });
+                        }}
+                        className="group/btn-minus"
+                      >
+                        <title>{`Reducir pared ${h.name} en 10 cm (-0.10m)`}</title>
+                        <circle
+                          cx={-9}
+                          cy={0}
+                          r={7.5}
+                          fill={C.pushHandleMinusFill}
+                          stroke={C.pushHandleMinusStroke}
+                          strokeWidth={1}
+                          className="group-hover/btn-minus:fill-slate-200 transition-colors"
+                        />
+                        <text
+                          x={-9}
+                          y={3}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fontWeight="bold"
+                          fill={C.pushHandleMinusText}
+                          className="pointer-events-none font-mono"
+                        >
+                          −
+                        </text>
+                      </g>
+
+                      {/* Botón Aumentar (+) */}
+                      <g
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onResizeSpaceOrthogonal({
+                            spaceId: space.id,
+                            axis: h.axis,
+                            newDimensionM: Number((h.currentM + 0.1).toFixed(2)),
+                            direction: h.direction
+                          });
+                        }}
+                        className="group/btn-plus"
+                      >
+                        <title>{`Extender pared ${h.name} en 10 cm (+0.10m)`}</title>
+                        <circle
+                          cx={9}
+                          cy={0}
+                          r={7.5}
+                          fill={C.pushHandlePlusFill}
+                          stroke={C.pushHandlePlusStroke}
+                          strokeWidth={1}
+                          className="group-hover/btn-plus:fill-blue-700 transition-colors"
+                        />
+                        <text
+                          x={9}
+                          y={3}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fontWeight="bold"
+                          fill={C.pushHandlePlusText}
+                          className="pointer-events-none font-mono"
+                        >
+                          +
+                        </text>
+                      </g>
+                    </g>
+                  ))}
                 </g>
               );
             })()}
