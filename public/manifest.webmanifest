@@ -2,8 +2,9 @@
   "name": "Relevador BIM — Arquitectura y AEA",
   "short_name": "RelevadorBIM",
   "description": "Relevamiento Arquitectónico y Eléctrico AEA en obra con soporte offline",
-  "start_url": "./",
-  "scope": "./",
+  "id": "/relevadorBIM/",
+  "start_url": "/relevadorBIM/",
+  "scope": "/relevadorBIM/",
   "display": "standalone",
   "display_override": [
     "window-controls-overlay",
