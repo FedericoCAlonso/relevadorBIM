@@ -35,6 +35,7 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
     selectedEntities,
     clearSelection,
     batchUpdateWalls,
+    batchUpdateWallLengths,
     batchDeleteWalls,
     batchUpdateConduits,
     batchUpdateElectricalElements,
@@ -159,6 +160,13 @@ export const BulkEditPanel: React.FC<BulkEditPanelProps> = ({ onDeselectAll }) =
           selectedWalls={selectedWalls}
           verticesMap={verticesMap}
           onBatchUpdate={(updates) => batchUpdateWalls(selectedWalls.map((w) => w.id), updates)}
+          onBatchUpdateLength={(targetLen, mode) =>
+            batchUpdateWallLengths(
+              selectedWalls.map((w) => w.id),
+              targetLen,
+              mode
+            )
+          }
           onBatchDelete={() => {
             batchDeleteWalls(selectedWalls.map((w) => w.id));
             onDeselectAll?.();

@@ -340,6 +340,68 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       }));
     },
 
+    batchUpdateWallLengths: (wallIds, targetLengthM, mode = 'absolute') => {
+      if (wallIds.length === 0) return;
+      const { project } = get();
+      const verticesMap = new Map(project.vertices.map((v) => [v.id, { ...v }]));
+      let updatedOpenings = [...project.openings];
+
+      for (const wallId of wallIds) {
+        const wall = project.walls.find((w) => w.id === wallId);
+        if (!wall) continue;
+
+        const vStart = verticesMap.get(wall.startVertexId);
+        const vEnd = verticesMap.get(wall.endVertexId);
+        if (!vStart || !vEnd) continue;
+
+        const currentDx = vEnd.x - vStart.x;
+        const currentDy = vEnd.y - vStart.y;
+        const currentLen = Math.hypot(currentDx, currentDy);
+        if (currentLen === 0) continue;
+
+        const newLength =
+          mode === 'delta'
+            ? Math.max(0.10, currentLen + targetLengthM)
+            : targetLengthM;
+
+        if (newLength <= 0) continue;
+
+        const ratio = newLength / currentLen;
+        const newEndX = Number((vStart.x + currentDx * ratio).toFixed(3));
+        const newEndY = Number((vStart.y + currentDy * ratio).toFixed(3));
+
+        vEnd.x = newEndX;
+        vEnd.y = newEndY;
+
+        updatedOpenings = updatedOpenings.map((op) => {
+          if (op.wallId !== wallId) return op;
+          const adjustedDistance = adjustOpeningOnWallResize({
+            opening: op,
+            draggedEnd: 'end',
+            oldLength: currentLen,
+            newLength
+          });
+          return { ...op, distanceAlongWall: adjustedDistance };
+        });
+      }
+
+      const updatedVertices = project.vertices.map((v) => {
+        const mod = verticesMap.get(v.id);
+        return mod ? { ...v, x: mod.x, y: mod.y } : v;
+      });
+
+      set({
+        project: {
+          ...project,
+          vertices: updatedVertices,
+          openings: updatedOpenings,
+          meta: { ...project.meta, updatedAt: Date.now() }
+        }
+      });
+
+      get().autoDetectSpaces();
+    },
+
     batchDeleteWalls: (wallIds) => {
       if (wallIds.length === 0) return;
       const targetIds = new Set(wallIds);

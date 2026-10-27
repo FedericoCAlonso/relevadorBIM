@@ -77,6 +77,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     selectedEntities,
     clearSelection,
     batchUpdateWalls,
+    batchUpdateWallLengths,
     batchDeleteWalls,
     addOpeningReferenced,
     addBranchWallFromOffset,
@@ -275,6 +276,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 selectedWalls={selectedWalls}
                 verticesMap={verticesMap}
                 onBatchUpdate={(updates) => batchUpdateWalls(selectedWalls.map((w) => w.id), updates)}
+                onBatchUpdateLength={(targetLen, mode) =>
+                  batchUpdateWallLengths(
+                    selectedWalls.map((w) => w.id),
+                    targetLen,
+                    mode
+                  )
+                }
                 onBatchDelete={() => batchDeleteWalls(selectedWalls.map((w) => w.id))}
                 onDeselectAll={clearSelection}
               />

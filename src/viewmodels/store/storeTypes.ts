@@ -171,6 +171,7 @@ export interface ArchitectureSlice {
 
   updateWall: (wallId: string, updates: Partial<Wall>) => void;
   batchUpdateWalls: (wallIds: string[], updates: Partial<Wall>) => void;
+  batchUpdateWallLengths: (wallIds: string[], targetLengthM: number, mode?: 'absolute' | 'delta') => void;
   batchDeleteWalls: (wallIds: string[]) => void;
   updateWallLength: (wallId: string, newLengthM: number) => void;
   updateVertexPosition: (vertexId: string, newPos: Vector2D) => void;

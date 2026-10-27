@@ -29,6 +29,7 @@ export interface BulkWallEditPanelProps {
   selectedWalls: ReadonlyArray<Wall>;
   verticesMap: Map<string, WallVertex>;
   onBatchUpdate: (updates: Partial<Wall>) => void;
+  onBatchUpdateLength?: (targetLengthM: number, mode?: 'absolute' | 'delta') => void;
   onBatchDelete: () => void;
   onDeselectAll: () => void;
 }
@@ -38,9 +39,11 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
     selectedWalls,
     verticesMap,
     onBatchUpdate,
+    onBatchUpdateLength,
     onBatchDelete,
     onDeselectAll
   }) => {
+    const [customLength, setCustomLength] = useState('');
     const [customThickness, setCustomThickness] = useState('');
     const [customHeight, setCustomHeight] = useState('');
     const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -56,6 +59,15 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
     }, [selectedWalls, verticesMap]);
 
     // Evaluación de homogeneidad / valores mixtos por propiedad
+    const commonLength = useMemo(() => {
+      if (selectedWalls.length === 0) return null;
+      const first = getWallLength(selectedWalls[0], verticesMap);
+      const allSame = selectedWalls.every(
+        (w) => Math.abs(getWallLength(w, verticesMap) - first) < 0.01
+      );
+      return allSame ? first : null;
+    }, [selectedWalls, verticesMap]);
+
     const commonThickness = useMemo(() => {
       if (selectedWalls.length === 0) return null;
       const first = selectedWalls[0].thickness;
@@ -90,6 +102,19 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
       const allSame = selectedWalls.every((w) => Boolean(w.isBearing) === first);
       return allSame ? first : null;
     }, [selectedWalls]);
+
+    const handleApplyLength = (len: number, mode: 'absolute' | 'delta' = 'absolute') => {
+      if (onBatchUpdateLength) {
+        onBatchUpdateLength(len, mode);
+        setCustomLength('');
+        if (mode === 'delta') {
+          const sign = len > 0 ? `+${len.toFixed(2)}` : `${len.toFixed(2)}`;
+          showFeedback(`Longitud ajustada (${sign} m) en ${selectedWalls.length} paredes`);
+        } else {
+          showFeedback(`Longitud fijada a ${len.toFixed(2)} m en ${selectedWalls.length} paredes`);
+        }
+      }
+    };
 
     const handleApplyThickness = (th: number) => {
       onBatchUpdate({ thickness: th });
@@ -153,13 +178,88 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         )}
 
-        {/* 1. ESPESOR DE PARED EN BLOQUE */}
+        {/* 1. LONGITUD / LARGO DE PARED EN BLOQUE */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold text-slate-700 flex items-center gap-1">
               <Ruler size={12} className="text-blue-600" />
-              <span>Espesor de Muro:</span>
+              <span>Longitud / Largo de Muro:</span>
             </span>
+            <span className="text-[10px] font-mono font-bold text-slate-500">
+              {commonLength !== null ? `${commonLength.toFixed(2)} m` : '*(Varios distintos)*'}
+            </span>
+          </div>
+
+          {/* Presets absolutos */}
+          <div className="grid grid-cols-4 gap-1">
+            {[2.0, 3.0, 4.0, 5.0].map((len) => {
+              const isSelected = commonLength !== null && Math.abs(commonLength - len) < 0.01;
+              return (
+                <button
+                  key={len}
+                  type="button"
+                  onClick={() => handleApplyLength(len, 'absolute')}
+                  className={`py-1 px-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer text-center ${
+                    isSelected
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                  title={`Fijar largo a ${len.toFixed(2)} m`}
+                >
+                  {len.toFixed(2)}m
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Ajuste relativo (deltas +/-) */}
+          <div className="grid grid-cols-4 gap-1">
+            {[-0.5, -0.1, 0.1, 0.5].map((delta) => {
+              const label = delta > 0 ? `+${delta.toFixed(2)}m` : `${delta.toFixed(2)}m`;
+              return (
+                <button
+                  key={delta}
+                  type="button"
+                  onClick={() => handleApplyLength(delta, 'delta')}
+                  className="py-1 px-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer text-center bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                  title={`Ajustar ${label} a cada pared`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Input de longitud fija personalizada */}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <input
+              type="number"
+              step="0.05"
+              min="0.10"
+              max="50.0"
+              value={customLength}
+              onChange={(e) => setCustomLength(e.target.value)}
+              placeholder={commonLength !== null ? commonLength.toFixed(2) : 'Largo personalizado'}
+              className="flex-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              disabled={!customLength || parseFloat(customLength) <= 0}
+              onClick={() => {
+                const val = parseFloat(customLength);
+                if (val > 0) handleApplyLength(val, 'absolute');
+              }}
+              className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-[11px] font-bold border border-blue-200 transition-colors cursor-pointer"
+            >
+              Fijar
+            </button>
+          </div>
+        </div>
+
+        {/* 2. ESPESOR DE PARED EN BLOQUE */}
+        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-bold text-slate-700">Espesor de Muro:</span>
             <span className="text-[10px] font-mono font-bold text-slate-500">
               {commonThickness !== null ? `${commonThickness.toFixed(2)} m` : '*(Varios distintos)*'}
             </span>
@@ -210,7 +310,7 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         </div>
 
-        {/* 2. ALTURA LIBRE EN BLOQUE */}
+        {/* 3. ALTURA LIBRE EN BLOQUE */}
         <div className="space-y-1.5 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold text-slate-700">Altura Libre (h):</span>
@@ -264,7 +364,7 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         </div>
 
-        {/* 3. TIPOLOGÍA DE CERRAMIENTO EN BLOQUE */}
+        {/* 4. TIPOLOGÍA DE CERRAMIENTO EN BLOQUE */}
         <div className="space-y-1.5 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold text-slate-700">Tipología de Cerramiento:</span>
@@ -295,7 +395,7 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         </div>
 
-        {/* 4. JUSTIFICACIÓN / EJE DE ALINEACIÓN EN BLOQUE */}
+        {/* 5. JUSTIFICACIÓN / EJE DE ALINEACIÓN EN BLOQUE */}
         <div className="space-y-1.5 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold text-slate-700">Justificación / Eje:</span>
@@ -326,7 +426,7 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         </div>
 
-        {/* 5. MURO PORTANTE / ESTRUCTURAL EN BLOQUE */}
+        {/* 6. MURO PORTANTE / ESTRUCTURAL EN BLOQUE */}
         <div className="space-y-1.5 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-bold text-slate-700">Carácter Portante:</span>
@@ -361,7 +461,7 @@ export const BulkWallEditPanel: React.FC<BulkWallEditPanelProps> = React.memo(
           </div>
         </div>
 
-        {/* 6. ELIMINAR PAREDES EN LOTE */}
+        {/* 7. ELIMINAR PAREDES EN LOTE */}
         <div className="pt-2 border-t border-slate-100">
           <button
             type="button"

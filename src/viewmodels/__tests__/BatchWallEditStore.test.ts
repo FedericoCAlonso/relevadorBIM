@@ -115,4 +115,118 @@ describe('Batch Wall Updates and Bulk Editing (useProjectStore)', () => {
     expect(state.selectedEntities).toHaveLength(0);
     expect(state.selectedEntity).toBeNull();
   });
+
+  it('debe redimensionar la longitud en bloque en modo absoluto respetando orientaciones', () => {
+    const store = useProjectStore.getState();
+
+    // w1: de (0,0) a (3,0) -> largo 3.0 m, horizontal
+    const w1 = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 0 },
+      lengthM: 3.0,
+      angleDeg: 0,
+      thickness: 0.15
+    })!.wall;
+
+    // w2: de (0,5) a (0,9) -> largo 4.0 m, vertical
+    const w2 = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 5 },
+      lengthM: 4.0,
+      angleDeg: 90,
+      thickness: 0.20
+    })!.wall;
+
+    // Fijar ambas paredes a 6.0 m de largo
+    store.batchUpdateWallLengths([w1.id, w2.id], 6.0, 'absolute');
+
+    const project = useProjectStore.getState().project;
+    const verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+    const v1End = verticesMap.get(w1.endVertexId)!;
+    const v2End = verticesMap.get(w2.endVertexId)!;
+
+    // w1 ahora llega hasta x = 6.0, y = 0
+    expect(v1End.x).toBeCloseTo(6.0, 2);
+    expect(v1End.y).toBeCloseTo(0, 2);
+
+    // w2 ahora llega hasta x = 0, y = 11.0 (5 + 6)
+    expect(v2End.x).toBeCloseTo(0, 2);
+    expect(v2End.y).toBeCloseTo(11.0, 2);
+
+    // Espesores siguen intactos
+    const updatedW1 = project.walls.find((w) => w.id === w1.id)!;
+    const updatedW2 = project.walls.find((w) => w.id === w2.id)!;
+    expect(updatedW1.thickness).toBe(0.15);
+    expect(updatedW2.thickness).toBe(0.20);
+  });
+
+  it('debe aplicar incrementos y decrementos delta en bloque a paredes de longitudes heterogéneas', () => {
+    const store = useProjectStore.getState();
+
+    const w1 = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 0 },
+      lengthM: 3.0,
+      angleDeg: 0
+    })!.wall;
+
+    const w2 = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 5 },
+      lengthM: 5.0,
+      angleDeg: 0
+    })!.wall;
+
+    // Incrementar en +0.50 m ambas paredes
+    store.batchUpdateWallLengths([w1.id, w2.id], 0.50, 'delta');
+
+    let project = useProjectStore.getState().project;
+    let verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+    let v1End = verticesMap.get(w1.endVertexId)!;
+    let v2End = verticesMap.get(w2.endVertexId)!;
+
+    expect(v1End.x).toBeCloseTo(3.50, 2);
+    expect(v2End.x).toBeCloseTo(5.50, 2);
+
+    // Decrementar en -1.0 m ambas paredes
+    store.batchUpdateWallLengths([w1.id, w2.id], -1.0, 'delta');
+
+    project = useProjectStore.getState().project;
+    verticesMap = new Map(project.vertices.map((v) => [v.id, v]));
+
+    v1End = verticesMap.get(w1.endVertexId)!;
+    v2End = verticesMap.get(w2.endVertexId)!;
+
+    expect(v1End.x).toBeCloseTo(2.50, 2);
+    expect(v2End.x).toBeCloseTo(4.50, 2);
+  });
+
+  it('debe ajustar la posición de aberturas existentes al redimensionar paredes en bloque', () => {
+    const store = useProjectStore.getState();
+
+    const w1 = store.addWallFromAnchor({
+      startCoord: { x: 0, y: 0 },
+      lengthM: 4.0,
+      angleDeg: 0
+    })!.wall;
+
+    // Insertar una ventana en el centro (distancia 2.0 m)
+    store.addOpeningDirect({
+      wallId: w1.id,
+      distanceAlongWall: 2.0,
+      width: 1.0,
+      height: 1.1,
+      sill: 1.0,
+      type: 'window'
+    });
+
+    // Extender el muro a 8.0 m
+    store.batchUpdateWallLengths([w1.id], 8.0, 'absolute');
+
+    const project = useProjectStore.getState().project;
+    const op = project.openings.find((o) => o.wallId === w1.id)!;
+
+    // La abertura debe haber sido reajustada proporcional o posicionalmente
+    expect(op).toBeDefined();
+    expect(op.distanceAlongWall).toBeGreaterThan(0);
+    expect(op.distanceAlongWall + op.width).toBeLessThanOrEqual(8.0);
+  });
 });
