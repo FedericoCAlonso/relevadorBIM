@@ -80,6 +80,8 @@ export interface HistoryAndMetaSlice {
   undo: () => void;
   redo: () => void;
   loadProject: (project: BuildingProject) => void;
+  loadProjectById: (id: string) => Promise<boolean>;
+  createNewProject: (name?: string) => Promise<void>;
   resetProject: () => void;
   updateProjectMeta: (patch: Partial<ProjectMetadata>) => void;
   updateElectricalSettings: (patch: Partial<ElectricalCalculationSettings>) => void;

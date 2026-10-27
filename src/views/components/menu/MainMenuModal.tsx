@@ -6,13 +6,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useProjectStore } from '../../../viewmodels/useProjectStore';
 import { downloadProjectJson, parseProjectJson } from '../../../services/projectBackupService';
+import { ProjectManagerModal } from './ProjectManagerModal';
 import {
   FolderPlus,
   Save,
   FolderOpen,
+  FolderKanban,
   Share2,
   Settings,
   X,
@@ -80,15 +82,17 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onInstall,
   onRefresh
 }) => {
-  const { project, resetProject, loadProject } = useProjectStore();
+  const { project, loadProject, createNewProject } = useProjectStore();
+  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const underlayFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isProjectManagerOpen) return null;
 
   const handleNewProject = () => {
-    if (window.confirm('¿Deseas iniciar un nuevo relevamiento? Se reiniciará el plano actual.')) {
-      resetProject();
+    const name = window.prompt('Nombre del nuevo relevamiento:', 'Nuevo Relevamiento');
+    if (name !== null) {
+      createNewProject(name);
       onClose();
     }
   };
@@ -162,6 +166,23 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
               📁 Proyecto y Archivo
             </span>
+
+            <button
+              type="button"
+              onClick={() => setIsProjectManagerOpen(true)}
+              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50/50 hover:from-blue-100 hover:to-indigo-100 rounded-2xl border border-blue-200 transition-all text-left cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+                  <FolderKanban size={16} />
+                </div>
+                <div>
+                  <div className="font-bold text-blue-900">Mis Obras y Proyectos</div>
+                  <div className="text-[11px] text-blue-600/80">Gestionar relevamientos en este dispositivo</div>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-blue-500" />
+            </button>
 
             <button
               type="button"
@@ -574,6 +595,11 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
           </div>
         </div>
       </div>
+
+      <ProjectManagerModal
+        isOpen={isProjectManagerOpen}
+        onClose={() => setIsProjectManagerOpen(false)}
+      />
     </div>
   );
 };

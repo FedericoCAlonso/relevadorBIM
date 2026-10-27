@@ -17,6 +17,10 @@ import {
   clearProjectFromLocalStorage
 } from '../../services/projectBackupService';
 import {
+  saveProjectToIndexedDb,
+  loadProjectFromIndexedDb
+} from '../../services/projectStorageService';
+import {
   MAX_PROJECT_UNDO_STACK,
   type HistoryAndMetaSlice,
   type ProjectHistoryEntry,
@@ -56,6 +60,7 @@ export function createHistoryWrappedSet(rawSet: StoreSet): StoreSet {
 
       if ('project' in nextPartial && nextPartial.project && nextPartial.project !== state.project) {
         saveProjectToLocalStorage(nextPartial.project);
+        saveProjectToIndexedDb(nextPartial.project);
         const currentEntry: ProjectHistoryEntry = {
           project: cloneProject(state.project),
           activeAnchorVertexId: state.activeAnchorVertexId
@@ -106,6 +111,7 @@ export function createHistorySlice(
       }
 
       saveProjectToLocalStorage(prevEntry.project);
+      saveProjectToIndexedDb(prevEntry.project);
 
       rawSet({
         project: prevEntry.project,
@@ -137,6 +143,7 @@ export function createHistorySlice(
       }
 
       saveProjectToLocalStorage(nextEntry.project);
+      saveProjectToIndexedDb(nextEntry.project);
 
       rawSet({
         project: nextEntry.project,
@@ -207,6 +214,7 @@ export function createHistorySlice(
     loadProject: (project) => {
       const migrated = migrateLoadedProject(project);
       saveProjectToLocalStorage(migrated);
+      saveProjectToIndexedDb(migrated);
       set({
         project: migrated,
         selectedEntity: null,
@@ -218,6 +226,25 @@ export function createHistorySlice(
         canRedo: false,
         _skipHistory: true
       });
+    },
+
+    loadProjectById: async (id: string) => {
+      const loaded = await loadProjectFromIndexedDb(id);
+      if (loaded) {
+        get().loadProject(loaded);
+        return true;
+      }
+      return false;
+    },
+
+    createNewProject: async (name?: string) => {
+      const current = get().project;
+      if (current) {
+        await saveProjectToIndexedDb(current);
+      }
+      const newProj = createEmptyProject(name || 'Nuevo Relevamiento');
+      await saveProjectToIndexedDb(newProj);
+      get().loadProject(newProj);
     },
 
     resetProject: () => {
