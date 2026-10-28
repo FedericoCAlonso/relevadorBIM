@@ -10,6 +10,7 @@
 import type { Vector2D, WallVertex } from './Wall';
 import type { CeilingMaterialType } from './ceilingPlan';
 import { SPACE_COVER_TYPE_OPTIONS, type SpaceCoverTypeOption } from '../../config/architecturalConfig';
+import { CAD_SNAP_CONFIG } from '../../config/appCadConfig';
 
 export type SpaceCategory =
   | 'living'
@@ -647,7 +648,7 @@ export function findEnclosedCycles(
     return findCyclesTopologicalFallback(walls);
   }
 
-  // 1. Mapa de coordenadas
+  // 1. Mapa de coordenadas inicial
   const vMap = new Map<string, { x: number; y: number }>();
   if (verticesMap instanceof Map) {
     for (const [id, coord] of verticesMap.entries()) {
@@ -659,12 +660,48 @@ export function findEnclosedCycles(
     }
   }
 
-  // Helper para registrar o reutilizar un vértice existente dentro de tolerancia
+  const CORNER_SNAP_TOLERANCE = CAD_SNAP_CONFIG.VERTEX_TOLERANCE_M; // 0.25m
+  const T_JUNCTION_TOLERANCE = CAD_SNAP_CONFIG.WALL_SLIDE_TOLERANCE_M; // 0.25m
+
+  // Unificación previa de esquinas dentro de la tolerancia de snap (falsa escuadra / gaps de cierre)
+  const vertexRemap = new Map<string, string>();
+  const getRootVertex = (id: string): string => {
+    let curr = id;
+    while (vertexRemap.has(curr)) {
+      curr = vertexRemap.get(curr)!;
+    }
+    return curr;
+  };
+
+  const vEntries = Array.from(vMap.entries());
+  for (let i = 0; i < vEntries.length; i++) {
+    const [idA, ptA] = vEntries[i];
+    const rootA = getRootVertex(idA);
+    for (let j = i + 1; j < vEntries.length; j++) {
+      const [idB, ptB] = vEntries[j];
+      const rootB = getRootVertex(idB);
+      if (rootA === rootB) continue;
+
+      // No fusionar si hay un muro largo conectando directamente idA e idB
+      const directWall = walls.find(
+        (w) =>
+          (w.startVertexId === idA && w.endVertexId === idB) ||
+          (w.startVertexId === idB && w.endVertexId === idA)
+      );
+      const dist = Math.hypot(ptA.x - ptB.x, ptA.y - ptB.y);
+      if (dist <= CORNER_SNAP_TOLERANCE && (!directWall || dist < 0.05)) {
+        vertexRemap.set(rootB, rootA);
+        ptB.x = ptA.x;
+        ptB.y = ptA.y;
+      }
+    }
+  }
+
   let virtualVertexCounter = 0;
   function getOrCreateVertexId(pt: { x: number; y: number }): string {
     for (const [id, coord] of vMap.entries()) {
-      if (Math.hypot(coord.x - pt.x, coord.y - pt.y) < 0.03) {
-        return id;
+      if (Math.hypot(coord.x - pt.x, coord.y - pt.y) < 0.04) {
+        return getRootVertex(id);
       }
     }
     const newId = `v_node_${++virtualVertexCounter}`;
@@ -686,12 +723,14 @@ export function findEnclosedCycles(
   }
   const segments: Segment[] = [];
   for (const w of walls) {
-    if (w.startVertexId === w.endVertexId) continue;
-    const p1 = vMap.get(w.startVertexId);
-    const p2 = vMap.get(w.endVertexId);
+    const v1Id = getRootVertex(w.startVertexId);
+    const v2Id = getRootVertex(w.endVertexId);
+    if (v1Id === v2Id) continue;
+    const p1 = vMap.get(v1Id);
+    const p2 = vMap.get(v2Id);
     if (!p1 || !p2) continue;
     if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 0.01) continue;
-    segments.push({ wallId: w.id, p1, p2, v1Id: w.startVertexId, v2Id: w.endVertexId });
+    segments.push({ wallId: w.id, p1, p2, v1Id, v2Id });
   }
 
   // 3. Planarización: Detectar puntos de corte e intersecciones
@@ -713,24 +752,45 @@ export function findEnclosedCycles(
     }
   }
 
-  // b) T-junctions y empalmes parciales (tolerancia de hasta 15 cm para absorber espesores y desfasajes en obra)
-  const T_JUNCTION_TOLERANCE = 0.15;
+  // b) T-junctions y empalmes parciales con tolerancia normativa
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
     for (const [vId, pt] of vMap.entries()) {
-      if (vId === s.v1Id || vId === s.v2Id) continue;
+      const rootVId = getRootVertex(vId);
+      if (rootVId === s.v1Id || rootVId === s.v2Id) continue;
+
       const { dist, t, proj } = pointToSegmentDistance(pt, s.p1, s.p2);
       const len = Math.hypot(s.p2.x - s.p1.x, s.p2.y - s.p1.y);
-      const distFromEnds = Math.min(t * len, (1 - t) * len);
-      if (dist <= T_JUNCTION_TOLERANCE && distFromEnds >= 0.02) {
-        pt.x = Number(proj.x.toFixed(4));
-        pt.y = Number(proj.y.toFixed(4));
-        if (verticesMap instanceof Map && verticesMap.has(vId)) {
-          const orig = verticesMap.get(vId)!;
-          orig.x = pt.x;
-          orig.y = pt.y;
+      const distFromStart = t * len;
+      const distFromEnd = (1 - t) * len;
+      const distFromEnds = Math.min(distFromStart, distFromEnd);
+
+      if (dist <= T_JUNCTION_TOLERANCE) {
+        if (distFromEnds < CORNER_SNAP_TOLERANCE) {
+          // Imantar al extremo del muro correspondiente
+          const targetRoot = distFromStart < distFromEnd ? s.v1Id : s.v2Id;
+          const targetCoord = vMap.get(targetRoot);
+          if (targetCoord) {
+            pt.x = targetCoord.x;
+            pt.y = targetCoord.y;
+            vertexRemap.set(rootVId, targetRoot);
+            if (verticesMap instanceof Map && verticesMap.has(vId)) {
+              const orig = verticesMap.get(vId)!;
+              orig.x = targetCoord.x;
+              orig.y = targetCoord.y;
+            }
+          }
+        } else {
+          // Empalme en T a lo largo del muro
+          pt.x = Number(proj.x.toFixed(4));
+          pt.y = Number(proj.y.toFixed(4));
+          if (verticesMap instanceof Map && verticesMap.has(vId)) {
+            const orig = verticesMap.get(vId)!;
+            orig.x = pt.x;
+            orig.y = pt.y;
+          }
+          splitPointsPerSegment.get(i)!.push(proj);
         }
-        splitPointsPerSegment.get(i)!.push(proj);
       }
     }
   }
@@ -745,19 +805,24 @@ export function findEnclosedCycles(
 
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
-    const pts = splitPointsPerSegment.get(i) || [];
+    const s_v1 = getRootVertex(s.v1Id);
+    const s_v2 = getRootVertex(s.v2Id);
+    if (s_v1 === s_v2) continue;
 
-    const dx = s.p2.x - s.p1.x;
-    const dy = s.p2.y - s.p1.y;
+    const p1 = vMap.get(s_v1)!;
+    const p2 = vMap.get(s_v2)!;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
     const lenSq = dx * dx + dy * dy;
 
     const uniquePoints: { pt: { x: number; y: number }; t: number; id: string }[] = [
-      { pt: s.p1, t: 0, id: s.v1Id },
-      { pt: s.p2, t: 1, id: s.v2Id }
+      { pt: p1, t: 0, id: s_v1 },
+      { pt: p2, t: 1, id: s_v2 }
     ];
 
+    const pts = splitPointsPerSegment.get(i) || [];
     for (const p of pts) {
-      const t = ((p.x - s.p1.x) * dx + (p.y - s.p1.y) * dy) / lenSq;
+      const t = ((p.x - p1.x) * dx + (p.y - p1.y) * dy) / lenSq;
       if (t > 0.005 && t < 0.995) {
         const id = getOrCreateVertexId(p);
         uniquePoints.push({ pt: p, t, id });
@@ -768,8 +833,9 @@ export function findEnclosedCycles(
 
     const cleanChain: string[] = [];
     for (const item of uniquePoints) {
-      if (cleanChain.length === 0 || cleanChain[cleanChain.length - 1] !== item.id) {
-        cleanChain.push(item.id);
+      const rootId = getRootVertex(item.id);
+      if (cleanChain.length === 0 || cleanChain[cleanChain.length - 1] !== rootId) {
+        cleanChain.push(rootId);
       }
     }
 
@@ -850,8 +916,18 @@ export function findEnclosedCycles(
       curr = outList[nextIdx];
     }
 
-    if (faceEdges.length >= 3 && curr === he) {
-      const poly = faceEdges.map((e) => vMap.get(e.from)!);
+    let cycleEdges: HalfEdge[] = [];
+    if (curr === he) {
+      cycleEdges = faceEdges;
+    } else if (curr) {
+      const loopStartIdx = faceEdges.findIndex((e) => e === curr);
+      if (loopStartIdx !== -1) {
+        cycleEdges = faceEdges.slice(loopStartIdx);
+      }
+    }
+
+    if (cycleEdges.length >= 3) {
+      const poly = cycleEdges.map((e) => vMap.get(e.from)!);
       let signedArea = 0;
       const n = poly.length;
       for (let i = 0; i < n; i++) {
@@ -864,7 +940,7 @@ export function findEnclosedCycles(
       // Solo caras cerradas en orientación antihoraria con área positiva > 0.05 m²
       if (signedArea > 0.05) {
         const uniqueWallIds: string[] = [];
-        for (const e of faceEdges) {
+        for (const e of cycleEdges) {
           for (const wid of e.wallIds) {
             if (!uniqueWallIds.includes(wid)) {
               uniqueWallIds.push(wid);
@@ -872,10 +948,18 @@ export function findEnclosedCycles(
           }
         }
 
-        cycles.push({
-          vertexIds: faceEdges.map((e) => e.from),
-          wallIds: uniqueWallIds
-        });
+        const cycleVertexIds = cycleEdges.map((e) => e.from);
+        const cycleKey = [...cycleVertexIds].sort().join('--');
+        const alreadyFound = cycles.some(
+          (c) => [...c.vertexIds].sort().join('--') === cycleKey
+        );
+
+        if (!alreadyFound) {
+          cycles.push({
+            vertexIds: cycleVertexIds,
+            wallIds: uniqueWallIds
+          });
+        }
       }
     }
   }

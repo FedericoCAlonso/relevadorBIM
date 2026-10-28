@@ -17,6 +17,7 @@ import {
   calculateVisibleFaceCompensation
 } from '../../models/architecture/Wall';
 import { ARCHITECTURAL_WALL_CONFIG } from '../../config/architecturalConfig';
+import { CAD_SNAP_CONFIG } from '../../config/appCadConfig';
 import type { Opening } from '../../models/architecture/Opening';
 import type { Space } from '../../models/architecture/Space';
 import { findEnclosedCycles } from '../../models/architecture/Space';
@@ -115,14 +116,67 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       }
 
       const rad = (angleDeg * Math.PI) / 180;
-      const targetEndX = vStart.x + Math.cos(rad) * effectiveLengthM;
-      const targetEndY = vStart.y + Math.sin(rad) * effectiveLengthM;
+      let targetEndX = vStart.x + Math.cos(rad) * effectiveLengthM;
+      let targetEndY = vStart.y + Math.sin(rad) * effectiveLengthM;
 
-      const SNAP_TOLERANCE = 0.2;
+      const SNAP_TOLERANCE = CAD_SNAP_CONFIG.VERTEX_TOLERANCE_M;
       let vEnd = project.vertices.find(
         (v) =>
           v.id !== vStart?.id && Math.hypot(v.x - targetEndX, v.y - targetEndY) <= SNAP_TOLERANCE
       );
+
+      // Si no cayó sobre un vértice existente, verificar si aterriza sobre una pared existente (empalme en T / cierre contra muro)
+      if (!vEnd) {
+        const candidateWalls = project.walls.filter(
+          (w) =>
+            w.levelId === project.activeLevelId &&
+            w.startVertexId !== vStart?.id &&
+            w.endVertexId !== vStart?.id
+        );
+
+        let bestDist = Infinity;
+        let bestProj: { x: number; y: number } | null = null;
+        let snapCornerVertex: WallVertex | null = null;
+
+        for (const wall of candidateWalls) {
+          const wStart = verticesMap.get(wall.startVertexId);
+          const wEnd = verticesMap.get(wall.endVertexId);
+          if (!wStart || !wEnd) continue;
+
+          const dx = wEnd.x - wStart.x;
+          const dy = wEnd.y - wStart.y;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq < 1e-6) continue;
+
+          let t = ((targetEndX - wStart.x) * dx + (targetEndY - wStart.y) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const proj = { x: wStart.x + t * dx, y: wStart.y + t * dy };
+          const dist = Math.hypot(targetEndX - proj.x, targetEndY - proj.y);
+
+          const wallLen = Math.sqrt(lenSq);
+          const distFromStart = t * wallLen;
+          const distFromEnd = (1 - t) * wallLen;
+
+          if (dist <= CAD_SNAP_CONFIG.WALL_SLIDE_TOLERANCE_M && dist < bestDist) {
+            bestDist = dist;
+            bestProj = proj;
+            if (distFromStart <= CAD_SNAP_CONFIG.VERTEX_TOLERANCE_M) {
+              snapCornerVertex = wStart;
+            } else if (distFromEnd <= CAD_SNAP_CONFIG.VERTEX_TOLERANCE_M) {
+              snapCornerVertex = wEnd;
+            } else {
+              snapCornerVertex = null;
+            }
+          }
+        }
+
+        if (snapCornerVertex) {
+          vEnd = snapCornerVertex;
+        } else if (bestProj) {
+          targetEndX = Number(bestProj.x.toFixed(3));
+          targetEndY = Number(bestProj.y.toFixed(3));
+        }
+      }
 
       const isNewStartVertex = !project.vertices.some((v) => v.id === vStart?.id);
       const isNewEndVertex = !vEnd;
@@ -915,12 +969,14 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
       }
 
       const otherLevelSpaces = project.spaces.filter((s) => s.levelId !== project.activeLevelId);
+      const claimedSpaceIds = new Set<string>();
 
       const newSpacesInLevel: Space[] = cycles.map((c, idx) => {
         // 1. Coincidencia exacta de vértices perimetrales
         let existing = project.spaces.find(
           (s) =>
             s.levelId === project.activeLevelId &&
+            !claimedSpaceIds.has(s.id) &&
             s.boundaryVertexIds.length === c.vertexIds.length &&
             c.vertexIds.every((id) => s.boundaryVertexIds.includes(id))
         );
@@ -929,7 +985,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         // el nombre y propiedades si un muro compartido fue subdividido al empalmar otro recinto
         if (!existing) {
           existing = project.spaces.find((s) => {
-            if (s.levelId !== project.activeLevelId) return false;
+            if (s.levelId !== project.activeLevelId || claimedSpaceIds.has(s.id)) return false;
             const shared = c.vertexIds.filter((id) => s.boundaryVertexIds.includes(id)).length;
             const maxLen = Math.max(s.boundaryVertexIds.length, c.vertexIds.length);
             return shared / maxLen >= 0.6;
@@ -937,6 +993,7 @@ export function createArchitectureSlice(set: StoreSet, get: StoreGet): Architect
         }
 
         if (existing) {
+          claimedSpaceIds.add(existing.id);
           return {
             ...existing,
             boundaryVertexIds: c.vertexIds,
