@@ -1162,6 +1162,10 @@ export function App() {
           onSelectSpace={voiceAssistant.setTargetSpaceId}
           onExecute={voiceAssistant.executeCommand}
           onInitLocalModel={voiceAssistant.initLocalModel}
+          availableModels={voiceAssistant.availableModels}
+          selectedModelId={voiceAssistant.selectedModelId}
+          onSelectModel={voiceAssistant.setSelectedModelId}
+          selectedModel={voiceAssistant.selectedModel}
         />
       </Suspense>
 

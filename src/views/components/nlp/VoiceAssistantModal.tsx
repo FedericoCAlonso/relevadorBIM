@@ -10,7 +10,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Mic, MicOff, Send, X, Sparkles, Loader2, Cpu, Building2 } from 'lucide-react';
 import type { UseSpeechRecognitionReturn } from '../../../viewmodels/useSpeechRecognition';
-import type { WebLlmStatus, WebLlmProgress } from '../../../services/nlp/WebLlmExtractor';
+import type { WebLlmStatus, WebLlmProgress, NlpModelOption } from '../../../services/nlp/WebLlmExtractor';
 import type { NaturalLanguageExecutionResult } from '../../../services/nlp/naturalLanguageTranslator';
 import type { Space } from '../../../models/architecture/Space';
 
@@ -30,7 +30,11 @@ interface VoiceAssistantModalProps {
   targetSpaceId?: string | null;
   onSelectSpace?: (id: string | null) => void;
   onExecute: (text: string) => void;
-  onInitLocalModel: () => void;
+  onInitLocalModel: (modelId?: string) => void;
+  availableModels?: readonly NlpModelOption[];
+  selectedModelId?: string;
+  onSelectModel?: (id: string) => void;
+  selectedModel?: NlpModelOption;
 }
 
 const QUICK_SUGGESTIONS = [
@@ -59,7 +63,11 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
   targetSpaceId,
   onSelectSpace,
   onExecute,
-  onInitLocalModel
+  onInitLocalModel,
+  availableModels,
+  selectedModelId,
+  onSelectModel,
+  selectedModel
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -152,19 +160,41 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
               type="button"
               onClick={() => {
                 setEngineMode('llm_only');
-                if (llmStatus === 'idle') onInitLocalModel();
+                if (llmStatus === 'idle') onInitLocalModel(selectedModelId);
               }}
               className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                 engineMode === 'llm_only'
                   ? 'bg-cyan-600/90 text-white shadow-sm shadow-cyan-600/30'
                   : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
               }`}
-              title="Interpreta todas las órdenes directamente con la IA local WebLLM (Qwen 0.5B)"
+              title={`Interpreta todas las órdenes directamente con la IA local WebLLM (${selectedModel?.name || 'IA Local'})`}
             >
               🧠 Solo IA (WebLLM)
             </button>
           </div>
         </div>
+
+        {/* Selector de Modelo IA cuando aplica */}
+        {availableModels && availableModels.length > 0 && onSelectModel && (
+          <div className="mt-2 flex items-center justify-between rounded-xl bg-slate-950/40 px-3 py-1.5 border border-slate-800/80">
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <Cpu className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+              <span className="text-[11px] font-medium">Modelo IA:</span>
+            </div>
+            <select
+              value={selectedModelId || availableModels[0].id}
+              onChange={(e) => onSelectModel(e.target.value)}
+              className="bg-slate-900 text-[11px] text-cyan-200 border border-slate-700 rounded-lg px-2 py-0.5 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer max-w-[210px] sm:max-w-[250px] truncate"
+              title={selectedModel?.description}
+            >
+              {availableModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Zona Central: Micrófono y Ondas */}
         <div className="my-6 flex flex-col items-center justify-center">
@@ -266,7 +296,7 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
               <Cpu className="h-3.5 w-3.5 text-cyan-400" />
               <span>
                 {llmStatus === 'ready'
-                  ? 'IA Local lista en GPU (Qwen 0.5B)'
+                  ? `IA Local lista en GPU (${selectedModel?.name || 'IA Local'})`
                   : llmStatus === 'downloading'
                   ? `Descargando IA local (${Math.round(llmProgress.progress * 100)}%)`
                   : llmStatus === 'inferring'
@@ -282,7 +312,7 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
             {llmStatus === 'idle' && (
               <button
                 type="button"
-                onClick={onInitLocalModel}
+                onClick={() => onInitLocalModel(selectedModelId)}
                 className="text-cyan-400 hover:underline hover:text-cyan-300 font-medium"
               >
                 Descargar IA Local (Offline)

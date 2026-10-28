@@ -15,6 +15,9 @@ import { useSpeechRecognition } from './useSpeechRecognition';
 import {
   webLlmService,
   extractNaturalLanguageIntent,
+  buildBimContextFromProject,
+  AVAILABLE_NLP_MODELS,
+  RECOMMENDED_NLP_MODEL,
   type WebLlmStatus,
   type WebLlmProgress
 } from '../services/nlp/WebLlmExtractor';
@@ -36,6 +39,7 @@ export function useVoiceAssistantViewModel() {
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [engineMode, setEngineMode] = useState<NlpEngineMode>('hybrid');
+  const [selectedModelId, setSelectedModelId] = useState<string>(RECOMMENDED_NLP_MODEL);
   const [llmStatus, setLlmStatus] = useState<WebLlmStatus>(webLlmService.getStatus());
   const [llmProgress, setLlmProgress] = useState<WebLlmProgress>({ text: '', progress: 0 });
   const [lastResult, setLastResult] = useState<NaturalLanguageExecutionResult | null>(null);
@@ -123,7 +127,9 @@ export function useVoiceAssistantViewModel() {
     try {
       // 1. Extraer intención con orquestador (híbrido o forzando WebLLM según engineMode)
       const isForceLlm = engineMode === 'llm_only';
-      const extraction = await extractNaturalLanguageIntent(trimmed, isForceLlm);
+      const { project, selectedEntity: activeEntity } = useProjectStore.getState();
+      const bimContext = buildBimContextFromProject(project, targetSpaceIdRef.current, activeEntity);
+      const extraction = await extractNaturalLanguageIntent(trimmed, isForceLlm, bimContext, selectedModelId);
 
       if (!extraction.intent) {
         setLastResult({
@@ -166,7 +172,7 @@ export function useVoiceAssistantViewModel() {
     } finally {
       setIsProcessing(false);
     }
-  }, [engineMode]);
+  }, [engineMode, selectedModelId]);
 
   // Integración de reconocimiento de voz
   const speech = useSpeechRecognition({
@@ -197,9 +203,10 @@ export function useVoiceAssistantViewModel() {
     setPendingConfirmation(null);
   }, []);
 
-  const initLocalModel = useCallback(async () => {
-    await webLlmService.initEngine();
-  }, []);
+  const initLocalModel = useCallback(async (modelId?: string) => {
+    const targetModel = modelId || selectedModelId;
+    await webLlmService.initEngine(targetModel);
+  }, [selectedModelId]);
 
   return {
     isModalOpen,
@@ -209,6 +216,10 @@ export function useVoiceAssistantViewModel() {
     isProcessing,
     engineMode,
     setEngineMode,
+    availableModels: AVAILABLE_NLP_MODELS,
+    selectedModelId,
+    setSelectedModelId,
+    selectedModel: AVAILABLE_NLP_MODELS.find((m) => m.id === selectedModelId) || AVAILABLE_NLP_MODELS[0],
     llmStatus,
     llmProgress,
     lastResult,

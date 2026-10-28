@@ -28,6 +28,14 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
     expect(parseSpanishNumber('1 metro 20')).toBe(1.20);
     expect(parseSpanishNumber('2 metros 50')).toBe(2.50);
     expect(parseSpanishNumber('un metro y medio')).toBe(1.50);
+    expect(parseSpanishNumber('medio metro')).toBe(0.50);
+    expect(parseSpanishNumber('cero ochenta')).toBe(0.80);
+    expect(parseSpanishNumber('cero con ochenta')).toBe(0.80);
+    expect(parseSpanishNumber('cero veinte')).toBe(0.20);
+    expect(parseSpanishNumber('cero quince')).toBe(0.15);
+    expect(parseSpanishNumber('ochenta centimetros')).toBe(0.80);
+    expect(parseSpanishNumber('dos con cincuenta')).toBe(2.50);
+    expect(parseSpanishNumber('tres con cuarenta')).toBe(3.40);
     expect(parseSpanishNumber('treinta y cinco')).toBe(35);
   });
 
@@ -114,6 +122,53 @@ describe('FastPatternParser — Parser Determinístico Ultrarrápido (<1ms)', ()
         expect(intent.dimensions.widthM).toBe(4.5);
         expect(intent.dimensions.lengthM).toBe(1);
         expect(intent.relativeTo?.sharedWall).toBe('sur');
+      }
+    });
+
+    it('soporta giros coloquiales de adosado ("al este del living", "a la derecha de la cocina")', () => {
+      const i1 = parseNaturalLanguageFast('Pieza de 3.5 por 4 al este del living');
+      expect(i1?.action).toBe('create_space');
+      if (i1?.action === 'create_space') {
+        expect(i1.name).toBe('Pieza');
+        expect(i1.category).toBe('dormitorio');
+        expect(i1.dimensions).toEqual({ widthM: 3.5, lengthM: 4 });
+        expect(i1.relativeTo?.sharedWall).toBe('este');
+        expect(i1.relativeTo?.targetSpaceName).toBe('Living');
+      }
+
+      const i2 = parseNaturalLanguageFast('cuarto de 3x3 a la derecha del living');
+      expect(i2?.action).toBe('create_space');
+      if (i2?.action === 'create_space') {
+        expect(i2.name).toBe('Cuarto');
+        expect(i2.category).toBe('dormitorio');
+        expect(i2.dimensions).toEqual({ widthM: 3, lengthM: 3 });
+        expect(i2.relativeTo?.sharedWall).toBe('derecha');
+        expect(i2.relativeTo?.targetSpaceName).toBe('Living');
+      }
+    });
+
+    it('soporta creación directa con "tres paredes de XxY" o "cerrar con tres paredes"', () => {
+      const i1 = parseNaturalLanguageFast('tres paredes de 3x4');
+      expect(i1?.action).toBe('create_space');
+      if (i1?.action === 'create_space') {
+        expect(i1.name).toBe('Ambiente');
+        expect(i1.dimensions).toEqual({ widthM: 3, lengthM: 4 });
+      }
+
+      const i2 = parseNaturalLanguageFast('cerrar con tres paredes de 3 por 4 al fondo');
+      expect(i2?.action).toBe('create_space');
+      if (i2?.action === 'create_space') {
+        expect(i2.name).toBe('Ambiente');
+        expect(i2.dimensions).toEqual({ widthM: 3, lengthM: 4 });
+        expect(i2.relativeTo?.sharedWall).toBe('fondo');
+      }
+
+      const i3 = parseNaturalLanguageFast('antebaño de 1.5 por 2');
+      expect(i3?.action).toBe('create_space');
+      if (i3?.action === 'create_space') {
+        expect(i3.name).toBe('Antebano');
+        expect(i3.category).toBe('bano');
+        expect(i3.dimensions).toEqual({ widthM: 1.5, lengthM: 2 });
       }
     });
   });
